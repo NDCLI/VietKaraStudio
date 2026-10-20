@@ -1,0 +1,31 @@
+{
+  "id": "chrome_bac",
+  "name": "Chrome Bạc",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Kim loại",
+  "bestEn": "Metallic",
+  "desc": "Xanh bạc kim loại, viền xanh đậm, bóng xanh — lạnh và sắc.",
+  "descEn": "Silver-blue metallic, deep navy outline, blue shadow — cold and crisp.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#BFD7FF",
+    "unsung": "#F5F5F5",
+    "ou": "#1B2A3F",
+    "os": "#1B2A3F",
+    "ow": 7,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 5,
+    "shadowOn": true,
+    "shsc": "#4C7BFF",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 110
+  }
+}

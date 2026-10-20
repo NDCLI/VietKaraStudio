@@ -1,0 +1,31 @@
+{
+  "id": "lam_aquamarine",
+  "name": "Lam Aquamarine",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Lam Aquamarine",
+  "bestEn": "Lam Aquamarine",
+  "desc": "Preset màu đá quý — Lam Aquamarine.",
+  "descEn": "Gemstone color preset — Lam Aquamarine.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#1FD3E8",
+    "unsung": "#EAFBFF",
+    "ou": "#041F26",
+    "os": "#041F26",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#7A2FF0",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 100
+  }
+}

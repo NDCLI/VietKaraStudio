@@ -1,0 +1,15 @@
+.venv/
+data/
+__pycache__/
+.pytest_cache/
+*.log
+.gpu-wheels/
+build-tools/
+releases/
+bin/
+.env
+.env.*
+*.partial
+docs/*
+!docs/DISTRIBUTION.md
+!docs/RELEASE.md

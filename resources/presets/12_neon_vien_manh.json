@@ -1,0 +1,31 @@
+{
+  "id": "neon_vien_manh",
+  "name": "Neon Viền Mảnh",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Neon mảnh",
+  "bestEn": "Thin neon",
+  "desc": "Chữ trắng viền cyan mảnh, bóng phát sáng — hiện đại.",
+  "descEn": "White text, thin cyan outline, glow shadow — modern.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#00F0FF",
+    "unsung": "#F2FDFF",
+    "ou": "#003A44",
+    "os": "#003A44",
+    "ow": 3,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 5,
+    "shadowOn": true,
+    "shsc": "#00F0FF",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 120
+  }
+}

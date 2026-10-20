@@ -1,0 +1,31 @@
+{
+  "id": "lam_sapphire",
+  "name": "Lam Sapphire",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Lam Sapphire",
+  "bestEn": "Lam Sapphire",
+  "desc": "Preset màu đá quý — Lam Sapphire.",
+  "descEn": "Gemstone color preset — Lam Sapphire.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#4C7BFF",
+    "unsung": "#EAF1FC",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#E0A63C",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 95
+  }
+}

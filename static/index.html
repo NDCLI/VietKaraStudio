@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>VietKara Studio</title>
+  <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="app-rail" aria-label="Chức năng app"><div class="rail-brand">OB</div><button data-page="karaoke" class="on" title="Karaoke" aria-label="Karaoke">▤</button><button data-page="separation" title="Tách nhạc lấy beat" aria-label="Tách nhạc lấy beat">♫</button><button data-page="settings" class="rail-settings" title="Cài đặt model" aria-label="Cài đặt model">⚙</button></nav>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="VietKara Studio"><span class="brand-icon">▥</span><span>Viet<span class="brand-light">Kara</span><small>STUDIO</small></span></a>
+  <div class="project-name"><span class="status-dot"></span><input id="projectName" aria-label="Tên project" value="Bài karaoke mới"><span id="saveStatus">Đã lưu</span></div>
+  <div class="top-actions"><button id="projectsBtn" class="ghost">Project <span>⌄</span></button><button id="newBtn" class="ghost">＋ Bài mới</button><button id="exportBtn" class="primary">↗ Xuất karaoke</button></div>
+</header>
+<div class="intro"><div><span class="eyebrow">YOUR MUSIC. ORIGINAL SOUND.</span><h1>Lời khớp nhạc. <span>Beat nguyên bản.</span></h1></div><div class="flow"><span>01 <b>Nạp hai bản</b></span><i>→</i><span>02 <b>Căn lời</b></span><i>→</i><span>03 <b>Xuất video</b></span></div></div>
+<main id="karaokePage" class="workspace" data-app-page="karaoke">
+  <div class="studio-top">
+  <aside class="panel source-panel">
+    <details id="sourceFiles" class="source-details"><summary>File nguồn <span id="sourceSummary"></span></summary>
+    <div class="section-heading"><span class="section-index">01</span><h2>Nguồn âm thanh</h2><span class="mini-tag">LOCAL</span></div>
+    <p class="muted small">Một bản để tìm lời. Một bản để hát.</p>
+    <label class="upload-card reference-card" id="referenceDrop" tabindex="0">
+      <input id="referenceInput" type="file" accept="audio/*,video/*" hidden>
+      <span class="upload-icon purple">♫</span><span class="upload-copy"><strong>Bản có giọng hát</strong><small id="referenceName">Kéo thả hoặc chọn file</small></span><span class="upload-plus">＋</span>
+      <span class="upload-note">Tách vocal để nhận dạng &amp; căn lời</span>
+    </label>
+    <label class="upload-card beat-card" id="beatDrop" tabindex="0">
+      <input id="beatInput" type="file" accept="audio/*,video/*" hidden>
+      <span class="upload-icon green">≋</span><span class="upload-copy"><strong>Beat gốc của bạn</strong><small id="beatName">Kéo thả hoặc chọn file</small></span><span class="upload-plus">＋</span>
+      <span class="upload-note">Âm thanh duy nhất trong video xuất</span>
+    </label>
+<label class="background-upload source-video-upload"><input id="backgroundInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm,.mkv,.avi,.m4v" hidden><span data-icon="video"></span> Chọn video / ảnh nền</label><p id="sourceVideoInfo" class="hint"></p><div id="sourceVideoActions" hidden><button id="videoReferenceBtn" class="secondary full small">Dùng âm thanh video để nhận lời</button><button id="videoSeparateBtn" class="ghost full small">Tách vocal / beat từ video</button></div>
+    <div class="source-guarantee"><span>✓</span> Xuất bằng beat gốc đã nạp</div>
+    </details>
+    <div class="divider"></div>
+    <details id="aiOptions" class="source-details"><summary>Thiết lập AI <span id="aiSummary">Tự động</span></summary>
+    <div class="section-heading"><span class="section-index">02</span><h2>Nhận lời &amp; căn nhịp</h2></div>
+    <div class="form-row"><label>Model<select id="model"><option value="medium">Whisper medium</option><option value="small">Whisper small · nhanh hơn</option><option value="large-v3-turbo">Whisper large-v3-turbo</option></select></label><label>Ngôn ngữ<select id="language"><option value="vi">Tiếng Việt</option><option value="en">English</option><option value="auto">Tự nhận</option></select></label></div>
+    <div class="hardware-box">
+      <div class="label-row"><label for="devicePreference">Thiết bị xử lý</label><button id="scanGpuBtn" class="text-button">↻ Quét GPU</button></div>
+      <select id="devicePreference"><option value="auto">Tự động · ưu tiên GPU</option><option value="cpu">Chỉ dùng CPU</option></select>
+      <div id="gpuStatus" class="hardware-status" role="status">Đang kiểm tra GPU…</div>
+      <div id="lastDevice" class="hint" hidden></div>
+    </div>
+    </details>
+    
+    <div class="lyrics-import-actions"><button class="secondary small" id="analyzeBtn"><span data-icon="sparkles"></span> Nhận lời bài hát</button><button id="importSrtBtn" class="secondary small"><span data-icon="download"></span> Nhập SRT</button></div><label class="lyrics-label" for="lyricsText">Lời bài hát</label>
+    <textarea id="lyricsText" placeholder="Dán lời đúng vào đây nếu bạn đã có. Mỗi câu một dòng…" spellcheck="false"></textarea>
+    <details class="source-details" open><summary>Chia dòng</summary><div class="form-row split-tools"><button id="autoSplitBtn" class="secondary">↵ Tự chia dòng</button><label>Từ / dòng<input id="lineMaxWords" type="number" min="2" max="20" value="5"></label></div></details>
+  </aside>
+
+  <div id="leftColumnGrip" class="layout-grip vertical-grip" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Đổi độ rộng cột lời" title="Kéo để đổi độ rộng cột lời · nhấp đôi để đặt lại"></div>
+  <section class="editor-column">
+    <div class="panel preview-panel">
+      <div class="panel-toolbar"><span class="eyebrow">KARAOKE PREVIEW</span><span class="audio-badge"><span class="status-dot"></span> BEAT GỐC</span><button id="fullscreenBtn" class="icon-btn" title="Toàn màn hình">⛶</button></div>
+      <div id="preview" class="preview">
+        <div class="preview-grid"></div><div class="preview-orb orb-one"></div><div class="preview-orb orb-two"></div>
+        <div class="preview-brand">VIETKARA <span>STUDIO</span></div>
+        <div class="preview-empty" id="previewEmpty"><div class="empty-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h2>Sân khấu của bạn</h2><p>Nạp bản hát và beat gốc để bắt đầu</p></div>
+        <video id="backgroundVideo" class="preview-video" muted playsinline loop preload="metadata" hidden></video>
+        <div id="previewLyrics" class="preview-lyrics" aria-live="off"></div>
+        <img id="previewLogo" class="preview-logo" alt="Logo của bạn" hidden>
+        <div id="previewCountdown" class="preview-countdown" aria-hidden="true" hidden></div>
+        <div class="preview-footer"><span id="previewTitle">BÀI KARAOKE MỚI</span><span id="previewTime">00:00</span></div>
+      </div>
+    </div>
+
+  </section>
+
+  <div id="rightColumnGrip" class="layout-grip vertical-grip" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Đổi độ rộng cột công cụ" title="Kéo để đổi độ rộng cột công cụ · nhấp đôi để đặt lại"></div>
+  <aside class="inspector-column" aria-label="Công cụ karaoke"><div data-inspector-pane="design">
+    <section class="panel style-panel">
+      <div class="label-row"><h2>Karaoke</h2><span class="mini-tag" id="resolutionBadge">1080P</span></div>
+      <p id="modeHint" class="hint" hidden></p>
+      <details class="tool-group"><summary>Nền</summary>
+      <label>Loại nền<select id="backgroundType"><option value="auto">Ảnh đã nạp / màu nền</option><option value="original">Video gốc của bản hát / beat</option><option value="image">Ảnh của tôi</option><option value="video">Video của tôi</option><option value="color">Màu đơn sắc</option></select></label>
+
+      <p id="backgroundInfo" class="hint"></p>
+      <div class="color-row"><label>Màu nền<input type="color" id="bgColor" value="#101d2b"></label></div>
+      </details><details class="tool-group"><summary>Đếm ngược</summary>
+      <div data-karaoke-only class="form-row"><label>Đếm ngược<select id="countdownStyle"><option value="none">Không dùng</option><option value="mic">Micro</option><option value="star">Sao vàng</option><option value="heart">Trái tim</option><option value="note">Nốt nhạc</option><option value="moon">Trăng khuyết</option><option value="image">Ảnh PNG của tôi</option></select></label><label>Hiện trước · giây<input id="countdownSeconds" type="number" min="1" max="8" value="4"></label></div>
+      <label id="countdownUpload" class="background-upload" hidden><input id="countdownInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>Chọn ảnh đếm ngược</label>
+      </details>
+      <div data-karaoke-only class="singing-tabs"><button data-singing-mode="solo" class="on">Đơn ca</button><button data-singing-mode="duet">Song ca</button></div>
+      <details id="duetSettings" hidden><summary>Vai &amp; màu song ca</summary><button id="autoRolesBtn" class="primary full small">Tự nghe vocal · phân vai</button><p id="roleAnalysisStatus" class="hint" role="status"></p><div class="form-row"><label>Vai A<input id="roleAName" maxlength="30" value="Nam"></label><label>Vai B<input id="roleBName" maxlength="30" value="Nữ"></label></div><div class="color-row"><label>Màu vai A<input id="roleAColor" type="color"></label><label>Màu vai B<input id="roleBColor" type="color"></label></div><button id="alternateRolesBtn" class="ghost full">Gán A/B luân phiên theo câu</button><button id="swapRolesBtn" class="ghost full small">Đảo vai Nam / Nữ</button><p class="hint">Tự động chỉ gợi ý theo cao độ; giọng cao/thấp và hát chồng có thể cần sửa. Chọn từ để gán Nam, Nữ hoặc Cùng hát cho cả câu.</p></details>
+      <label id="mvSettings" hidden style="display:none!important">Kiểu Lyrics MV<select id="mvStyle"><option value="single">Một câu nổi bật</option><option value="stack">Ba câu · câu hiện tại ở giữa</option><option value="scroll">Năm câu cuộn theo nhạc</option></select></label>
+      <div class="divider"></div>
+      <details class="tool-group"><summary>Thiết lập sẵn</summary>
+      <div id="presetStrip" class="preset-strip" aria-label="Chọn preset để áp dụng"></div><div class="inline-preset-actions"><button id="quickImportPreset" class="secondary">Nhập</button><button id="quickExportPreset" class="secondary">Xuất</button><button id="quickDeletePreset" class="ghost" disabled>Xóa</button></div>
+      <button id="presetsBtn" class="secondary full">◈ Thư viện preset <span id="presetCount"></span></button>
+      <p id="activePreset" class="hint">Tùy chỉnh của bạn</p>
+      </details><details id="personalizationTools" class="tool-group"><summary><span data-icon="badge"></span> Cá nhân hóa</summary>
+      <div class="logo-heading"><strong>Logo của bạn</strong><label class="check"><input id="logoEnabled" type="checkbox">Hiện logo</label></div>
+      <label class="background-upload"><input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden><span data-icon="image"></span> Chọn ảnh logo · PNG, JPG, WebP</label><p id="logoInfo" class="hint">PNG nền trong suốt sẽ giữ nguyên độ trong suốt.</p>
+      <label>Kích thước <output data-value-for="logoSize"></output>%<input id="logoSize" type="range" min="3" max="40" value="12" step=".5"></label>
+      <div class="form-row"><label>Vị trí ngang · %<input id="logoX" type="number" min="0" max="100" value="96"></label><label>Vị trí dọc · %<input id="logoY" type="number" min="0" max="100" value="4"></label></div>
+      <label>Độ rõ <output data-value-for="logoOpacity"></output>%<input id="logoOpacity" type="range" min="0" max="100" value="100"></label>
+      <label>Hiệu ứng logo<select id="logoEffect"><option value="none">Không</option><option value="fade">Hiện dần ở đầu bài</option><option value="float">Lơ lửng nhẹ</option><option value="pulse">Nhấp nháy nhẹ</option></select></label><p class="hint">Hiệu ứng chạy theo nhạc, áp dụng cả trong video xuất.</p>
+      <div class="form-row"><label>Tỉ lệ<select id="aspect"><option value="landscape">16:9 · Ngang</option><option value="portrait">9:16 · Dọc</option></select></label><label>Độ phân giải<select id="resolution"><option value="1080p">Full HD · 1080p</option><option value="4k">4K · 2160p</option></select></label></div>
+      </details><details class="tool-group"><summary>Tùy chỉnh nâng cao</summary>
+      <label>Cỡ chữ (theo khung 1080p)<div class="size-stepper"><button id="fontSmaller" class="ghost" aria-label="Giảm cỡ chữ">«</button><input id="fontSize" type="number" value="72" min="20" max="240"><button id="fontLarger" class="ghost" aria-label="Tăng cỡ chữ">»</button></div></label>
+      <label>Phông chữ · tiếng Việt<select id="fontName"><option>Arial</option><option>Tahoma</option><option>Segoe UI</option><option>Times New Roman</option><option>Verdana</option></select></label>
+      <p id="fontSample" style="font-size:20px;line-height:1.7;margin:8px 0">Tiếng Việt: Trường xưa, nắng mới, yêu đời.</p>
+      <p id="fontCountNote" class="hint">Đang kiểm tra font có đủ dấu tiếng Việt…</p>
+      <p id="fontNote" class="hint" hidden></p>
+      <div class="color-row"><label>Đã hát<input type="color" id="sungColor" value="#52efb9"></label><label>Chưa hát<input type="color" id="unsungColor" value="#ffffff"></label></div>
+
+        <div class="alignment-buttons" role="group" aria-label="Canh lề"><button data-align="left" title="Lề trái">Trái</button><button data-align="center" title="Canh giữa">Giữa</button><button data-align="right" title="Lề phải">Phải</button><button data-align="justify" title="Trên trái, dưới phải">So le</button></div>
+        <div class="color-row"><label>Viền đã hát<input type="color" id="outlineSung"></label><label>Viền chưa hát<input type="color" id="outlineUnsung"></label></div>
+        <label>Độ dày viền <output data-value-for="outlineWidth"></output><input id="outlineWidth" type="range" min="0" max="12" step=".1"></label>
+        <label>Độ rõ viền đã hát <output data-value-for="outlineSungOpacity"></output>%<input id="outlineSungOpacity" type="range" min="0" max="100"></label><label>Độ rõ viền chưa hát <output data-value-for="outlineUnsungOpacity"></output>%<input id="outlineUnsungOpacity" type="range" min="0" max="100"></label>
+        <label>Bóng chữ <output data-value-for="shadowSize"></output><input id="shadowSize" type="range" min="0" max="15" step=".1"></label><div class="color-row"><label>Màu bóng<input id="shadowColor" type="color"></label></div>
+        <label class="check"><input id="italicText" type="checkbox">Chữ nghiêng</label>
+        <div data-karaoke-only><label>Mờ biên quét <output data-value-for="sweepFeather"></output><input id="sweepFeather" type="range" min="0" max="40"></label><label>Sáng viền <output data-value-for="sweepGlow"></output><input id="sweepGlow" type="range" min="0" max="200"></label></div>
+        <label class="check"><input id="sungGradient" type="checkbox">Gradient chữ đã hát</label><div id="gradientSettings" hidden><div class="color-row"><label>Trên<input id="gradientTop" type="color"></label><label>Dưới<input id="gradientBottom" type="color"></label></div><div class="form-row"><label>Mốc màu dưới %<input id="gradientStart" type="number" min="0" max="99"></label><label>Mốc màu trên %<input id="gradientEnd" type="number" min="1" max="100"></label></div></div>
+        <label>Hiệu ứng vào/ra<select id="lineAnimation"><option value="none">Không</option><option value="fadesec">Mờ đầu cuối đoạn</option><option value="slowfade">Mờ chậm</option><option value="zoom">Phóng to</option><option value="zoomout">Thu nhỏ</option><option value="flipup">Lật lên</option><option value="split">Tách hai bên</option><option value="slidedown">Đổ xuống</option><option value="slideup">Vươn lên</option><option value="popbounce">Bốc nảy</option><option value="punchzoom">Đập tới</option></select></label>
+        <div id="subtitleSettings" hidden style="display:none!important"><label class="check"><input id="subtitleBox" type="checkbox">Nền chữ phụ đề</label><div class="color-row"><label>Màu nền chữ<input id="subtitleBoxColor" type="color"></label></div><label>Độ rõ nền chữ <output data-value-for="subtitleBoxOpacity"></output>%<input id="subtitleBoxOpacity" type="range" min="0" max="100"></label><label>Bo góc <output data-value-for="subtitleBoxRadius"></output><input id="subtitleBoxRadius" type="range" min="0" max="40"></label></div>
+        <div class="form-row"><label>Vị trí<select id="lyricPosition"><option value="bottom">Phía dưới</option><option value="center">Chính giữa</option><option value="top">Phía trên</option></select></label><label>Giãn dòng<input id="lineHeight" type="number" min="1" max="2.5" step=".05"></label></div>
+        <label>Đáy lên <output data-value-for="verticalOffset"></output>%<input id="verticalOffset" type="range" min="0" max="75"></label><label>Dời ngang <output data-value-for="horizontalOffset"></output>%<input id="horizontalOffset" type="range" min="-40" max="40"></label><label>Độ rộng chữ <output data-value-for="horizontalScale"></output>%<input id="horizontalScale" type="range" min="50" max="150"></label>
+      </details>
+      <label class="check" hidden><input id="useBackground" type="checkbox" checked>Dùng ảnh nền đã nạp</label>
+    </section></div><details id="wordTools" class="tool-group word-tools"><summary><span data-icon="text"></span> Chỉnh lời &amp; thời gian</summary><div data-inspector-pane="timing">    <details class="word-drawer"><summary>Danh sách từ</summary><div class="panel word-panel"><div class="panel-toolbar"><h2>Chỉnh từng từ</h2><span class="muted small">Chọn từ để nghe &amp; sửa mốc</span></div><div id="wordList" class="word-list"><div class="list-empty">Lời và các khối thời gian sẽ hiện ở đây.</div></div></div></details>    <section class="panel selected-panel">
+      <div class="label-row"><h2>Từ đang chọn</h2><button id="deleteWordBtn" class="text-button danger" disabled>Xóa</button></div>
+      <div id="selectedEmpty" class="hint">Chọn một khối từ trên timeline.</div>
+      <div id="selectedEditor" hidden><input id="wordText" class="word-text" aria-label="Nội dung từ"><div class="form-row"><label>Bắt đầu · beat<input id="wordStart" type="number" min="0" step=".01"></label><label>Kết thúc · beat<input id="wordEnd" type="number" min="0" step=".01"></label></div><div class="form-row"><label>Vai của câu<select id="wordRole"><option value="all">Cùng hát / chung</option><option value="male">Nam</option><option value="female">Nữ</option></select></label><label>Hàng của câu<select id="lineRow"><option value="auto">Luân phiên tự động</option><option value="0">Dòng trên</option><option value="1">Dòng dưới</option></select></label></div><button id="applyWordBtn" class="secondary full">Áp dụng thay đổi</button><div class="line-edit-actions"><button id="splitLineBtn" class="ghost">Tách trước từ này</button><button id="mergeLineBtn" class="ghost">Gộp câu trước</button></div></div>
+    </section>
+    <section class="panel sync-panel" hidden>
+      <div class="section-heading"><span class="section-index">03</span><h2>Mốc đồng bộ thủ công</h2></div>
+      <p class="hint">Đồng bộ thủ công theo từng đoạn giữa bản hát và beat gốc.</p>
+      <div class="label-row"><h3>Mốc tương ứng</h3><span class="mini-tag">THEO ĐOẠN</span></div>
+      <p class="hint">Tìm cùng một tiếng hát hoặc nhịp ở hai bản, ghi lại hai vị trí rồi thêm mốc.</p>
+      <div class="anchor-inputs"><label>Bản hát · giây<div><input id="anchorRef" type="number" min="0" step=".01" value="0"><button id="captureRef" title="Lấy vị trí khi đang nghe bản hát">◎</button></div></label><label>Beat gốc · giây<div><input id="anchorBeat" type="number" min="0" step=".01" value="0"><button id="captureBeat" title="Lấy vị trí khi đang nghe beat">◎</button></div></label></div>
+      <button id="addAnchorBtn" class="ghost full dashed">＋ Thêm cặp mốc</button>
+      <div id="anchorList" class="anchor-list"><p class="hint">Chưa có mốc · tạm dùng cùng thời gian</p></div>
+      <p class="hint anchor-tip">Một mốc: dịch thời gian. Hai mốc trở lên: co giãn theo từng đoạn.</p>
+    </section>
+</div></details>
+  </aside>
+</div>
+<div id="studioHeightGrip" class="layout-grip horizontal-grip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Đổi chiều cao preview và vùng timeline" title="Kéo lên/xuống để đổi chiều cao preview và vùng timeline · nhấp đôi để đặt lại"></div>
+      <div class="transport">
+        <button id="playBtn" class="play-btn" title="Phát / dừng (Space)" aria-label="Phát">▶</button>
+        <div class="transport-main"><div class="transport-labels"><select id="listenTrack" aria-label="Track đang nghe"><option value="beat">Nghe beat gốc</option><option value="reference">Nghe bản có giọng</option><option value="vocals">Nghe vocal đã tách</option></select><span class="clock"><b id="currentTime">00:00.00</b> <span>/</span> <span id="totalTime">00:00.00</span></span></div><input type="range" id="seek" min="0" max="1" value="0" step="0.01" aria-label="Vị trí phát"></div>
+        <select id="playbackRate" class="speed" aria-label="Tốc độ nghe"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option></select>
+      </div>
+
+    <div id="manualTimingBar" class="manual-timing-bar" hidden>
+      <div class="tap-heading"><span>SPACE · GÕ / GIỮ</span><span id="tapProgress"></span><button id="finishTapBtn" class="secondary small">Xong · Enter</button><button id="stopTapBtn" class="ghost small">Dừng · Esc</button></div>
+      <div class="tap-words"><strong id="tapCurrentWord"></strong><span id="tapContext"></span></div>
+      <p><span id="tapKeyHint"></span> <span class="muted">Backspace: làm lại từ trước.</span></p>
+    </div>
+    <div id="waveformPanel" class="panel waveform-panel"><canvas id="waveformCanvas" aria-label="Sóng beat gốc và bản hát" title="Bấm để tua · cuộn để zoom cùng timeline"></canvas></div>
+    <div id="waveformHeightGrip" class="layout-grip horizontal-grip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Đổi chiều cao sóng nhạc và timeline lời" title="Kéo để chia chiều cao sóng nhạc / timeline lời · nhấp đôi để đặt lại"></div>
+    <div class="panel timeline-panel">
+      <div class="panel-toolbar"><div class="timeline-quick-tools"><h2>Lời <span id="wordCount" class="count">0 từ</span></h2><div id="timelinePalette" class="timeline-palette" role="group" aria-label="Màu nhãn khối từ"></div><label class="timeline-link-switch" title="Liên kết: kéo mép từ sát nhau trong cùng câu sẽ chỉnh cả mép từ kế bên. Độc lập: chỉnh riêng từng từ để tạo khoảng nghỉ."><input id="timelineLinked" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span><span id="timelineLinkedLabel">Liên kết</span></label><span id="timelineSelectionCount" class="hint"></span></div><div class="timeline-actions"><button id="followTimelineBtn" class="secondary small on" aria-pressed="true" title="Tự cuộn timeline theo vị trí phát">Theo nhạc · bật</button><button id="timelineAutoBtn" class="secondary small">Đồng bộ tự động</button><button id="timelineManualBtn" class="secondary small">Đồng bộ thủ công</button><button id="toggleWavesBtn" class="text-button" aria-pressed="true">Sóng nhạc</button><button id="undoBtn" class="icon-btn" title="Hoàn tác (Ctrl+Z)">↶</button><label class="zoom-label">− <input type="range" id="zoom" min="1" max="16" value="1" step="1" aria-label="Phóng to timeline"> ＋</label></div></div>
+      <div class="timeline-labels"><span class="purple-text">Bản hát · đã quy đổi mốc</span><span class="green-text">Beat gốc · thời gian chuẩn</span><span>Lời · kéo để dời, kéo mép để giãn</span></div>
+      <div class="timeline-view"><canvas id="timeline" aria-label="Timeline âm thanh và từng từ" title="Cuộn chuột để zoom tại con trỏ"></canvas></div>
+      <input type="range" id="pan" min="0" max="0" step="0.05" value="0" aria-label="Cuộn timeline">
+      <p id="layoutNotice" class="layout-notice" hidden></p><div class="timeline-footer"><span><i class="legend-dot green-bg"></i>Thời gian theo beat gốc</span><span id="estimatedCount">Chưa có lời</span></div>
+    </div>
+
+</main>
+<section id="separationPage" class="utility-page" data-app-page="separation" hidden><div class="utility-card"><h1>Tách nhạc lấy beat</h1><p>Tách giọng hát và nhạc nền thành hai file WAV. Beat tách là một kết quả riêng để bạn tải về và kiểm tra.</p><label>Chọn bài nhạc hoặc video<input id="separationInput" type="file" accept="audio/*,video/*"></label><label>Thiết bị<select id="separationDevice"><option value="auto">Tự động · ưu tiên GPU</option><option value="cpu">CPU</option></select></label><button id="separationRun" class="primary">Tách vocal &amp; lấy beat</button><p id="separationStatus" class="hint"></p><div id="separationResult" hidden><h2>Kết quả</h2><label>Beat đã tách<audio id="separatedBeatPreview" controls preload="metadata"></audio></label><a id="separatedBeatDownload" class="secondary" download>Tải beat WAV</a><label>Vocal đã tách<audio id="separatedVocalPreview" controls preload="metadata"></audio></label><a id="separatedVocalDownload" class="secondary" download>Tải vocal WAV</a></div></div></section>
+<section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div></section>
+<div hidden><button id="alignLyricsBtn"></button><button id="estimateBtn"></button></div>
+<footer class="app-footer"><span>VIETKARA STUDIO <b>1.0.0</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
+<div id="jobBar" class="job-bar" hidden><div class="spinner"></div><div class="job-copy"><strong id="jobTitle">Đang xử lý…</strong><small id="jobDevice"></small><div class="progress-track"><div id="jobProgress"></div></div></div><span id="jobPercent">0%</span><button id="cancelJobBtn" class="ghost">Hủy</button></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<dialog id="tapDialog" class="tap-dialog">
+  <div class="dialog-heading"><h2>Đồng bộ thủ công</h2><button data-close class="icon-btn" aria-label="Đóng căn nhịp">✕</button></div>
+  <p class="hint">Chọn từ bắt đầu: beat sẽ phát sớm 15 giây so với mốc từ đó để chuẩn bị. Chỉ gõ khi đến từ cần hát.</p>
+  <div class="form-row"><label>Bắt đầu từ<select id="tapStartWord"></select></label><label>Nghe từ · giây trên beat<input id="tapStartTime" type="number" min="0" step=".01" value="0"></label></div>
+  <p class="hint">Gõ nhanh Space để bắt đầu từ; lần gõ kế chốt từ trước và bắt đầu từ tiếp theo. Giữ Space khi bắt đầu từ rồi thả khi hết từ để đặt đủ đầu/cuối. Hai thao tác dùng xen kẽ, không cần chọn chế độ.</p>
+  <p class="hint">Backspace làm lại từ trước. Esc dừng và giữ các từ đã chốt. Có thể nghe chậm 0.5× / 0.75× để căn dễ hơn.</p>
+  <p id="tapLeadIn" class="hint"></p>
+  <p id="tapPrepareNotice" class="hint"></p>
+  <button id="beginTapBtn" class="primary full">▶ Nghe beat &amp; bắt đầu căn</button>
+</dialog>
+<dialog id="projectDialog"><div class="dialog-heading"><h2>Project của bạn</h2><button data-close class="icon-btn">✕</button></div><div id="projectList"></div><div class="dialog-footer"><label class="secondary import-label">Nhập .obs.json<input id="importProjectInput" type="file" accept=".json" hidden></label><button id="backupBtn" class="ghost">Tải bản lưu project</button></div><p class="hint">Project tự lưu trên máy. Bản .obs.json chứa lời và mốc, không chứa audio; khi nhập lại cần nạp hai file nguồn.</p></dialog>
+<dialog id="presetDialog" class="preset-dialog">
+  <div class="dialog-heading"><h2>Thư viện preset</h2><button data-close class="icon-btn" aria-label="Đóng preset">✕</button></div>
+  <p class="hint">Chọn mẫu để xem, bấm Áp dụng để đổi kiểu chữ. Preset VCL giữ nguyên tỉ lệ và nền của project.</p>
+  <input id="presetSearch" type="search" placeholder="Tìm tên preset…" aria-label="Tìm preset">
+  <div id="presetGrid" class="preset-grid"></div>
+  <div id="presetDetail" class="preset-detail" hidden><div id="presetSample" class="preset-sample"><span>Hát cùng </span><span>bạn hôm nay</span></div><strong id="presetName"></strong><p id="presetDescription" class="hint"></p><p id="presetNotes" class="hint"></p><div class="preset-actions"><button id="applyPresetBtn" class="primary">Áp dụng</button><button id="exportPresetBtn" class="secondary">Xuất JSON</button><button id="deletePresetBtn" class="ghost danger">Xóa mẫu riêng</button></div></div>
+  <div class="divider"></div><label>Tên preset riêng<input id="newPresetName" maxlength="100" placeholder="Ví dụ: Karaoke sân khấu"></label>
+  <div class="dialog-footer"><button id="savePresetBtn" class="secondary">Lưu thiết lập hiện tại</button><label class="secondary import-label">Nhập preset JSON<input id="importPresetInput" type="file" accept=".json" hidden></label></div>
+</dialog>
+<dialog id="exportDialog"><div class="dialog-heading"><h2>Xuất bài karaoke</h2><button data-close class="icon-btn">✕</button></div><div class="export-source"><span class="upload-icon green">≋</span><div><strong>Âm thanh: beat gốc</strong><small id="exportBeatName">Chưa nạp beat</small></div><span class="green-text">✓</span></div><div class="export-options"><label>Định dạng video<select id="exportFormat"><option value="mp4">MP4 · tương thích rộng</option><option value="mov">MOV · H.264 / AAC</option><option value="mkv">MKV · Matroska</option></select></label><p class="hint">Cùng chất lượng hình H.264. MOV ở đây có nền hình bình thường, không có alpha. MKV có thể cần trình phát ngoài.</p><div class="form-row"><label>Chất lượng<select id="exportQuality"><option value="standard">Tiêu chuẩn · nhanh</option><option value="high">Cao · khuyên dùng</option><option value="maximum">Rất cao · file lớn hơn</option></select></label><label>Khung hình<select id="exportFps"><option value="source">Theo video nguồn</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label></div><div class="form-row"><label>Độ phân giải<select id="exportResolution"><option value="1080p">Full HD · 1080p</option><option value="4k">4K · 2160p</option></select></label><label>Tỉ lệ<select id="exportAspect"><option value="landscape">16:9 · Ngang</option><option value="portrait">9:16 · Dọc</option></select></label></div><label>Thư mục xuất<input id="exportFolder" placeholder="Để trống: thư mục exports của project" aria-label="Thư mục xuất"></label><div class="folder-buttons"><button id="pickExportFolder" class="secondary">Chọn thư mục…</button><button id="saveExportFolder" class="ghost">Lưu đường dẫn</button></div><p class="hint">Lưu video cùng SRT, LRC, ASS và thông tin render. Tên file riêng cho mỗi lần xuất.</p></div><section class="export-inventory"><h3>Nội dung xuất cùng video</h3><div id="exportInventory">Đang đọc thiết lập…</div></section><p id="exportNotice" class="hint" role="status"></p><button id="renderBtn" class="primary full">↗ Dựng video MP4 · 1080p</button><div id="renderResult" class="render-result" hidden><strong>Video đã sẵn sàng</strong><small id="exportSavedPath"></small><a id="downloadVideo" class="primary" download>Tải video MP4 ↓</a><video id="renderPreview" controls preload="metadata"></video></div><div class="divider"></div><div class="export-formats"><button data-download="srt" class="secondary">SRT</button><button data-download="lrc" class="secondary">LRC</button><button data-download="ass" class="secondary">ASS</button></div><p class="hint">Thời gian lời trong mọi định dạng đều được quy đổi sang beat gốc. Tốc độ nghe thử không làm đổi tốc độ file xuất.</p></dialog>
+<input id="srtInput" type="file" accept=".srt" hidden>
+<audio id="audio" preload="metadata"></audio>
+<script src="/static/export_menu.js"></script>
+<script src="/static/branding.js"></script>
+<script src="/static/layout_resize.js"></script>
+<script src="/static/timeline_edit.js"></script>
+<script src="/static/studio.js"></script>
+<script src="/static/tap_timing.js"></script>
+<script src="/static/tapping.js"></script>
+<script src="/static/workspace_tools.js"></script>
+<script src="/static/app.js"></script>
+</body></html>

@@ -1,0 +1,31 @@
+{
+  "id": "retro_vien_doi",
+  "name": "Retro Viền Đôi",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Retro",
+  "bestEn": "Retro",
+  "desc": "Vàng kem viền xanh đêm, đổi sang viền đỏ khi hát — cổ điển.",
+  "descEn": "Cream yellow, navy outline turning red when sung — retro.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#FFD23F",
+    "unsung": "#FFF8E1",
+    "ou": "#1B1B3A",
+    "os": "#D7263D",
+    "ow": 9,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 5,
+    "shadowOn": true,
+    "shsc": "#1B1B3A",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 60
+  }
+}

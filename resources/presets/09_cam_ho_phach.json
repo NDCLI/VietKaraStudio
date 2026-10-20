@@ -1,0 +1,31 @@
+{
+  "id": "cam_ho_phach",
+  "name": "Cam Hổ Phách",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Cam Hổ Phách",
+  "bestEn": "Cam Hổ Phách",
+  "desc": "Preset màu đá quý — Cam Hổ Phách.",
+  "descEn": "Gemstone color preset — Cam Hổ Phách.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#FF8A3D",
+    "unsung": "#FFF4E4",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#16235E",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 100
+  }
+}

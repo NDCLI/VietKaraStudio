@@ -1,0 +1,31 @@
+{
+  "id": "pastel_mem",
+  "name": "Pastel Mềm",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Pastel",
+  "bestEn": "Soft pastel",
+  "desc": "Hồng pastel, viền tím nhạt, bóng hồng — dịu nhẹ.",
+  "descEn": "Soft pink, lilac outline, pink shadow — gentle.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 200,
+    "sung": "#FF9ECF",
+    "unsung": "#FFFFFF",
+    "ou": "#8A6BBF",
+    "os": "#8A6BBF",
+    "ow": 5,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 5,
+    "shadowOn": true,
+    "shsc": "#FFD1EC",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 70
+  }
+}

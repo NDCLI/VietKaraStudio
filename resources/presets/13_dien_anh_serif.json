@@ -1,0 +1,31 @@
+{
+  "id": "dien_anh_serif",
+  "name": "Điện Ảnh Serif",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Điện ảnh",
+  "bestEn": "Cinematic",
+  "desc": "Chữ serif trắng, viền mảnh, bóng mềm — kiểu phụ đề phim.",
+  "descEn": "White serif, thin outline, soft shadow — film subtitle look.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 190,
+    "sung": "#FFFFFF",
+    "unsung": "#BDBDBD",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 2,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 5,
+    "shadowOn": true,
+    "shsc": "#000000",
+    "lineAnim": "slowfade",
+    "sweepFx": 14,
+    "sweepGlow": 40
+  }
+}

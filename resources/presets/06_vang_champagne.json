@@ -1,0 +1,31 @@
+{
+  "id": "vang_champagne",
+  "name": "Vàng Champagne",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Vàng Champagne",
+  "bestEn": "Vàng Champagne",
+  "desc": "Preset màu đá quý — Vàng Champagne.",
+  "descEn": "Gemstone color preset — Vàng Champagne.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#F2C14E",
+    "unsung": "#FBF4E2",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#0E5F57",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 90
+  }
+}

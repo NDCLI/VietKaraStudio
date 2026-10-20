@@ -1,0 +1,29 @@
+{
+  "id": "anime_pop",
+  "name": "Hồng Rubellite",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Trẻ trung",
+  "bestEn": "Playful",
+  "desc": "Hồng magenta, viền tím — trẻ trung.",
+  "descEn": "Magenta pink, purple outline — playful.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#ff7ad0",
+    "unsung": "#ffffff",
+    "ou": "#7b2ff7",
+    "os": "#3a0a6a",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 14,
+    "shadowOn": false,
+    "shsc": "#510057",
+    "lineAnim": "none"
+  }
+}

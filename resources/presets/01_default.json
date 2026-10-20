@@ -1,0 +1,29 @@
+{
+  "id": "default",
+  "name": "Default",
+  "cat": "Default",
+  "ar": "16:9",
+  "best": "Mặc định",
+  "bestEn": "Default",
+  "desc": "Preset mặc định: chữ xanh lá, viền trắng, cỡ 210.",
+  "descEn": "Default: green text, white outline, size 210.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#0ba800",
+    "unsung": "#fff3df",
+    "ou": "#000000",
+    "os": "#ffffff",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 0,
+    "shadowOn": false,
+    "shsc": "#000000",
+    "lineAnim": "none"
+  }
+}

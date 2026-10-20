@@ -1,0 +1,29 @@
+{
+  "id": "gaming_neon",
+  "name": "Lục Chrysoprase",
+  "cat": "Music & Special",
+  "ar": "16:9",
+  "best": "Neon",
+  "bestEn": "Neon",
+  "desc": "Xanh lá neon — chất streamer.",
+  "descEn": "Neon green — streamer vibe.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#26ff00",
+    "unsung": "#eafcff",
+    "ou": "#05010f",
+    "os": "#06210c",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#2dfba2",
+    "lineAnim": "slowfade"
+  }
+}

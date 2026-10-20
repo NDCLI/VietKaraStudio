@@ -1,0 +1,31 @@
+{
+  "id": "ngoc_luc_bao",
+  "name": "Ngọc Lục Bảo",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Ngọc Lục Bảo",
+  "bestEn": "Ngọc Lục Bảo",
+  "desc": "Preset màu đá quý — Ngọc Lục Bảo.",
+  "descEn": "Gemstone color preset — Ngọc Lục Bảo.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#22C07A",
+    "unsung": "#EAF7EF",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#6E1A3A",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 90
+  }
+}

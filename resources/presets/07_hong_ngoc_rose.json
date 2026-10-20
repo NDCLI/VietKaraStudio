@@ -1,0 +1,31 @@
+{
+  "id": "hong_ngoc_rose",
+  "name": "Hồng Ngọc (Rosé)",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Hồng Ngọc (Rosé)",
+  "bestEn": "Hồng Ngọc (Rosé)",
+  "desc": "Preset màu đá quý — Hồng Ngọc (Rosé).",
+  "descEn": "Gemstone color preset — Hồng Ngọc (Rosé).",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#EF4E77",
+    "unsung": "#FCEDF1",
+    "ou": "#000000",
+    "os": "#000000",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#45163E",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 100
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "chanh_peridot",
+  "name": "Chanh Peridot",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Chanh Peridot",
+  "bestEn": "Chanh Peridot",
+  "desc": "Preset màu đá quý — Chanh Peridot.",
+  "descEn": "Gemstone color preset — Chanh Peridot.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#C4E538",
+    "unsung": "#FFFFFF",
+    "ou": "#1E2E08",
+    "os": "#1E2E08",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#B0267A",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 90
+  }
+}

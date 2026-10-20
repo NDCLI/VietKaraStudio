@@ -1,0 +1,31 @@
+{
+  "id": "tim_amethyst",
+  "name": "Tím Amethyst",
+  "cat": "Đá quý / Gemstone",
+  "ar": "16:9",
+  "best": "Tím Amethyst",
+  "bestEn": "Tím Amethyst",
+  "desc": "Preset màu đá quý — Tím Amethyst.",
+  "descEn": "Gemstone color preset — Tím Amethyst.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#8B3FE0",
+    "unsung": "#F3EAFB",
+    "ou": "#1E0A33",
+    "os": "#1E0A33",
+    "ow": 6,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#FF8A2B",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 100
+  }
+}
