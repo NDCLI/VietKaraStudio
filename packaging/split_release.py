@@ -28,6 +28,12 @@ def main():
     (DEST / 'downloads.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     (DEST / 'SHA256SUMS.txt').write_text(''.join(f"{item['sha256']}  {item['name']}\n" for item in manifest), encoding='utf-8')
     (DEST / 'Ghep-File.ps1').write_text(r'''$ErrorActionPreference = 'Stop'
+function Get-Sha256([string]$Path) {
+    $stream = [IO.File]::OpenRead($Path)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
+    finally { $stream.Dispose(); $hasher.Dispose() }
+}
 try {
     $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'downloads.json') -Raw | ConvertFrom-Json
     $completed = 0
@@ -37,11 +43,11 @@ try {
         if ($present.Count -ne $item.parts.Count) { throw "Thieu phan tai ve: $($item.name)" }
         foreach ($part in $item.parts) {
             $path = Join-Path $PSScriptRoot $part.name
-            if ((Get-Item -LiteralPath $path).Length -ne $part.size -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $part.sha256) { throw "File bi loi: $($part.name)" }
+            if ((Get-Item -LiteralPath $path).Length -ne $part.size -or (Get-Sha256 $path) -ne $part.sha256) { throw "File bi loi: $($part.name)" }
         }
         $target = Join-Path $PSScriptRoot $item.name
         if (Test-Path -LiteralPath $target) {
-            if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -eq $item.sha256) { Write-Host "Da co file dung: $target"; $completed++; continue }
+            if ((Get-Sha256 $target) -eq $item.sha256) { Write-Host "Da co file dung: $target"; $completed++; continue }
             throw "File dich da ton tai nhung khac noi dung: $target. Hay doi ten file cu."
         }
         $temp = "$target.partial"
@@ -52,7 +58,7 @@ try {
                 try { $inputFile.CopyTo($output) } finally { $inputFile.Dispose() }
             }
         } finally { $output.Dispose() }
-        if ((Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash -ne $item.sha256) { throw "SHA256 khong khop: $temp" }
+        if ((Get-Sha256 $temp) -ne $item.sha256) { throw "SHA256 khong khop: $temp" }
         Move-Item -LiteralPath $temp -Destination $target
         Write-Host "Da ghep va kiem tra: $target" -ForegroundColor Green
         $completed++
