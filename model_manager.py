@@ -95,7 +95,7 @@ def download_demucs(root, force_download=False):
     for attempt in range(3):
         try:
             offset = partial.stat().st_size if partial.exists() else 0
-            headers = {'User-Agent': 'VietKaraStudio/1.1.1'}
+            headers = {'User-Agent': 'VietKaraStudio/1.1.2'}
             if offset:
                 headers['Range'] = f'bytes={offset}-'
             progress(0, 'Đang kết nối máy chủ model Demucs…')

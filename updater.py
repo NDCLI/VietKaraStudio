@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from urllib.parse import urlparse
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import zipfile
 
@@ -67,8 +68,13 @@ def _request_json(url: str) -> dict:
         return json.loads(response.read(4 * 1024 * 1024).decode("utf-8"))
 
 
-def _latest_release() -> tuple[dict, str, dict | None]:
-    release = _request_json(RELEASE_API)
+def _latest_release() -> tuple[dict | None, str, dict | None]:
+    try:
+        release = _request_json(RELEASE_API)
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None, _installed_version(), None
+        raise
     version = str(release.get("tag_name", "")).removeprefix("v")
     _version_tuple(version)
     current = _installed_version()
@@ -117,6 +123,13 @@ def check() -> dict:
         release, version, asset = _latest_release()
     except Exception as exc:
         return {**local, "update_available": False, "message": "Chưa kiểm tra được GitHub: " + str(exc)}
+    if release is None:
+        ready = _ready_update()
+        if ready:
+            return {**local, "update_available": True, "version": ready["version"],
+                    "ready": True, "ready_version": ready["version"], "size": 0,
+                    "message": f"Bản vá {ready['version']} đã sẵn sàng để cài."}
+        return {**local, "update_available": False, "message": "Chưa có bản vá nào trên GitHub Releases."}
     if not asset:
         return {**local, "update_available": False, "message": "Bạn đang dùng bản mới nhất."}
     ready = _ready_update()
@@ -245,6 +258,8 @@ def download() -> dict:
     if not local["supported"]:
         raise ValueError("Tự cập nhật chỉ có trong bản Setup đã cài trên Windows.")
     release, version, asset = _latest_release()
+    if release is None:
+        raise ValueError("Chưa có bản vá nào trên GitHub Releases.")
     if not asset:
         raise ValueError("Bạn đang dùng bản mới nhất.")
     ready = _ready_update()

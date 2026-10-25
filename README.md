@@ -2,9 +2,9 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Dùng **beat gốc** cho video xuất; vocal tách riêng phục vụ nhận dạng và căn lời.
 
-## Bản cục bộ 1.1.1
+## Bản cục bộ 1.1.1 và bản vá 1.1.2
 
-Setup Nuitka x64 đã được build tại `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe`; đây là bản cài, không phải portable. Bản này có mục tự kiểm tra và tải gói vá nhỏ từ GitHub Releases, giữ nguyên project, nhạc và model. Bản Setup 1.1.1 chưa được phát hành trên GitHub.
+Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để có mục tự cập nhật. Release 1.1.2 chỉ gồm gói vá nhỏ cho bản Setup 1.1.1; app giữ nguyên project, nhạc, model và runtime AI. Cài Setup 1.1.1 một lần trước khi nhận bản vá tự động.
 
 Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model AI tải riêng trong Cài đặt. Setup kiểm tra và cài Edge WebView2 Runtime nếu thiếu (cần Internet). Bản phát hành chưa ký số.
 
