@@ -11,7 +11,7 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import zipfile
@@ -154,7 +154,10 @@ def _asset_digest(release: dict, patch_asset: dict) -> str:
     url = sidecar.get("browser_download_url", "")
     if urlparse(url).scheme != "https" or urlparse(url).hostname != "github.com":
         raise ValueError("Đường dẫn mã kiểm tra của gói vá không hợp lệ.")
-    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater"})
+    cache_key = str(sidecar.get("updated_at") or sidecar.get("id") or "")
+    if cache_key:
+        url += ("&" if "?" in url else "?") + urlencode({"v": cache_key})
+    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Cache-Control": "no-cache"})
     with urlopen(request, timeout=20) as response:
         host = urlparse(response.geturl()).hostname or ""
         if not (host == "github.com" or host == "githubusercontent.com" or host.endswith(".githubusercontent.com")):
@@ -171,7 +174,11 @@ def _download_asset(asset: dict, destination: Path) -> str:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "github.com":
         raise ValueError("Đường dẫn gói vá không hợp lệ.")
-    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Accept": "application/octet-stream"})
+    cache_key = str(asset.get("digest") or asset.get("updated_at") or asset.get("id") or "")
+    if cache_key:
+        url += ("&" if "?" in url else "?") + urlencode({"v": cache_key})
+    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Accept": "application/octet-stream",
+                                    "Cache-Control": "no-cache"})
     digest = hashlib.sha256()
     total = 0
     with urlopen(request, timeout=45) as response, destination.open("wb") as stream:
