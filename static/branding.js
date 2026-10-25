@@ -23,7 +23,6 @@ function initBranding(){
   for(const el of document.querySelectorAll('[data-icon]'))el.innerHTML=studioIcon(el.dataset.icon);
   document.querySelector('.reference-card .upload-icon').innerHTML=studioIcon('mic');
   document.querySelector('.beat-card .upload-icon').innerHTML=studioIcon('headphones');
-  $('autoSplitBtn').innerHTML=studioIcon('text')+' Tự chia dòng';
   $('projectsBtn').innerHTML=studioIcon('folder')+' Project';$('newBtn').innerHTML=studioIcon('plus')+' Bài mới';
   $('exportBtn').innerHTML=studioIcon('download')+' Xuất karaoke';$('fullscreenBtn').innerHTML=studioIcon('expand');
   $('previewLogo').onload=()=>updateLogoFrame(beatNow());

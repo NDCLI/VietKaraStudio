@@ -2,11 +2,11 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Dùng **beat gốc** cho video xuất; vocal tách riêng phục vụ nhận dạng và căn lời.
 
-## Tải bản 1.0.0
+## Bản cục bộ 1.1.1 và bản vá 1.1.2
 
-Mở [Releases](https://github.com/NDCLI/VietKaraStudio/releases/latest), chọn Setup hoặc Portable. Mỗi gói gồm hai phần do giới hạn dung lượng của GitHub. Tải đủ hai phần và công cụ ghép; xem [hướng dẫn tải](docs/RELEASE.md).
+Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để có mục tự cập nhật. Release 1.1.2 chỉ gồm gói vá nhỏ cho bản Setup 1.1.1; app giữ nguyên project, nhạc, model và runtime AI. Cài Setup 1.1.1 một lần trước khi nhận bản vá tự động.
 
-Đã kèm Python, FFmpeg và runtime NVIDIA CUDA. Model AI tải riêng trong Cài đặt. Cần Edge WebView2 Runtime. Bản phát hành chưa ký số.
+Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model AI tải riêng trong Cài đặt. Setup kiểm tra và cài Edge WebView2 Runtime nếu thiếu (cần Internet). Bản phát hành chưa ký số.
 
 ## Tính năng
 
@@ -18,6 +18,8 @@ Mở [Releases](https://github.com/NDCLI/VietKaraStudio/releases/latest), chọn
 - Video/ảnh/màu nền, đếm ngược đầu bài hoặc sau nhạc dạo, logo và hiệu ứng logo.
 - Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/4K; kèm SRT/LRC/ASS và thông tin render.
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
+- Chỉnh bố cục nhiều tính năng, chọn video làm nguồn, tiêu đề căn trái có nền ôm sát chữ; cập nhật trạng thái tác vụ bằng câu dễ hiểu.
+- Tự kiểm tra và tải bản vá từ GitHub Releases; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
 
 ## Chạy từ mã nguồn
 
@@ -41,3 +43,20 @@ node --test tests/tapping.test.js tests/timeline_edit.test.js
 ```
 
 Xem [hướng dẫn build](docs/DISTRIBUTION.md) và [thông tin bản phát hành](docs/RELEASE.md). AI có thể căn sai; nghe và kiểm tra trước khi xuất cả bài.
+
+## Thay đổi 1.0.1
+
+- Gợi ý phân vai theo từng câu khi cao độ các giọng chồng lấn; câu chưa rõ được giữ nguyên. Đây là gợi ý theo dải giọng, cần nghe và sửa lại.
+- Biểu tượng nam/nữ/cùng hát dạng vector ở đầu câu trong preview và video karaoke song ca; bật/tắt trong Vai & màu song ca.
+- Giữ kết quả kiểm tra GPU trong phiên app, bỏ quét khi chọn CPU hoặc đã có vocal cache.
+- Chặn bộ hiển thị MSHTML cũ, bổ sung CSS dự phòng và màu danh sách chọn; dùng icon/định danh VietKara cho cửa sổ.
+
+Bản 1.0.1 đã kiểm trên máy build và runtime đóng gói; chưa xác nhận trên máy Windows 10 sạch. Model, nhạc và project cá nhân không được đưa vào bộ cài.
+
+## Thay đổi 1.0.2
+
+- Giữ lớp bóng chữ riêng suốt thời gian hiển thị câu, kể cả sau khi từ đã hát xong.
+- Chọn Beat của bạn / Bản có vocal trên banner; điều khiển nghe/tắt tiếng tại ba hàng sóng Beat, bản gốc, Vocal riêng.
+- Tách video ngay trong Karaoke, áp dụng beat, âm thanh gốc và vocal vào cùng project; xác nhận trước khi thay nguồn và mốc cũ.
+- Tiêu đề bài hát và ca sĩ/tác giả: font, màu, cỡ, vị trí, thời gian, 8 lựa chọn hiệu ứng vào/ra độc lập. Các mẫu màu/font dựa trên preset VCL có sẵn; chuyển động tiêu đề được triển khai trong VietKara.
+- Bản cập nhật nhẹ chứa mã/tài nguyên/launcher; dùng thư viện AI/FFmpeg của bản portable 1.0.x hiện có. Đóng app rồi giải nén đè vào đúng thư mục portable, không xóa data/.

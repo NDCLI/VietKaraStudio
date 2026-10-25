@@ -67,16 +67,17 @@ function studioWaveforms(){
   const W=rect.width,H=rect.height,dpr=devicePixelRatio||1,G=timelineGutter(W),P=W-G;
   if(canvas.width!==Math.round(W*dpr)||canvas.height!==Math.round(H*dpr)){canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);}
   const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  $('waveTrackControls').style.width=G+'px';
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
   ctx.fillStyle='#121416';ctx.fillRect(0,0,W,H);
-  for(const [slot,lane,color,title] of [['beat',0,'#ef9039','BEAT GỐC'],['reference',1,'#20c89c','BẢN HÁT']]){
-    const top=lane*H/2,mid=top+H/4,amplitude=Math.max(8,H/4-10),m=state.project[slot];
-    ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/2);ctx.font='bold 9px Segoe UI';ctx.fillStyle=color;ctx.fillText(title,9,mid+3);
+  for(const [slot,lane,color,title] of [['beat',0,'#ef9039','Beat'],['reference',1,'#20c89c','Có vocal'],['vocals',2,'#bfa0ff','Vocal riêng']]){
+    const top=lane*H/3,mid=top+H/6,amplitude=Math.max(4,H/6-5),m=state.project[slot];
+    ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/3);
     ctx.strokeStyle='#30373b';ctx.beginPath();ctx.moveTo(G,mid);ctx.lineTo(W,mid);ctx.moveTo(0,top);ctx.lineTo(W,top);ctx.stroke();
     if(!m?.peaks?.length)continue;
-    ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/2);ctx.clip();
+    ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/3);ctx.clip();
     for(let pixel=0;pixel<P;pixel+=2){
-      const t=range.start+pixel/P*range.span,source=slot==='reference'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
+      const t=range.start+pixel/P*range.span,source=slot!=='beat'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
       if(index<0||index>=m.peaks.length)continue;
       const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=beatNow()?color:'#5b626d';ctx.fillRect(G+pixel,mid-a,1.4,Math.max(1,a*2));
     }

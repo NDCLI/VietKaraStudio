@@ -9,14 +9,16 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='1.0.0'
+VERSION='1.0.2'
 RELEASE=ROOT/'releases'
 STAGE=RELEASE/f'VietKaraStudio-{VERSION}-Portable-x64'
 RUNTIME=STAGE/'runtime'
 PACK=ROOT/'packaging'
+WEBVIEW2_URL='https://go.microsoft.com/fwlink/p/?LinkId=2124703'
 SKIP={'__pycache__','.git','.pytest_cache','tests','test','idlelib','ensurepip','pip','pip-25.0.1.dist-info','_pytest','pytest','pytest-9.1.1.dist-info'}
 
 
@@ -28,7 +30,34 @@ def tree(source,destination):
     shutil.copytree(source,destination,dirs_exist_ok=True,ignore=ignore)
 
 
-def assemble():
+def webview2_bootstrapper():
+    """Bundle Microsoft's signed bootstrapper; never execute it on the build host."""
+    source=ROOT/'build-tools/MicrosoftEdgeWebview2Setup.exe'
+    if not source.is_file():
+        print('Downloading Microsoft WebView2 Evergreen bootstrapper...',flush=True)
+        source.parent.mkdir(parents=True,exist_ok=True)
+        temporary=source.with_suffix('.download')
+        with urllib.request.urlopen(WEBVIEW2_URL,timeout=60) as response, temporary.open('wb') as output:
+            shutil.copyfileobj(response,output)
+        temporary.replace(source)
+    escaped=str(source).replace("'","''")
+    verify=("$signature = Get-AuthenticodeSignature -FilePath '"+escaped+"'; "
+            "if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { "
+            "Write-Error 'WebView2 bootstrapper must have a valid Microsoft signature'; exit 1 }")
+    subprocess.run([shutil.which('pwsh') or 'powershell.exe','-NoProfile','-NonInteractive','-Command',verify],check=True)
+    target=STAGE/'dependencies';target.mkdir(exist_ok=True)
+    shutil.copy2(source,target/source.name)
+    (target/'WEBVIEW2-README.txt').write_text(
+        'Microsoft Edge WebView2 Evergreen Bootstrapper\nSource: '+WEBVIEW2_URL+'\n'
+        'Run MicrosoftEdgeWebview2Setup.exe only if WebView2 Runtime is missing.\n'
+        'Internet is required to download the matching Microsoft runtime.\n'
+        'Setup installs this prerequisite automatically when needed.\n'
+        'Documentation: https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution\n',encoding='utf-8')
+    with source.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
+    return {'source':WEBVIEW2_URL,'sha256':digest,'signature':'Valid Microsoft Corporation'}
+
+
+def assemble_runtime():
     STAGE.mkdir(parents=True,exist_ok=True)
     RUNTIME.mkdir(exist_ok=True)
     base=Path(sys.base_prefix)
@@ -44,6 +73,15 @@ def assemble():
     print('Copying application libraries including CUDA...',flush=True)
     tree(ROOT/'.venv/Lib/site-packages',RUNTIME/'Lib/site-packages')
     (RUNTIME/'python312._pth').write_text('.\nLib\nDLLs\nLib/site-packages\n../app\nimport site\n',encoding='ascii')
+
+
+def assemble(app_only=False,runtime_only=False):
+    if not app_only:assemble_runtime()
+    if runtime_only:
+        print('Runtime stage ready: '+str(RUNTIME),flush=True)
+        return
+    if not (RUNTIME/'python.exe').is_file():raise SystemExit('Assemble the runtime before using --app-only.')
+    dependency=webview2_bootstrapper()
     app=STAGE/'app';app.mkdir(exist_ok=True)
     for source in ROOT.glob('*.py'):
         if source.name!='configure_gpu.py':shutil.copy2(source,app/source.name)
@@ -53,12 +91,14 @@ def assemble():
     shutil.copy2(PACK/'bootstrap.py',STAGE/'bootstrap.py')
     (STAGE/'portable.flag').write_text('Store user data next to this portable application.\n',encoding='utf-8')
     # User projects, uploads, model caches and credentials are never input to this build.
-    (STAGE/'README-VI.txt').write_text('''VIETKARA STUDIO 1.0.0 - WINDOWS x64
+    (STAGE/'README-VI.txt').write_text(f'''VIETKARA STUDIO {VERSION} - WINDOWS x64
 
 PORTABLE: giai nen TOAN BO ZIP vao thu muc co quyen ghi, sau do chay VietKaraStudio.exe.
 SETUP: chay file Setup-x64.exe. Ung dung cai theo tai khoan Windows, khong can admin.
 Khong can cai Python hay FFmpeg. Can Windows 10/11 x64 va Microsoft Edge WebView2 Runtime.
-May chua co WebView2: cai Evergreen Runtime tu https://developer.microsoft.com/microsoft-edge/webview2/
+Setup tu kiem tra va cai WebView2 neu thieu; buoc nay can Internet.
+Portable chua co WebView2: chay dependencies\\MicrosoftEdgeWebview2Setup.exe (can Internet).
+Bo cai WebView2 nho cua Microsoft duoc kem san; khong kem toan bo WebView2 de cai offline.
 GPU NVIDIA tuong thich CUDA 12.4 se duoc uu tien; neu khong dung duoc thi chuyen CPU.
 Khong kem model AI: vao Cai dat model de tai small/medium/large-v3-turbo/Demucs.
 Can Internet trong lan tai model dau tien; model da tai duoc dung lai offline.
@@ -88,7 +128,8 @@ Python license: runtime/LICENSE.txt. FFmpeg: app/bin/FFMPEG-LICENSE.txt.
     (app/'bin/FFMPEG-LICENSE.txt').write_text(ffmpeg_license.stdout+ffmpeg_license.stderr+'\nUpstream source and build information: https://ffmpeg.org/\n',encoding='utf-8')
     libraries=sorted(({'name':d.metadata['Name'],'version':d.version} for d in importlib.metadata.distributions()),key=lambda d:d['name'].lower())
     (STAGE/'BUILD-INFO.json').write_text(json.dumps({'app':'VietKara Studio','version':VERSION,'architecture':'Windows x64',
-        'built_utc':datetime.now(timezone.utc).isoformat(),'python':sys.version,'libraries':libraries,'models_bundled':False,'private_projects_bundled':False},indent=2),encoding='utf-8')
+        'built_utc':datetime.now(timezone.utc).isoformat(),'python':sys.version,'libraries':libraries,
+        'webview2_bootstrapper':dependency,'models_bundled':False,'private_projects_bundled':False},indent=2),encoding='utf-8')
     csc=Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     subprocess.run([str(csc),'/nologo','/target:winexe','/platform:x64','/reference:System.Windows.Forms.dll',
                     '/win32icon:'+str(PACK/'VietKaraStudio.ico'),'/out:'+str(STAGE/'VietKaraStudio.exe'),str(PACK/'Launcher.cs')],check=True)
@@ -108,16 +149,22 @@ def artifacts(setup_only=False):
                 if path.is_file() and 'data' not in path.relative_to(STAGE).parts[:1] and '__pycache__' not in path.parts and path.suffix not in ('.pyc','.pyo'):
                     archive.write(path,path.relative_to(RELEASE))
     lines=[]
-    for path in sorted(RELEASE.iterdir()):
+    for path in sorted(RELEASE.glob(f'VietKaraStudio-{VERSION}-*')):
         if path.is_file() and path.suffix in ('.exe','.zip','.bin'):
             print('Hashing '+path.name,flush=True)
-            digest=hashlib.file_digest(path.open('rb'),'sha256').hexdigest()
+            with path.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
             lines.append(digest+'  '+path.name)
-    (RELEASE/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n',encoding='ascii')
+    (RELEASE/f'SHA256SUMS-{VERSION}.txt').write_text('\n'.join(lines)+'\n',encoding='ascii')
     print('Release artifacts complete.',flush=True)
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--artifacts',action='store_true');parser.add_argument('--setup-only',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser()
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--artifacts',action='store_true')
+    mode.add_argument('--setup-only',action='store_true')
+    mode.add_argument('--runtime-only',action='store_true')
+    mode.add_argument('--app-only',action='store_true')
+    args=parser.parse_args()
     if args.artifacts or args.setup_only:artifacts(args.setup_only)
-    else:assemble()
+    else:assemble(app_only=args.app_only,runtime_only=args.runtime_only)

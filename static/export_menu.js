@@ -15,10 +15,11 @@ async function refreshExportMenu(){
     ['Thời lượng',time(info.duration,true)],['Nền',background],['Lời',`${info.words} từ · ${info.lines} câu · ${s.singing_mode==='duet'?'Song ca · màu theo vai':'Đơn ca'}`],
     ['Font & viền',`${s.font} · cỡ ${s.font_size} (khung 1080p)${s.italic?' · nghiêng':''} · viền ${s.outline_width} · bóng ${s.shadow}`],
     ['Hiệu ứng chữ',`${animation} · quét theo từng từ${s.sung_gradient?' · gradient':''} · mờ biên ${s.sweep_feather} · sáng viền ${s.sweep_glow}`],
+    ['Tiêu đề',s.title_enabled&&s.title_text?`${s.title_text} · ${s.title_start}–${s.title_end}s · ${s.title_enter} / ${s.title_exit}`:'Tắt'],
     ['Đếm ngược',s.countdown==='none'?'Tắt':countdown+' · đầu bài / sau nhạc dạo'],
     ['Logo',info.logo?`${p.logo_name} · ${s.logo_size}% · độ rõ ${s.logo_opacity}% · ${$('logoEffect').selectedOptions[0]?.textContent||s.logo_effect}`:'Tắt / chưa có ảnh'],
     ['Âm thanh',`Beat gốc · ${o.audio}`],['Thư mục',info.folder]];
-  $('exportInventory').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl><details><summary>Không đưa vào video</summary><p>'+info.excluded.map(esc).join(' · ')+'</p></details><p class="hint">Xuất từ file video gốc; bản xem trước trong app là proxy giảm dung lượng. SRT/LRC lưu mốc lời; ASS giữ thiết kế chữ. Logo và nền được ghép trong video.</p>';
+  $('exportInventory').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl><details><summary>Không đưa vào video</summary><p>'+info.excluded.map(esc).join(' · ')+'</p></details><p class="hint">Video được dựng từ beat gốc; file xuất chỉ gồm video đã ghép chữ, logo và nền.</p>';
   $('exportNotice').textContent=[...info.errors,...info.warnings].join('\n');$('exportNotice').classList.toggle('export-error',info.errors.length>0);
   $('renderBtn').disabled=info.errors.length>0||!!state.job;
   $('renderBtn').textContent='Dựng '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p')+' · '+({standard:'Tiêu chuẩn',high:'Chất lượng cao',maximum:'Rất cao'}[s.render_quality]||'Chất lượng cao');

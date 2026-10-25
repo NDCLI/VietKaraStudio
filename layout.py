@@ -13,6 +13,54 @@ from styles import validate_settings
 from timing import beat_words, lyric_lines
 
 
+def _circle_path(cx, cy, radius, reverse=False):
+    """Absolute cubic paths; reversing the inner circle leaves a font-free ring."""
+    k = radius * .55228475
+    sign = -1 if reverse else 1
+    return [('M', cx+radius, cy),
+            ('C', cx+radius, cy+sign*k, cx+k, cy+sign*radius, cx, cy+sign*radius),
+            ('C', cx-k, cy+sign*radius, cx-radius, cy+sign*k, cx-radius, cy),
+            ('C', cx-radius, cy-sign*k, cx-k, cy-sign*radius, cx, cy-sign*radius),
+            ('C', cx+k, cy-sign*radius, cx+radius, cy-sign*k, cx+radius, cy)]
+
+
+def _polygon_path(*points):
+    return [('M', *points[0]), *(('L', *point) for point in points[1:]), ('L', *points[0])]
+
+
+ROLE_ICON_PATHS = {
+    # Human silhouettes read more clearly at karaoke subtitle size than gender symbols.
+    'male': _circle_path(16, 5, 3.5)
+            + _polygon_path((12,10), (20,10), (23,12), (26,20), (22,22), (19,16),
+                            (19,23), (13,23), (13,16), (10,22), (6,20), (9,12))
+            + _polygon_path((13,22), (19,22), (20,31), (16.7,31), (16,25), (15.3,31), (12,31)),
+    'female': _circle_path(16, 5, 3.5)
+              + _polygon_path((13,10), (19,10), (23,12), (26,20), (22,22), (19,16),
+                              (13,16), (10,22), (6,20), (9,12))
+              + _polygon_path((13,16), (19,16), (24,28), (8,28))
+              + _polygon_path((11,28), (15,28), (15,32), (11,32))
+              + _polygon_path((17,28), (21,28), (21,32), (17,32)),
+    'all': _circle_path(10, 7, 2.6) + _circle_path(22, 7, 2.6)
+           + _polygon_path((7,11), (13,11), (15,14), (15,21), (5,21), (5,14))
+           + _polygon_path((19,11), (25,11), (27,14), (27,21), (17,21), (17,14))
+           + _polygon_path((7,20), (13,20), (14,31), (11,31), (10,24), (9,31), (6,31))
+           + _polygon_path((19,20), (25,20), (26,31), (23,31), (22,24), (21,31), (18,31)),
+}
+
+
+def role_icon_path(role, size=32, ass=False):
+    """The preview and subtitle exporter use these identical filled shapes."""
+    commands = ROLE_ICON_PATHS.get(role, ROLE_ICON_PATHS['all'])
+    names = {'M':'m', 'L':'l', 'C':'b'} if ass else {'M':'M', 'L':'L', 'C':'C'}
+    return ' '.join(names[item[0]]+' '+' '.join(f'{v*size/32:.3f}' for v in item[1:]) for item in commands)
+
+
+def role_icon_space(opts):
+    if opts['role_icons'] and opts['singing_mode'] == 'duet' and opts['display_mode'] == 'karaoke':
+        return opts['font_size'] * .94  # .72 em icon plus .22 em gap
+    return 0
+
+
 @lru_cache(maxsize=1)
 def font_catalog():
     result = []
@@ -128,7 +176,7 @@ class Measure:
 
     def fits(self, tokens, width):
         extra = 2 * self.opts['outline_width'] + self.opts['shadow'] + (self.opts['font_size'] * .15 if self.opts['italic'] else 0)
-        return self.width(' '.join(tokens)) + extra <= width
+        return self.width(' '.join(tokens)) + extra + role_icon_space(self.opts) <= width
 
 
 def frame_size(opts):
@@ -221,6 +269,7 @@ def display_plan(project):
     rows.sort(key=lambda row: row[0]['start'])
     plan, countdowns, block_row = [], [], 0
     slots=[]
+    previous_role = None
     for i, words in enumerate(rows):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
@@ -247,9 +296,12 @@ def display_plan(project):
         if opts['display_mode'] != 'karaoke':
             ds, de, slot = start, end + .1, 0
             if i+1 < len(rows): de = min(de, max(end, rows[i+1][0]['start']))
+        role = words[0].get('role', 'all') if opts['singing_mode'] == 'duet' and opts['display_mode']=='karaoke' else 'all'
+        role_changed = role != previous_role
         size = opts['font_size']
         text = ' '.join(w['text'] for w in words)
-        row_width = measure.width(text)
+        icon_space = role_icon_space(opts) if role_changed else 0
+        row_width = measure.width(text) + icon_space
         shrink = min(1, width * .9 / max(1, row_width))
         size *= shrink
         row_width *= shrink
@@ -263,20 +315,26 @@ def display_plan(project):
         if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
         bottom = baseline - height * opts['vertical_offset']/100
         y = max(0, bottom - size*(1.15 + (opts['line_height'] if slot == 0 and opts['display_mode']=='karaoke' else 0)))
-        role = words[0].get('role', 'all') if opts['singing_mode'] == 'duet' and opts['display_mode']=='karaoke' else 'all'
-        color = {'male': opts['role_a_color'], 'female': opts['role_b_color']}.get(role, opts['sung'])
+        color = {'male': opts['role_a_color'], 'female': opts['role_b_color'],
+                 'all': opts['role_all_color']}.get(role, opts['sung'])
         positioned, cursor = [], x
         for j, word in enumerate(words):
             # Measure prefixes so kerning between adjacent tokens is included in placement.
             prefix = ' '.join(w['text'] for w in words[:j])
-            left = x + (measure.width(prefix + ' ') if j else 0) * shrink
+            left = x + (icon_space + (measure.width(prefix + ' ') if j else 0)) * shrink
             word_width = measure.width(word['text']) * shrink
             positioned.append({**word, 'x': round(left, 3), 'width': round(word_width, 3)})
+        marker = ({'x':round(x,3), 'y':round(y+size*.08,3), 'size':round(size*.72,3),
+                   'role':role, 'path':role_icon_path(role), 'color':color,
+                   'label':{'male':opts['role_a_name'], 'female':opts['role_b_name']}.get(role, 'Cùng hát')}
+                  if icon_space and role_changed else None)
+        previous_role = role
         plan.append({'index':i, 'line':words[0]['line'], 'slot':slot, 'section_start':bool(first),
                      'section_end': i == len(rows)-1 or bool(rows[i+1][0].get('section')) or rows[i+1][0]['start']-end>4,
                      'start':start, 'end':end, 'show_start':ds, 'show_end':max(ds+.01,de),
                      'x':round(x,3), 'y':round(y,3), 'width':round(row_width,3), 'height':round(size*1.2,3),
-                     'font_size':round(size,3), 'color':color, 'align':align, 'role':role, 'text':text, 'words':positioned})
+                     'font_size':round(size,3), 'color':color, 'align':align, 'role':role, 'text':text,
+                     'role_icon':marker, 'words':positioned})
         # A new lyric paragraph/row is not necessarily an instrumental break.
         # Count in only at the opening or after at least eight seconds without lyrics.
         previous_vocal_end = max((r['end'] for r in plan[:-1]), default=0)
@@ -292,5 +350,6 @@ def display_plan(project):
         previous=next((other for other in reversed(plan[:i]) if other['slot']==row['slot']),None)
         if previous and row['start']<previous['end']-.05:
             warnings.append({'type':'overlap','line':row['line'],'previous_line':previous['line']})
-    return {'width':width, 'height':height, 'font':measure.family, 'font_factor':measure.factor,
+    from song_title import title_plan
+    return {'title':title_plan(project), 'width':width, 'height':height, 'font':measure.family, 'font_factor':measure.factor,
             'font_fallback':measure.fallback, 'rows':plan, 'countdowns':countdowns,'warnings':warnings}

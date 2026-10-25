@@ -23,7 +23,7 @@ function updateTapLeadIn(){
 function timingLocks(active){
   document.querySelectorAll('[data-label-color]').forEach(b=>b.disabled=active||!!state.job);
   document.body.classList.toggle('is-tapping',active);
-  for(const id of ['timelineLinked','timelineAutoBtn','timelineManualBtn','newBtn','projectsBtn','exportBtn','analyzeBtn','alignLyricsBtn','estimateBtn','autoSplitBtn','listenTrack','applyWordBtn','deleteWordBtn','splitLineBtn','mergeLineBtn','addAnchorBtn','alternateRolesBtn','autoRolesBtn','swapRolesBtn','lyricsText','undoBtn','importSrtBtn','referenceInput','beatInput','backgroundInput','countdownInput','logoInput','videoReferenceBtn','videoSeparateBtn'])$(id).disabled=active||!!state.job;
+  for(const id of ['timelineLinked','timelineAutoBtn','timelineManualBtn','newBtn','projectsBtn','exportBtn','analyzeBtn','alignLyricsBtn','estimateBtn','listenTrack','applyWordBtn','deleteWordBtn','splitLineBtn','mergeLineBtn','addAnchorBtn','alternateRolesBtn','autoRolesBtn','swapRolesBtn','lyricsText','undoBtn','importSrtBtn','referenceInput','beatInput','backgroundInput','countdownInput','logoInput','videoReferenceBtn','videoSeparateBtn'])$(id).disabled=active||!!state.job;
 }
 async function beginTapping(){
   if(state.job||state.manualTiming)return;

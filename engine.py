@@ -13,6 +13,7 @@ import time
 import numpy as np
 import soundfile as sf
 import hardware
+from app_runtime import task_command
 from styles import validate_settings
 
 from timing import beat_words, lyric_lines
@@ -23,16 +24,30 @@ CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 
 def binary(name):
+    """Resolve packaged, system, or optional imageio FFmpeg binaries."""
     explicit = os.environ.get(f"OBS_{name.upper()}")
     candidates = [Path(explicit)] if explicit else []
     candidates += [ROOT / "bin" / f"{name}.exe", ROOT.parent / f"{name}.exe"]
+    if name == "ffprobe":
+        # A packaged ffprobe normally sits beside the selected ffmpeg binary.
+        ffmpeg_override = os.environ.get("OBS_FFMPEG")
+        if ffmpeg_override:
+            candidates.append(Path(ffmpeg_override).with_name("ffprobe.exe"))
     for path in candidates:
         if path.is_file():
             return str(path)
     found = shutil.which(name)
     if found:
         return found
-    raise RuntimeError(f"Chưa tìm thấy {name}. Đặt {name}.exe trong thư mục bin của app.")
+    if name == "ffmpeg":
+        try:
+            import imageio_ffmpeg
+            path = Path(imageio_ffmpeg.get_ffmpeg_exe())
+            if path.is_file():
+                return str(path)
+        except (ImportError, RuntimeError, OSError):
+            pass
+    raise RuntimeError(f"Chưa tìm thấy {name}. Đặt {name}.exe trong thư mục bin của app hoặc PATH.")
 
 
 class Cancelled(Exception):
@@ -92,11 +107,16 @@ def command(args, job=None, cwd=None, progress=None, environment=None):
     env = os.environ.copy()
     env.update(environment or {})
     env["PYTHONUTF8"] = "1"
-    ffmpeg_dir = str(Path(binary("ffmpeg")).parent)
-    env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
+    # Only media tasks need FFmpeg on PATH. AI-only workers must remain usable
+    # in source installs that have not bundled the optional media binaries.
+    needs_ffmpeg = Path(str(args[0])).stem.lower() in ("ffmpeg", "ffprobe")
+    if needs_ffmpeg:
+        ffmpeg_dir = str(Path(binary("ffmpeg")).parent)
+        env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
     process = subprocess.Popen([str(a) for a in args], cwd=cwd, env=env,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, encoding="utf-8", errors="replace",
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True,
+                               encoding="utf-8", errors="replace",
                                creationflags=CREATE_NO_WINDOW)
     if job:
         with job._lock:
@@ -145,12 +165,24 @@ def waveform(path, bins=1800):
     return {"duration": round(info.duration, 4), "peaks": [p / scale for p in peaks]}
 
 
+def model_progress(job, start=5, end=95):
+    def update(line):
+        if line.startswith('OBS_PROGRESS '):
+            try:
+                item = json.loads(line[len('OBS_PROGRESS '):])
+                value = max(0, min(100, float(item['progress'])))
+                job.update(start + (end - start) * value / 100, item['message'])
+            except (ValueError, KeyError, TypeError):
+                pass
+    return update
+
+
 def separate(reference, directory, job, device=None):
-    device = device or hardware.select_ai(hardware.detect())["demucs"]
     cached = directory / "vocals.wav"
     if cached.is_file():
         job.record_device("demucs", {"device": "cache", "name": "Vocal đã có"})
         return cached
+    device = device or hardware.select_ai()["demucs"]
     job.record_device("demucs", device)
     job.update(12, f"Đang tách vocal bằng Demucs · {device['name']}…")
     models = DATA / "models"
@@ -161,7 +193,7 @@ def separate(reference, directory, job, device=None):
     elif not bundled.is_file():
         from model_manager import cached_demucs
         bundled=cached_demucs(DATA) or bundled
-    args = [sys.executable, "-m", "demucs", "--two-stems", "vocals", "--float32",
+    args = [*task_command("demucs"), "--two-stems", "vocals", "--float32",
             "--shifts", "1", "--jobs", "1", "-o", str(directory / "separated")]
     if bundled.is_file():
         dest = models / bundled.name
@@ -208,7 +240,7 @@ def recognize(directory, job, model="medium", language="vi", lyrics="", preferen
     if language not in ("vi", "en", "auto"):
         raise ValueError("Ngôn ngữ không hợp lệ.")
     job.update(3, "Đang kiểm tra thiết bị xử lý…")
-    devices = hardware.select_ai(hardware.detect(), preference)
+    devices = hardware.select_ai(preference=preference)
     vocals = separate(directory / "reference.wav", directory, job, devices["demucs"])
     job.update(45, "Đang căn lời có sẵn theo vocal…" if lyrics.strip() else "Whisper đang nhận dạng lời và mốc từng từ…")
     request_path = directory / "asr_request.json"
@@ -227,7 +259,7 @@ def recognize(directory, job, model="medium", language="vi", lyrics="", preferen
             except (ValueError, KeyError):
                 pass
     try:
-        command([sys.executable, "-u", ROOT / "worker.py", request_path], job, progress=progress)
+        command(task_command("speech", request_path), job, progress=progress)
     except RuntimeError as exc:
         if params["device"] != "cuda" or not hardware.gpu_error(exc):
             raise
@@ -239,7 +271,7 @@ def recognize(directory, job, model="medium", language="vi", lyrics="", preferen
         params["fallback_reason"] = str(exc)[-1000:]
         job.update(46, "GPU nhận lời gặp lỗi; đang tiếp tục bằng CPU…")
         write_request()
-        command([sys.executable, "-u", ROOT / "worker.py", request_path], job, progress=progress)
+        command(task_command("speech", request_path), job, progress=progress)
     job.check()
     return json.loads(result_path.read_text(encoding="utf-8"))
 
@@ -250,7 +282,7 @@ def suggest_duet(project,directory,job,preference='auto'):
     if (directory/'vocals.wav').is_file():
         vocal=directory/'vocals.wav'
     else:
-        device=hardware.select_ai(hardware.detect(),preference)['demucs']
+        device=hardware.select_ai(preference=preference)['demucs']
         vocal=separate(directory/'reference.wav',directory,job,device)
     job.record_device('roles',{'device':'cpu','name':'Phân tích cao độ vocal · CPU'})
     groups={}
@@ -266,7 +298,7 @@ def suggest_duet(project,directory,job,preference='auto'):
     def progress(line):
         if line.startswith('OBS_PROGRESS '):
             item=json.loads(line[len('OBS_PROGRESS '):]);job.update(item['progress'],item['message'])
-    command([sys.executable,'-u',ROOT/'duet_roles.py',request],job,progress=progress)
+    command(task_command('roles', request), job, progress=progress)
     job.check()
     result=json.loads(output.read_text(encoding='utf-8'))
     result['lines']=[item['line'] for item in segments]
@@ -400,8 +432,6 @@ def render(project, directory, job):
                 render_info.encoding_options(opts['render_quality'],'libx264') + trailer,
                 job, cwd=export, progress=progress)
     job.check()
-    for fmt in ("srt", "lrc"):
-        (export / f"lyrics.{fmt}").write_text(export_text(project, fmt), encoding="utf-8-sig")
     manifest['encoder']=video_device['encoder']
     (export/'render-info.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     output_path=str(export/video_name)
@@ -409,19 +439,18 @@ def render(project, directory, job):
         target=Path(project['export_directory'])
         stem=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',project.get('name','karaoke')).strip(' .')[:65] or 'karaoke'
         stem=stem+'_'+job.id
-        # Copy through a partial file; a cancelled/failed copy is never presented as a finished MP4.
-        for name in (video_name,'lyrics.ass','lyrics.srt','lyrics.lrc','render-info.json'):
-            job.check()
-            suffix='.render-info.json' if name=='render-info.json' else Path(name).suffix
-            destination=target/(stem+suffix)
-            partial=target/(stem+suffix+'.partial')
-            try:
-                with (export/name).open('rb') as source,partial.open('xb') as output:
-                    while chunk:=source.read(8*1024*1024):
-                        job.check();output.write(chunk)
-                partial.replace(destination)
-            finally:partial.unlink(missing_ok=True)
-        output_path=str(target/(stem+'.'+opts['render_format']))
+        # The selected export folder receives the rendered video only.
+        name=video_name
+        job.check()
+        suffix=Path(name).suffix
+        destination=target/(stem+suffix)
+        partial=target/(stem+suffix+'.partial')
+        try:
+            with (export/name).open('rb') as source,partial.open('xb') as output:
+                while chunk:=source.read(8*1024*1024):
+                    job.check();output.write(chunk)
+            partial.replace(destination)
+        finally:partial.unlink(missing_ok=True)
+        output_path=str(destination)
     return {"video": f"/api/projects/{project['id']}/exports/{job.id}/{video_name}","format":opts['render_format'],
-            "ass": f"/api/projects/{project['id']}/exports/{job.id}/lyrics.ass",
-            "encoder": video_device["encoder"],"output_path":output_path}
+            "encoder": video_device["encoder"], "output_path": output_path}

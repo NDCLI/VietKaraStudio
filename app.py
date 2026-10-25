@@ -17,10 +17,12 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 from werkzeug.exceptions import HTTPException
 
 import engine
+from app_runtime import task_command
 import hardware
 import presets
 import layout
 import media_tools
+import updater
 from styles import DEFAULT_SETTINGS, validate_settings
 from timing import (beat_words, estimate_words, finite, validate_anchors,
                     validate_words)
@@ -38,16 +40,32 @@ def model_status():
     return jsonify(model_manager.status(engine.DATA))
 
 
+@app.get('/api/updates/check')
+def update_check():
+    return jsonify(updater.check())
+
+
+@app.post('/api/updates/download')
+def update_download():
+    return jsonify(updater.download())
+
+
+@app.post('/api/updates/apply')
+def update_apply():
+    return jsonify(updater.apply())
+
+
 @app.post('/api/projects/<pid>/models/<name>')
 def download_model(pid, name):
-    import sys
     import model_manager
+    import sys
     directory(pid)
     if name not in model_manager.MODELS:
         raise ValueError('Model không hợp lệ.')
     def work(job):
         job.update(5, 'Đang tải model ' + name + '… lần đầu có thể cần vài phút.')
-        engine.command([sys.executable, '-u', engine.ROOT / 'model_manager.py', engine.DATA, name], job)
+        engine.command(task_command('model', engine.DATA, name), job,
+                       progress=engine.model_progress(job))
         return {'model': name}
     return task(pid, 'model', work)
 
@@ -55,31 +73,64 @@ def download_model(pid, name):
 @app.post('/api/projects/<pid>/separate')
 def separate_tool(pid):
     idle(pid)
-    project_path=directory(pid)
+    project_path = directory(pid)
+    payload = request.get_json(silent=True) or {}
     file = request.files.get('file')
-    from_video=(request.get_json(silent=True) or {}).get('source')=='background'
-    source=media_tools.local_asset(project_path,load(pid).get('background_video',{}).get('source_file')) if from_video else None
+    from_video = payload.get('source') == 'background'
+    from_youtube = payload.get('source') == 'youtube'
+    apply_project = from_video and payload.get('apply_to_project') is True
+    source = media_tools.local_asset(project_path, load(pid).get('background_video', {}).get('source_file')) if from_video else None
+    youtube_url = str(payload.get('url', '')).strip() if from_youtube else ''
     if from_video and not source:
         raise ValueError('Hãy nạp video trong File nguồn trước.')
-    if not from_video and (not file or not file.filename):
-        raise ValueError('Chọn bài nhạc để tách.')
-    ext = source.suffix.lower() if from_video else Path(file.filename).suffix.lower()
-    if ext not in ('.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm', '.wma'):
+    if from_youtube and not media_tools.youtube_video_id(youtube_url):
+        raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+    if not from_video and not from_youtube and (not file or not file.filename):
+        raise ValueError('Chọn bài nhạc hoặc dán URL YouTube cần tách.')
+    ext = source.suffix.lower() if from_video else Path(file.filename).suffix.lower() if file else '.m4a'
+    if not from_youtube and ext not in ('.wav', '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm', '.wma'):
         raise ValueError('Định dạng âm thanh/video chưa hỗ trợ.')
     identifier = uuid.uuid4().hex
     folder = engine.DATA / 'tools' / identifier
     folder.mkdir(parents=True)
-    incoming = folder / ('source' + ext)
+    incoming = folder / ('source' + ext) if not from_youtube else None
     if from_video:
-        shutil.copy2(source,incoming)
-    else:
+        shutil.copy2(source, incoming)
+    elif not from_youtube:
         file.save(incoming)
-    preference = (request.get_json(silent=True) or {}).get('device','auto') if from_video else request.form.get('device', 'auto')
+    preference = payload.get('device', 'auto') if (from_video or from_youtube) else request.form.get('device', 'auto')
     def work(job):
-        engine.convert(incoming, folder / 'reference.wav', job)
-        device = hardware.select_ai(hardware.detect(), preference)['demucs']
-        engine.separate(folder / 'reference.wav', folder, job, device)
-        return {'beat': f'/api/tools/{identifier}/beat', 'vocals': f'/api/tools/{identifier}/vocals'}
+        downloaded = None
+        try:
+            if from_youtube:
+                downloaded = media_tools.download_youtube(youtube_url, folder, job)
+                input_source = downloaded
+            else:
+                input_source = incoming
+            engine.convert(input_source, folder / 'reference.wav', job)
+            device = hardware.select_ai(preference=preference)['demucs']
+            engine.separate(folder / 'reference.wav', folder, job, device)
+            job.check()
+            if apply_project:
+                metadata = {slot: {'name': name, **engine.waveform(folder / file_name)} for slot, name, file_name in (
+                    ('reference', source.name, 'reference.wav'),
+                    ('beat', 'Beat · ' + load(pid)['background_video']['name'], 'reference_instrumental.wav'),
+                    ('vocals', 'Vocal · ' + load(pid)['background_video']['name'], 'vocals.wav'))}
+                with LOCK:
+                    current = load(pid)
+                    for original, target in (('reference.wav', 'reference.wav'), ('reference_instrumental.wav', 'beat.wav'),
+                                             ('vocals.wav', 'vocals.wav'), ('reference_instrumental.wav', 'reference_instrumental.wav')):
+                        shutil.copy2(folder / original, project_path / target)
+                    current.update(metadata)
+                    current['reference']['name'] = current['background_video']['name']
+                    current['words'] = []; current['anchors'] = []; current['alignment'] = None
+                    current.pop('processing', None); current.pop('role_analysis', None)
+                    current['settings'] = validate_settings({'background_type': 'video'}, current['settings'])
+                    save(current)
+            return {'beat': f'/api/tools/{identifier}/beat', 'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+        finally:
+            if downloaded:
+                downloaded.unlink(missing_ok=True)
     return task(pid, 'separate', work)
 
 
@@ -119,6 +170,8 @@ def public(project):
     result["settings"] = validate_settings(project.get("settings", {}))
     result["beat_words"] = beat_words(project)
     result["vocals_ready"] = (engine.DATA / "projects" / project["id"] / "vocals.wav").is_file()
+    if result['vocals_ready'] and not result.get('vocals'):
+        result['vocals']={'name':'Vocal riêng',**engine.waveform(engine.DATA/'projects'/project['id']/'vocals.wav')}
     return result
 
 
@@ -163,6 +216,13 @@ def local_requests():
             return jsonify(error="Yêu cầu phải đến từ cửa sổ app."), 403
 
 
+@app.after_request
+def refresh_static_assets(response):
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+    return response
+
+
 @app.errorhandler(Exception)
 def handle_error(error):
     if isinstance(error, HTTPException):
@@ -184,7 +244,7 @@ def index():
 def health():
     deps = {}
     import importlib.util
-    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa"):
+    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "yt_dlp"):
         deps[name] = importlib.util.find_spec(name) is not None
     for name in ("ffmpeg", "ffprobe"):
         try:
@@ -323,8 +383,10 @@ def media_upload(pid, slot):
         raise ValueError("Hãy chọn file.")
     filename = Path(file.filename).name
     ext = Path(filename).suffix.lower()
-    allowed = media_tools.IMAGE_EXTENSIONS + media_tools.VIDEO_EXTENSIONS if slot == "background" else media_tools.IMAGE_EXTENSIONS if slot in ('countdown', 'logo') else (
-        ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".mp4", ".mov", ".mkv", ".webm")
+    audio_extensions = (".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus")
+    allowed = (media_tools.IMAGE_EXTENSIONS + media_tools.VIDEO_EXTENSIONS if slot == "background"
+               else media_tools.IMAGE_EXTENSIONS if slot in ('countdown', 'logo')
+               else audio_extensions + media_tools.VIDEO_EXTENSIONS)
     if ext not in allowed:
         raise ValueError("Định dạng file chưa được hỗ trợ.")
     incoming = path / ("incoming_" + uuid.uuid4().hex + ext)
@@ -391,6 +453,7 @@ def media_upload(pid, slot):
                     project["anchors"] = []
                 project["alignment"] = None
                 if slot == "reference":
+                    project.pop('vocals',None)
                     if had_reference:
                         project["words"] = []
                     for old in ("vocals.wav", "reference_instrumental.wav"):
@@ -460,6 +523,7 @@ def video_reference(pid):
         if project.get('reference'):
             project['words']=[]
         project['reference']=audio_metadata
+        project.pop('vocals',None)
         project['anchors']=[]
         project['alignment']=None
         for old in ('vocals.wav','reference_instrumental.wav'):
@@ -484,6 +548,7 @@ def analyze(pid):
             current = load(pid)
             current["words"] = validate_words(result["words"])
             current["text"] = result["text"]
+            current['vocals']={'name':'Vocal · '+current['reference']['name'],**engine.waveform(directory(pid)/'vocals.wav')}
             current["processing"] = {"devices": job.public()["devices"], "fallbacks": job.public()["fallbacks"],
                                       "device": result["device"], "compute_type": result["compute_type"],
                                       'alignment_diagnostics':result.get('alignment_diagnostics',{})}
@@ -560,8 +625,9 @@ def choose_export_folder(pid):
     idle(pid)
     data=request.get_json(silent=True) or {}
     if data.get('pick'):
-        result=subprocess.run([sys.executable,engine.ROOT/'tools/pick_export_folder.py'],capture_output=True,
-                              text=True,encoding='utf-8',timeout=300,creationflags=engine.CREATE_NO_WINDOW)
+        result=subprocess.run([sys.executable,engine.ROOT/'tools/pick_export_folder.py'],stdin=subprocess.DEVNULL,
+                              capture_output=True,text=True,encoding='utf-8',timeout=300,
+                              creationflags=engine.CREATE_NO_WINDOW)
         if result.returncode:raise ValueError('Không mở được hộp chọn thư mục. Bạn có thể nhập đường dẫn rồi bấm Lưu.')
         folder=json.loads(result.stdout)['folder']
         if not folder:return jsonify({'cancelled':True})

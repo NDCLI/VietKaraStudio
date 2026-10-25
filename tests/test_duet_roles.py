@@ -27,6 +27,40 @@ def test_two_registers_mixed_line_and_missing_audio():
     assert result['roles']==['male','female','all',None]
 
 
+def sung_lines(ranges):
+    times=np.arange(len(ranges)*100)*.064
+    pitches=np.concatenate([np.exp2(np.linspace(np.log2(a),np.log2(b),100)) for a,b in ranges])
+    segments=[{'start':i*6.4,'end':(i+1)*6.4-.001} for i in range(len(ranges))]
+    return times,pitches,segments
+
+
+def test_overlapping_melodies_still_suggest_clear_recurring_line_registers():
+    # Both singers move through notes: their combined pitch histogram has no valley.
+    times,pitches,segments=sung_lines([(110,230),(220,440)]*4)
+    result=suggest(times,pitches,segments)
+    assert result['two_registers']
+    assert result['method']=='pyin-line-registers-v2'
+    assert result['roles']==['male','female']*4
+    assert result['confidence']=='register_suggestion'
+
+
+def test_line_fallback_does_not_split_same_melody_or_one_rising_passage():
+    for ranges in ([(120,240)]*8,[(110+i*20,150+i*20) for i in range(8)]):
+        result=suggest(*sung_lines(ranges))
+        assert not result['two_registers']
+        assert result['roles']==[None]*8
+
+
+def test_line_fallback_keeps_ambiguous_and_poorly_voiced_lines():
+    times,pitches,segments=sung_lines([(110,230),(220,440)]*4+[(160,350),(110,230)])
+    pitches[-95:]=np.nan
+    result=suggest(times,pitches,segments)
+    assert result['method']=='pyin-line-registers-v2'
+    assert result['roles'][:8]==['male','female']*4
+    assert result['roles'][-2:]==[None,None]
+    assert result['shared']==0 and result['uncertain']==2
+
+
 def test_real_vocal_analysis_preserves_words_anchors_and_times(client,monkeypatch):
     pid=client.post('/api/projects',json={}).get_json()['id'];url='/api/projects/'+pid
     assert client.post(url+'/suggest-roles',json={}).status_code==400

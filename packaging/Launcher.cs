@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("VietKara Studio")]
 [assembly: AssemblyProduct("VietKara Studio")]
 [assembly: AssemblyDescription("Karaoke studio with original beat and synchronized lyrics")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 internal static class Launcher {
     private static string Quote(string s) {
         return "\"" + s.Replace("\"", "\\\"") + "\"";

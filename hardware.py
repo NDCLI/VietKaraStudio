@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from app_runtime import task_command
 import importlib.util
 import json
 import os
@@ -17,6 +18,7 @@ NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 _dll_handles = []
 _cache = None
 _cache_time = 0.
+_cache_failed = False
 _lock = threading.Lock()
 
 
@@ -45,8 +47,9 @@ def nvidia_cards():
         return []
     try:
         result = subprocess.run([executable, "--query-gpu=index,name,memory.total,driver_version",
-                                 "--format=csv,noheader,nounits"], capture_output=True, text=True,
-                                timeout=12, creationflags=NO_WINDOW)
+                                 "--format=csv,noheader,nounits"], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=12,
+                                creationflags=NO_WINDOW)
         if result.returncode:
             return []
         return [{"index": int(row[0]), "name": row[1].strip(), "memory_mb": int(row[2]),
@@ -66,11 +69,13 @@ def gpu_error(error):
         "device-side", "driver", "nvenc", "mã -107", "code -107"))
 
 
-def select_ai(probe, preference="auto"):
+def select_ai(probe=None, preference="auto"):
     if preference not in ("auto", "cpu"):
         raise ValueError("Thiết bị phải là auto hoặc cpu.")
     if preference == "cpu":
         return {"demucs": cpu_backend("Đã chọn CPU"), "whisper": cpu_backend("Đã chọn CPU")}
+    if probe is None:
+        probe = detect()
     return {key: dict(probe.get(key) or cpu_backend()) for key in ("demucs", "whisper")}
 
 
@@ -100,8 +105,9 @@ def probe_encoder(cards):
         try:
             result = subprocess.run([executable, "-hide_banner", "-v", "error", "-f", "lavfi", "-i",
                                      "color=size=256x144:rate=30", "-frames:v", "3", "-c:v", "h264_nvenc",
-                                     "-f", "null", "-"], capture_output=True, text=True, encoding="utf-8",
-                                    errors="replace", timeout=20, creationflags=NO_WINDOW)
+                                     "-f", "null", "-"], stdin=subprocess.DEVNULL, capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace", timeout=20,
+                                    creationflags=NO_WINDOW)
             if result.returncode == 0:
                 return {"encoder": "h264_nvenc", "name": "NVIDIA NVENC", "ffmpeg": executable, "reason": ""}
             reason = (result.stderr.splitlines() or [reason])[0][:500]
@@ -172,23 +178,31 @@ def probe():
 
 
 def detect(refresh=False):
-    global _cache, _cache_time
+    global _cache, _cache_time, _cache_failed
     with _lock:
-        if _cache is not None and not refresh and time.monotonic() - _cache_time < 120:
+        # Capabilities stay valid for this app session. The UI's explicit refresh
+        # handles driver/device changes; a crashed probe is retried after two minutes.
+        if _cache is not None and not refresh and (not _cache_failed or time.monotonic() - _cache_time < 120):
             return json.loads(json.dumps(_cache))
+        failed = False
         try:
-            process = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--probe"],
+            process = subprocess.run(task_command("probe"), stdin=subprocess.DEVNULL,
                                      capture_output=True, text=True, encoding="utf-8", errors="replace",
                                      timeout=75, creationflags=NO_WINDOW)
             if process.returncode:
                 raise RuntimeError(process.stderr[-1000:] or "Không kiểm tra được GPU")
-            result = json.loads(process.stdout.strip().splitlines()[-1])
+            lines = process.stdout.strip().splitlines()
+            result = json.loads(lines[-1] if lines else "")
+            if not isinstance(result, dict) or any(not isinstance(result.get(key), dict)
+                                                   for key in ("demucs", "whisper", "video")):
+                raise ValueError("Kết quả kiểm tra thiết bị không hợp lệ")
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            failed = True
             reason = str(exc)[:500]
             result = {"gpus": nvidia_cards(), "demucs": cpu_backend(reason), "whisper": cpu_backend(reason),
                       "video": {"encoder": "libx264", "name": "CPU", "reason": reason}, "preferred": "cpu",
                       "scanned_at": time.time()}
-        _cache, _cache_time = result, time.monotonic()
+        _cache, _cache_time, _cache_failed = result, time.monotonic(), failed
         return json.loads(json.dumps(result))
 
 
