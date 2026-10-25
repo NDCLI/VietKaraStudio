@@ -231,6 +231,8 @@ def _extract_patch(archive_path: Path, version: str, target: Path) -> None:
             raise ValueError("Gói vá có tệp thiếu hoặc thừa.")
         for entry in files:
             name = entry.filename
+            if name == "UPDATE-MANIFEST.json":
+                continue
             if not _safe_patch_path(name):
                 raise ValueError("Gói vá chứa đường dẫn không an toàn.")
             mode = (entry.external_attr >> 16) & 0o170000
