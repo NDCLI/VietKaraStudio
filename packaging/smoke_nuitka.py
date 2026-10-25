@@ -117,6 +117,9 @@ def main():
                         server_log.flush();raise RuntimeError((work/'server.log').read_text())
                     time.sleep(.1)
             assert health['ok'];report['timings']['http_startup']=round(time.perf_counter()-started,3)
+            updates=request_api('/api/updates/check')
+            assert updates['supported'] and updates['installed_version']==json.loads((folder/'BUILD-INFO.json').read_text(encoding='utf-8'))['version'],updates
+            report['update_status']=updates;report['checks'].append('Compiled updater API finds the helper and reports the installed version')
             assert request_api('/api/projects')==[]
             project=request_api('/api/projects',{'name':'Compiled export smoke'});pid=project['id'];url='/api/projects/'+pid
             project_dir=data/'projects'/pid;shutil.copy2(role_vocal,project_dir/'beat.wav')
