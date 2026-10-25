@@ -1,7 +1,7 @@
 """ASS generation for karaoke, lyrics MV, subtitles and timed vector countdowns."""
 import math
 
-from layout import display_plan
+from layout import display_plan, role_icon_path
 from styles import validate_settings
 
 
@@ -132,6 +132,13 @@ def build_ass(project):
                            'x':x,'y':row['y']+delta*row['font_size']*s['line_height'], 'section_start':False, 'section_end':False}
                     plain(ghost,s['unsung'],max(20,65-abs(delta)*15))
             continue
+        marker = row.get('role_icon')
+        if marker:
+            icon_row = {**row, 'x':marker['x'], 'y':marker['y']}
+            # Geometry is already sized in frame pixels, independent of the lyric font/width.
+            tags = ('\\i0\\fscx100\\fscy100' + animation(icon_row, {**s, 'horizontal_scale':100})
+                    + '\\p1' + paint(marker['color'], 'sung'))
+            event(2,ds,de,tags,role_icon_path(marker['role'],marker['size'],ass=True))
         for word in row['words']:
             a=max(0,round((word['start']-ds)*1000)); b=max(a+10,round((word['end']-ds)*1000))
             margin=s['outline_width']+row['font_size']*.18+s['shadow']+3
@@ -143,7 +150,12 @@ def build_ass(project):
                 return clip(x1,y1,x2,y2)+f'\\t({a},{b},'+clip(ex1,y1,ex2,y2)+')'
             wr={**row,'x':word['x']}
             motion=animation(wr,s)+f"\\fs{row['font_size']:.3f}"
-            base=motion+paint(s['unsung'],'unsung')+moving(left+feather/2,0,right+feather,height,right+feather/2,right+feather)
+            if s['shadow']:
+                shadow_row={**wr,'x':wr['x']+s['shadow'],'y':wr['y']+s['shadow']}
+                shadow_tags=(animation(shadow_row,s)+f"\\fs{row['font_size']:.3f}\\shad0"
+                             +f"\\1c{color(s['shadow_color'])}\\3c{color(s['shadow_color'])}\\1a&H00&\\3a&H00&")
+                event(0,ds,de,shadow_tags,literal(word['text']))
+            base=motion+paint(s['unsung'],'unsung',shadow=False)+moving(left+feather/2,0,right+feather,height,right+feather/2,right+feather)
             event(1,ds,de,base,literal(word['text']))
             for y1,y2,hex_color in gradient_colors(row):
                 main=motion+paint(hex_color,'sung',shadow=False)+moving(left,y1,left,y2,left,right-feather/2)
@@ -172,4 +184,31 @@ def build_ass(project):
                 x=countdown['x']+j*countdown['size']*1.28
                 tags=(f"\\an7\\pos({x:.2f},{countdown['y']:.2f})\\p1\\fscx{scale:.2f}\\fscy{scale:.2f}\\bord.5\\shad0\\1c{color(s['sung'])}\\3c{color(s['outline_unsung'])}\\fad(120,100)")
                 event(6,start,end,tags,ICONS[s['countdown']])
+    title=plan.get('title')
+    if title:
+        from song_title import ass_motion
+        box=title.get('box')
+        if box:
+            stops=box['colors'];bands=24
+            fade_in=round(title['effect_seconds']*1000) if title['enter']!='none' else 0
+            fade_out=round(title['effect_seconds']*1000) if title['exit']!='none' else 0
+            for j in range(bands):
+                a=j/bands*(len(stops)-1);k=min(len(stops)-2,int(a));fill=blend(stops[k],stops[k+1],a-k)
+                x0=box['width']*j/bands;x1=box['width']*(j+1)/bands+.25
+                shape=f'm {x0:.2f} 0 l {x1:.2f} 0 {x1:.2f} {box["height"]:.2f} {x0:.2f} {box["height"]:.2f}'
+                tags=(f"\\an7\\pos({box['x']:.2f},{box['y']:.2f})\\p1\\bord0\\shad0"
+                      +f"\\1c{color(fill)}\\1a&H{round(255*(1-box['opacity']/100)):02X}&\\fad({fade_in},{fade_out})")
+                event(8,title['start'],title['end'],tags,shape)
+            if box['border_width']:
+                shape=rounded_box(0,0,box['width'],box['height'],box['radius'])
+                tags=(f"\\an7\\pos({box['x']:.2f},{box['y']:.2f})\\p1\\bord{box['border_width']:.2f}\\shad0"
+                      +f"\\1a&HFF&\\3c{color(box['border'])}\\3a&H00&\\fad({fade_in},{fade_out})")
+                event(9,title['start'],title['end'],tags,shape)
+        for row in title['rows']:
+            entering,leaving,split=ass_motion(row,title)
+            tags=(f"\\fn{title['font']}\\fs{row['size']:.3f}\\b{title['weight']}\\i{-1 if title['italic'] else 0}"
+                  +f"\\bord{title['outline_width']:.2f}\\shad{title['shadow']:.2f}"
+                  +f"\\1c{color(title['color'])}\\3c{color(title['outline'])}\\4c{color(title['shadow_color'])}")
+            event(10,title['start'],split,entering+tags,literal(row['text']))
+            event(10,split,title['end'],leaving+tags,literal(row['text']))
     return '\n'.join(lines)+'\n'

@@ -33,6 +33,7 @@ function studioStyle(){
     if(p.background_name)preview.style.backgroundImage=`url('${endpoint('/background')}?v=${p.updated_at}')`;
     info=p.background_name||'Chưa nạp ảnh nền.';
   }else info='Màu nền '+s.background;
+  $('backgroundFileTools').hidden=['original','color'].includes(s.background_type);
   const video=$('backgroundVideo'),url=videoSlot?endpoint('/video/'+videoSlot)+'?v='+p.updated_at:'';
   if(video.getAttribute('data-source')!==url){video.pause();video.setAttribute('data-source',url);if(url)video.src=url;else{video.removeAttribute('src');video.load();}}
   video.hidden=!url;$('backgroundInfo').textContent=info;
@@ -40,6 +41,7 @@ function studioStyle(){
   $('renderBtn').textContent='↗ Dựng video '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p');
   document.querySelectorAll('[data-display-mode]').forEach(b=>{const on=b.dataset.displayMode===s.display_mode;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-singing-mode]').forEach(b=>{const on=b.dataset.singingMode===s.singing_mode;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
+  document.querySelectorAll('[data-title-template]').forEach(b=>{const on=b.dataset.titleTemplate===s.title_template;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-align]').forEach(b=>{const on=b.dataset.align===s.align;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-karaoke-only]').forEach(el=>el.hidden=s.display_mode!=='karaoke');
   $('modeHint').textContent={karaoke:'Hai hàng cố định, quét màu theo từng từ.',lyricsmv:'Lời nổi bật theo từng câu trên nền nhạc/video.',subtitle:'Phụ đề hiện trọn câu theo mốc đã căn.'}[s.display_mode];
@@ -73,12 +75,18 @@ function rowMotion(row,s,t){
   if(mode==='slideup')dy=row.font_size*(1-enter);
   return {opacity,scale,dx,dy,rx};
 }
+function roleIconMarkup(row,settings,scale){
+  const marker=row.role_icon;if(!marker)return '';
+  const size=marker.size*scale,outline=settings.outline_width*2/marker.size*32;
+  const shadow=settings.shadow?`filter:drop-shadow(${settings.shadow*scale}px ${settings.shadow*scale}px 0 ${settings.shadow_color});`:'';
+  return `<svg class="studio-role-icon" viewBox="0 0 32 32" role="img" aria-label="${esc(marker.label)}" style="left:${(marker.x-row.x)*scale}px;top:${(marker.y-row.y)*scale}px;width:${size}px;height:${size}px;${shadow}"><path d="${marker.path}" fill="none" stroke="${colorAlpha(settings.outline_sung,settings.outline_sung_opacity)}" stroke-width="${outline}" stroke-linejoin="round"/><path d="${marker.path}" fill="${marker.color}"/></svg>`;
+}
 function studioFrame(){
   if(!state.project)return;
   const p=state.project,s=p.settings,t=beatNow(),plan=state.manualTiming?.plan||state.layout,stage=$('preview'),lyrics=$('previewLyrics');
   $('previewEmpty').hidden=!!p.words.length;
   $('previewTime').textContent=time(t);$('currentTime').textContent=time(audio.currentTime,true);if(document.activeElement!==$('seek'))$('seek').value=audio.currentTime;
-  syncBackground(t);updateLogoFrame(t);
+  syncBackground(t);updateLogoFrame(t);drawSongTitle(t);
   if(!plan){lyrics.innerHTML='';$('previewCountdown').hidden=true;return;}
   const scale=stage.clientWidth/plan.width;
   let rows=[];
@@ -133,7 +141,7 @@ function studioFrame(){
       const shadowLayer=s.shadow?`<span class="studio-shadow" style="color:${s.shadow_color};-webkit-text-stroke:var(--outline-width) ${s.shadow_color};transform:translate(${px(s.shadow)},${px(s.shadow)})">${esc(w.text)}</span>`:'';
       return `<span class="studio-word" style="--mask-pad:${pad}px;left:${px(w.x-row.x)};width:${size.toFixed(3)}px;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${shadowLayer}<span class="studio-base" style="color:${s.unsung};visibility:${progress>=1?'hidden':'visible'};mask-image:${baseMask};-webkit-mask-image:${baseMask}">${esc(w.text)}</span><span class="studio-fill" style="${grad}visibility:${progress<=0?'hidden':'visible'};mask-image:${fillMask};-webkit-mask-image:${fillMask}">${esc(w.text)}</span>${glow}</span>`;
     }).join('');
-    return `<div class="studio-line karaoke-line" data-row="${row.slot}" style="${rowStyle}width:${px(row.width)};height:${px(row.height)}">${words}</div>`;
+    return `<div class="studio-line karaoke-line" data-row="${row.slot}" style="${rowStyle}width:${px(row.width)};height:${px(row.height)}">${roleIconMarkup(row,s,scale)}${words}</div>`;
   }).join('');
   patchLyricPreview(lyrics,markup);
   const countdown=$('previewCountdown'),window=plan.countdowns.find(w=>t>=w.start&&t<w.end);
@@ -166,7 +174,7 @@ function initStudio(){
   initBranding();
   initTimelineEditing();
   initLayoutResize();
-  initWorkspaceTools();
+  initWorkspaceTools();initSongTitle();initWaveTrackControls();
   initTimelineTools();
   document.querySelectorAll('[data-inspector-tab]').forEach(b=>b.onclick=()=>showInspector(b.dataset.inspectorTab));
   $('toggleWavesBtn').onclick=()=>{state.showWaves=!state.showWaves;$('waveformPanel').hidden=!state.showWaves;$('waveformHeightGrip').hidden=!state.showWaves;$('toggleWavesBtn').setAttribute('aria-pressed',String(state.showWaves));drawTimeline();};
@@ -176,12 +184,6 @@ function initStudio(){
   $('fontSmaller').onclick=()=>setStyleValue('font_size',Math.max(20,state.project.settings.font_size-2));
   $('fontLarger').onclick=()=>setStyleValue('font_size',Math.min(240,state.project.settings.font_size+2));
   $('countdownInput').onchange=wrap(async()=>{const input=$('countdownInput');await upload('countdown',input.files[0]);input.value='';});
-  $('autoSplitBtn').onclick=wrap(async()=>{
-    if(state.job)return;remember();await saveNow();
-    const result=await api(endpoint('/autosplit'),{method:'POST',body:{text:$('lyricsText').value}});
-    state.project=result.project;state.layout=null;renderAll();
-    toast(result.changed?`Đã chia thêm ${result.changed} dòng, giữ nguyên thời gian từng từ.`:'Các dòng đã vừa khung. Mốc từ được giữ nguyên.');
-  });
   $('splitLineBtn').onclick=()=>{
     if(state.job)return;const w=selectedWord();if(!w)return;
     const words=state.project.words,first=words.findIndex(x=>x.line===w.line);
@@ -202,18 +204,27 @@ function initStudio(){
     if(!state.project.reference)throw Error('Cần bản hát có giọng để tự phân vai.');
     if(!state.project.words.length)throw Error('Nhận lời hoặc đồng bộ lời trước khi phân vai.');
     if(state.project.words.some(w=>w.role!=='all')&&!confirm('Tự phân vai sẽ thay vai đã gán ở các câu nhận được giọng. Giữ nguyên lời và thời gian. Tiếp tục?'))return;
-    await saveNow();remember();await followJob(await api(endpoint('/suggest-roles'),{method:'POST',body:{device:$('devicePreference').value}}));
+    await saveNow();remember();await followJob(await api(endpoint('/suggest-roles'),{method:'POST',body:{device:'auto'}}));
   });
   $('swapRolesBtn').onclick=()=>{if(state.job||state.manualTiming)return;remember();for(const w of state.project.words)w.role=w.role==='male'?'female':w.role==='female'?'male':w.role;renderWords();renderSelected();renderStyle();drawTimeline();dirty();};
   $('alternateRolesBtn').onclick=()=>{if(state.job)return;remember();const ids=[...new Set(state.project.words.map(w=>w.line))];for(const w of state.project.words)w.role=ids.indexOf(w.line)%2?'female':'male';renderWords();drawTimeline();dirty();};
-  api('/api/fonts?vietnamese=1').then(fonts=>{const current=state.project?.settings.font||'Arial';$('fontName').innerHTML=fonts.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');if(!fonts.includes(current))$('fontName').add(new Option(current+' · font project',current));$('fontName').value=current;$('fontCountNote').textContent=fonts.length+' font đã kiểm tra đủ ký tự và dấu tiếng Việt.';}).catch(()=>{$('fontCountNote').textContent='Chưa quét được font; đang hiện danh sách cơ bản.';});
+  api('/api/fonts?vietnamese=1').then(fonts=>{
+    const current=state.project?.settings.font||'Arial',titleCurrent=state.project?.settings.title_font||'Arial';
+    $('fontName').innerHTML=fonts.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
+    $('titleFont').innerHTML=fonts.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
+    if(!fonts.includes(current))$('fontName').add(new Option(current+' · font project',current));
+    if(!fonts.includes(titleCurrent))$('titleFont').add(new Option(titleCurrent+' · font project',titleCurrent));
+    $('fontName').value=current;$('titleFont').value=titleCurrent;
+    $('fontCountNote').textContent=fonts.length+' phông chữ có đủ ký tự và dấu tiếng Việt.';
+    $('titleFontCountNote').textContent='Có '+fonts.length+' phông chữ tiêu đề hỗ trợ tiếng Việt.';
+  }).catch(()=>{$('fontCountNote').textContent='Chưa quét được phông chữ; đang hiện danh sách cơ bản.';$('titleFontCountNote').textContent='Đang dùng danh sách phông chữ cơ bản.';});
 }
 
 function timelineGutter(width){return width<480?70:94;}
 function showInspector(name){if(name==='timing'){$('wordTools').open=true;$('wordTools').scrollIntoView({block:'nearest'});}}
 function compactProjectView(){
-  const p=state.project;$('sourceSummary').textContent=p.reference&&p.beat?'✓ đã nạp':!p.reference&&!p.beat?'chưa nạp':'còn thiếu 1 file';
-  if(state.viewProject!==p.id){state.viewProject=p.id;$('sourceFiles').open=!(p.reference&&p.beat);$('aiOptions').open=false;showInspector('design');}
+  const p=state.project;
+  if(state.viewProject!==p.id){state.viewProject=p.id;showInspector('design');}
 }
 function studioTimeline(){
   const canvas=$('timeline'),rect=canvas.getBoundingClientRect();if(!rect.width||!state.project)return;
@@ -298,4 +309,7 @@ $('timelineManualBtn').onclick=wrap(openTappingDialog);
 
 }
 
-function roleAnalysisMessage(result){return result.two_registers?`Đã gợi ý: Nam ${result.male} · Nữ ${result.female} · Cùng hát ${result.shared} câu. ${result.uncertain?'Giữ nguyên '+result.uncertain+' câu chưa rõ giọng. ':''}Nghe lại và chỉnh những chỗ chưa đúng.`:'Chưa đủ bằng chứng có hai dải giọng khác nhau; giữ nguyên phân vai hiện tại. Có thể gán từng câu bằng tay.';}
+function roleAnalysisMessage(result){
+  if(result.two_registers)return `Gợi ý theo dải giọng: Nam ${result.male} · Nữ ${result.female} · Cùng hát ${result.shared} câu. ${result.uncertain?'Giữ nguyên '+result.uncertain+' câu chưa rõ giọng. ':''}Nghe lại và chỉnh vai nếu cần; cao độ không xác định chắc giới tính người hát.`;
+  return (result.reason==='insufficient_voiced_audio'?'Chưa đủ đoạn vocal rõ để phân vai.':'Hai dải giọng còn chồng lấn, chưa đủ chắc để gán vai.')+' Giữ nguyên phân vai hiện tại; bạn có thể gán Nam / Nữ cho từng câu.';
+}

@@ -23,7 +23,7 @@ def test_separation_downloads_are_separate_from_project_beat(tmp_path, monkeypat
     monkeypatch.setattr(engine, 'DATA', tmp_path)
     monkeypatch.setattr(engine, 'convert', lambda source, dest, job: dest.write_bytes(b'original input'))
     monkeypatch.setattr(server.hardware, 'detect', lambda: {})
-    monkeypatch.setattr(server.hardware, 'select_ai', lambda *args: {'demucs': {'device': 'cpu'}})
+    monkeypatch.setattr(server.hardware, 'select_ai', lambda *args, **kwargs: {'demucs': {'device': 'cpu'}})
     def separate(source, folder, job, device):
         (folder / 'vocals.wav').write_bytes(b'vocal output')
         (folder / 'reference_instrumental.wav').write_bytes(b'beat output')

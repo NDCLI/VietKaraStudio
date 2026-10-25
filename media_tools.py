@@ -1,27 +1,119 @@
 """Background video is visual only; its audio is never mapped into an export."""
 import json
 from pathlib import Path
+import re
 import subprocess
+from urllib.parse import parse_qs, urlparse
 
 import hardware
 
 VIDEO_EXTENSIONS = ('.mp4','.mov','.mkv','.webm','.avi','.m4v')
 IMAGE_EXTENSIONS = ('.jpg','.jpeg','.png','.webp')
+YOUTUBE_HOSTS = frozenset(('youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'))
+
+
+def youtube_video_id(value):
+    """Return a single YouTube video id, rejecting playlists and non-video URLs."""
+    try:
+        parsed = urlparse(str(value).strip())
+    except ValueError:
+        return None
+    if parsed.scheme not in ('http', 'https') or parsed.hostname not in YOUTUBE_HOSTS:
+        return None
+    query = parse_qs(parsed.query)
+    if 'list' in query:
+        return None
+    if parsed.hostname == 'youtu.be':
+        video_id = parsed.path.strip('/').split('/')[0]
+    else:
+        if parsed.path.rstrip('/') not in ('', '/watch'):
+            return None
+        video_id = query.get('v', [''])[0]
+    if not re.fullmatch(r'[A-Za-z0-9_-]{6,20}', video_id or ''):
+        return None
+    return video_id
+
+
+def download_youtube(url, destination, job):
+    """Download one user-authorized YouTube video into a temporary job folder."""
+    video_id = youtube_video_id(url)
+    if not video_id:
+        raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+    try:
+        import yt_dlp
+    except ImportError as exc:
+        raise RuntimeError('Thiếu yt-dlp. Hãy cài lại dependency của app rồi thử lại.') from exc
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    output = destination / 'youtube_source.%(ext)s'
+
+    def hook(item):
+        job.check()
+        if item.get('status') == 'downloading':
+            total = item.get('total_bytes') or item.get('total_bytes_estimate') or 0
+            received = item.get('downloaded_bytes') or 0
+            percent = 5 + (received * 35 / total if total else 0)
+            job.update(min(40, percent), 'Đang tải nguồn YouTube…')
+        elif item.get('status') == 'finished':
+            job.update(40, 'Đã tải nguồn YouTube, đang chuẩn bị tách vocal…')
+
+    options = {
+        'format': 'bestaudio/best',
+        'outtmpl': str(output),
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+        'progress_hooks': [hook],
+        'restrictfilenames': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(options) as downloader:
+            downloader.download([str(url).strip()])
+    except Exception as exc:
+        if job.cancelled.is_set():
+            raise
+        raise RuntimeError('Không tải được video YouTube: ' + str(exc)[-500:]) from exc
+    candidates = [path for path in destination.glob('youtube_source.*') if path.is_file()]
+    if not candidates:
+        raise RuntimeError('YouTube không trả về file âm thanh hợp lệ.')
+    return candidates[0]
 
 
 def probe_video(path):
     import engine
-    r = subprocess.run([engine.binary('ffprobe'),'-v','error','-show_streams','-show_format','-of','json',str(path)],
-                       capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=30,
-                       creationflags=engine.CREATE_NO_WINDOW)
-    if r.returncode: raise ValueError('Không đọc được thông tin video.')
-    data=json.loads(r.stdout)
-    video=next((s for s in data.get('streams',[]) if s.get('codec_type')=='video' and not s.get('disposition',{}).get('attached_pic')),None)
-    if not video: raise ValueError('File không có hình ảnh video.')
+    try:
+        executable = engine.binary('ffprobe')
+    except RuntimeError:
+        # imageio-ffmpeg ships ffmpeg but not ffprobe. Keep source installs usable
+        # by parsing the stable human-readable stream summary as a fallback.
+        result = subprocess.run([engine.binary('ffmpeg'), '-hide_banner', '-i', str(path)],
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=30,
+                                creationflags=engine.CREATE_NO_WINDOW)
+        details = result.stderr
+        match = re.search(r'Duration: (\d+):(\d+):(\d+(?:\.\d+)?)', details)
+        stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[).*?(\d+(?:\.\d+)?) fps', details)
+        if not stream:
+            stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[)', details)
+        if not stream:
+            raise ValueError('Không đọc được thông tin video.')
+        duration = ((int(match.group(1)) * 60 + int(match.group(2))) * 60 + float(match.group(3))) if match else 0.
+        fps = float(stream.group(3)) if len(stream.groups()) >= 3 else 30.
+        return {'duration': duration, 'fps': fps, 'width': int(stream.group(1)), 'height': int(stream.group(2))}
+    r = subprocess.run([executable, '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)],
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
+                       errors='replace', timeout=30, creationflags=engine.CREATE_NO_WINDOW)
+    if r.returncode:
+        raise ValueError('Không đọc được thông tin video.')
+    data = json.loads(r.stdout)
+    video = next((s for s in data.get('streams', []) if s.get('codec_type') == 'video' and
+                  not s.get('disposition', {}).get('attached_pic')), None)
+    if not video:
+        raise ValueError('File không có hình ảnh video.')
     from render_info import fps_value
-    return {'duration':float(data.get('format',{}).get('duration',video.get('duration',0))),
-            'fps':fps_value(video.get('avg_frame_rate') or video.get('r_frame_rate','30')),
-            'width':int(video['width']),'height':int(video['height'])}
+    return {'duration': float(data.get('format', {}).get('duration', video.get('duration', 0))),
+            'fps': fps_value(video.get('avg_frame_rate') or video.get('r_frame_rate', '30')),
+            'width': int(video['width']), 'height': int(video['height'])}
 
 
 def make_proxy(source, destination, job):

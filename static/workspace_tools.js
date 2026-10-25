@@ -7,12 +7,12 @@ function initWorkspaceTools(){
   });
   $('videoSeparateBtn').onclick=wrap(async()=>{
     if(state.job||state.manualTiming)return;
-    await saveNow();document.querySelector('[data-page="separation"]').click();
-    $('separationResult').hidden=true;$('separationRun').disabled=true;
-    try{
-      const result=await waitUtilityJob(await api(endpoint('/separate'),{method:'POST',body:{source:'background',device:$('devicePreference').value}}),'separationStatus');
-      if(result){$('separatedBeatPreview').src=result.beat;$('separatedBeatDownload').href=result.beat;$('separatedVocalPreview').src=result.vocals;$('separatedVocalDownload').href=result.vocals;$('separationResult').hidden=false;}
-    }finally{$('separationRun').disabled=false;}
+    if((state.project.beat||state.project.reference||state.project.words.length)&&!confirm('Tách video và dùng làm nguồn sẽ thay Beat, bản có vocal và các mốc lời hiện tại. Tiếp tục?'))return;
+    await saveNow();audio.pause();$('karaokeSeparationStatus').textContent='Đang tách video thành Beat và Vocal…';
+    const job=await api(endpoint('/separate'),{method:'POST',body:{source:'background',apply_to_project:true,device:'auto'}});
+    const completed=await followJob(job);
+    if(!completed?.result?.applied){$('karaokeSeparationStatus').textContent='Chưa áp dụng kết quả tách. Kiểm tra thông báo lỗi hoặc thử lại.';return;}
+    if(state.project?.vocals_ready){setAudio('beat',0);$('karaokeSeparationStatus').textContent='Đã nạp Beat, bản gốc và Vocal riêng. Bấm loa tại sóng nhạc để nghe từng bản.';toast('Đã tách và nạp nguồn ngay trong Karaoke.');}
   });
   document.querySelectorAll('[data-page]').forEach(b=>b.onclick=wrap(async()=>{
     if(state.manualTiming)return toast('Kết thúc phiên đồng bộ trước khi chuyển tab.');
@@ -20,14 +20,18 @@ function initWorkspaceTools(){
     await saveNow();audio.pause();$('separatedBeatPreview').pause();$('separatedVocalPreview').pause();
     document.querySelectorAll('[data-app-page]').forEach(p=>p.hidden=p.dataset.appPage!==b.dataset.page);
     document.querySelectorAll('[data-page]').forEach(p=>p.classList.toggle('on',p===b));
-    if(b.dataset.page==='settings')await refreshModels();
+    if(b.dataset.page==='settings'){await refreshModels();if(window.refreshUpdateStatus)window.refreshUpdateStatus();}
     if(b.dataset.page==='karaoke')drawTimeline();
   }));
   $('separationRun').onclick=wrap(async()=>{
     if(state.job)return toast('Đang có tác vụ xử lý.');
-    const file=$('separationInput').files[0];if(!file)throw Error('Chọn bài nhạc cần tách.');
-    const body=new FormData();body.append('file',file);body.append('device',$('separationDevice').value);
-    $('separationRun').disabled=true;$('separationStatus').textContent='Đang nạp bài nhạc…';
+    const file=$('separationInput').files[0];
+    const youtube=($('separationYoutubeUrl').value||'').trim();
+    if(!file&&!youtube)throw Error('Chọn bài nhạc hoặc dán URL YouTube cần tách.');
+    if(file&&youtube)throw Error('Chỉ chọn file hoặc URL YouTube, không dùng cả hai.');
+    const body=youtube?{source:'youtube',url:youtube,device:'auto'}:new FormData();
+    if(file){body.append('file',file);body.append('device','auto');}
+    $('separationRun').disabled=true;$('separationStatus').textContent=youtube?'Đang chuẩn bị tải YouTube…':'Đang nạp bài nhạc…';
     try{
       const job=await api(endpoint('/separate'),{method:'POST',body});
       $('separationResult').hidden=true;
@@ -58,7 +62,7 @@ async function waitUtilityJob(job,statusId){
   busy(job);
   try{
     while(['running','queued'].includes(job.state)){
-      if(statusId)$(statusId).textContent=job.message;
+      if(statusId)$(statusId).textContent=friendlyJobMessage(job);
       await new Promise(resolve=>setTimeout(resolve,750));
       job=await api('/api/jobs/'+job.id);busy(job);
     }

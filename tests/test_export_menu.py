@@ -43,9 +43,8 @@ def test_export_manifest_original_video_fps_and_selected_folder(client,tmp_path,
     assert output.suffix=='.'+format and result['format']==format
     assert client.get(result['video']).status_code==200
     assert abs(media_tools.probe_video(output)['fps']-24)<.01
-    manifest=json.loads(next(folder.glob('*.render-info.json')).read_text(encoding='utf-8'))
-    assert manifest['encoder']=='libx264' and manifest['output']['quality']=='high'
-    assert len(list(folder.glob('*.srt')))==1 and len(list(folder.glob('*.ass')))==1
+    assert not list(folder.glob('*.render-info.json'))
+    assert not list(folder.glob('*.srt')) and not list(folder.glob('*.ass')) and not list(folder.glob('*.lrc'))
     assert not list(folder.glob('*.partial'))
     assert client.patch(url,json={'settings':{'render_quality':'invalid'}}).status_code==400
     assert client.patch(url,json={'settings':{'render_format':'../avi'}}).status_code==400
