@@ -1,0 +1,31 @@
+{
+  "id": "cinematic_gold",
+  "name": "Cinematic Gold",
+  "cat": "Màu nền ấm, điện ảnh",
+  "ar": "16:9",
+  "best": "Video điện ảnh",
+  "bestEn": "Cinematic warm glow",
+  "desc": "Chữ vàng ánh điện ảnh, viền nâu đỏ, phối hợp nhất cho cảnh phim, sân khấu và video hiệu ứng cao cấp.",
+  "descEn": "Cinematic gold text, copper-red outline, made for dramatic film scenes and premium-style edits.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#fbbf24",
+    "unsung": "#fef3c7",
+    "ou": "#7c2d12",
+    "os": "#78350f",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 11,
+    "shadowOn": true,
+    "shsc": "#f59e0b",
+    "lineAnim": "slidedown",
+    "sweepFx": 9,
+    "sweepGlow": 120
+  }
+}

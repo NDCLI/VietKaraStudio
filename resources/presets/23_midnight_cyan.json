@@ -1,0 +1,31 @@
+{
+  "id": "midnight_cyan",
+  "name": "Midnight Cyan",
+  "cat": "Màu nền tối, thành phố",
+  "ar": "16:9",
+  "best": "Đêm thành phố",
+  "bestEn": "Night neon city",
+  "desc": "Chữ xanh cyan sáng, viền xanh đậm, giúp lời bài hát nổi bật trên nền tối, thành phố và video đêm.",
+  "descEn": "Bright cyan text, deep navy outline, excellent for nighttime city and neon-driven visuals.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#67e8f9",
+    "unsung": "#ecfeff",
+    "ou": "#082f49",
+    "os": "#0f172a",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 12,
+    "shadowOn": true,
+    "shsc": "#06b6d4",
+    "lineAnim": "zoom",
+    "sweepFx": 10,
+    "sweepGlow": 140
+  }
+}

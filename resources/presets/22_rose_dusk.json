@@ -1,0 +1,31 @@
+{
+  "id": "rose_dusk",
+  "name": "Rose Dusk",
+  "cat": "Màu nền nữ tính",
+  "ar": "16:9",
+  "best": "Hồng ngọt, ấm",
+  "bestEn": "Soft blush tones",
+  "desc": "Chữ hồng san hô, viền đỏ tía, thích hợp cho video lãng mạn, slow motion và cảnh tối ấm.",
+  "descEn": "Coral pink text, mauve-red outline, suited for soft romantic and warm-toned footage.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#fb7185",
+    "unsung": "#ffe4e6",
+    "ou": "#9f1239",
+    "os": "#881337",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "heart",
+    "shadow": 10,
+    "shadowOn": true,
+    "shsc": "#f43f5e",
+    "lineAnim": "slowfade",
+    "sweepFx": 6,
+    "sweepGlow": 90
+  }
+}

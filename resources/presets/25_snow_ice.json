@@ -1,0 +1,31 @@
+{
+  "id": "snow_ice",
+  "name": "Snow Ice",
+  "cat": "Màu nền lạnh",
+  "ar": "16:9",
+  "best": "Băng, tuyết",
+  "bestEn": "Frozen winter",
+  "desc": "Chữ trắng băng, viền xanh lam tối, tối ưu cho cảnh tuyết, mùa đông và nền lạnh cực sáng.",
+  "descEn": "Ice-white text, deep blue outline, optimized for snowy, winter, and cool bright scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#f8fafc",
+    "unsung": "#e0f2fe",
+    "ou": "#0f172a",
+    "os": "#1d4ed8",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "star",
+    "shadow": 9,
+    "shadowOn": true,
+    "shsc": "#60a5fa",
+    "lineAnim": "slowfade",
+    "sweepFx": 7,
+    "sweepGlow": 95
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "dawn_sunrise",
+  "name": "Dawn Sunrise",
+  "cat": "Màu nền ấm",
+  "ar": "16:9",
+  "best": "Video sáng, ấm",
+  "bestEn": "Warm daylight",
+  "desc": "Chữ vàng nắng, viền cam đỏ, phù hợp cho cảnh bình minh, nền sáng và video tự nhiên.",
+  "descEn": "Golden yellow text, amber-red outline, ideal for bright sunrise footage and warm natural scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#ffd166",
+    "unsung": "#fff7d6",
+    "ou": "#b45309",
+    "os": "#7c2d12",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "star",
+    "shadow": 10,
+    "shadowOn": true,
+    "shsc": "#f97316",
+    "lineAnim": "slowfade",
+    "sweepFx": 6,
+    "sweepGlow": 90
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "laser_neon",
+  "name": "Laser Neon",
+  "cat": "Màu nền neon",
+  "ar": "16:9",
+  "best": "Bản nhạc EDM",
+  "bestEn": "Neon club vibe",
+  "desc": "Chữ xanh lá neon, viền tím hồng, cho cảm giác sôi động, mạnh mẽ và rất phù hợp video âm nhạc EDM.",
+  "descEn": "Neon green lyrics, magenta-violet outline, high-energy and perfect for EDM and club visuals.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#a3ff12",
+    "unsung": "#e2fbd7",
+    "ou": "#7c3aed",
+    "os": "#4c1d95",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 14,
+    "shadowOn": true,
+    "shsc": "#22d3ee",
+    "lineAnim": "punchzoom",
+    "sweepFx": 12,
+    "sweepGlow": 170
+  }
+}

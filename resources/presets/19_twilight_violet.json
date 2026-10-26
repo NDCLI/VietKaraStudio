@@ -1,0 +1,31 @@
+{
+  "id": "twilight_violet",
+  "name": "Twilight Violet",
+  "cat": "Màu nền tối",
+  "ar": "16:9",
+  "best": "Lãng mạn, tối",
+  "bestEn": "Romantic dusk",
+  "desc": "Chữ hồng tím, viền tím sẫm, hiệu ứng mềm cho nền hoàng hôn, tối và các cảnh lãng mạn.",
+  "descEn": "Violet-pink text, deep purple outline, soft and elegant for dusk or romantic night scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#f9a8d4",
+    "unsung": "#fdf2f8",
+    "ou": "#4c1d95",
+    "os": "#312e81",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "heart",
+    "shadow": 12,
+    "shadowOn": true,
+    "shsc": "#8b5cf6",
+    "lineAnim": "zoom",
+    "sweepFx": 7,
+    "sweepGlow": 100
+  }
+}

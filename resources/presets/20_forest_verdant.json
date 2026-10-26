@@ -1,0 +1,31 @@
+{
+  "id": "forest_verdant",
+  "name": "Forest Verdant",
+  "cat": "Màu nền tự nhiên",
+  "ar": "16:9",
+  "best": "Nền xanh rừng",
+  "bestEn": "Fresh greenery",
+  "desc": "Chữ xanh lá tươi, viền xanh đậm, dùng cho video rừng, núi, thiên nhiên và cảm giác sống động.",
+  "descEn": "Bright green text, deep forest outline, perfect for green landscapes and nature footage.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#86efac",
+    "unsung": "#f0fdf4",
+    "ou": "#14532d",
+    "os": "#166534",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 9,
+    "shadowOn": true,
+    "shsc": "#22c55e",
+    "lineAnim": "punchzoom",
+    "sweepFx": 5,
+    "sweepGlow": 80
+  }
+}

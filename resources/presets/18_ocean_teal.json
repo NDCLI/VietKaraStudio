@@ -1,0 +1,31 @@
+{
+  "id": "ocean_teal",
+  "name": "Ocean Teal",
+  "cat": "Màu nền mát",
+  "ar": "16:9",
+  "best": "Nền biển, mát",
+  "bestEn": "Cool sea tones",
+  "desc": "Chữ xanh ngọc, viền lam đen, giúp nhạc lời nổi bật trên nền biển, hồ nước và cảnh mát.",
+  "descEn": "Teal text, deep blue outline, ideal for ocean, lake, and cool-toned scenery.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#6ee7d7",
+    "unsung": "#ecfeff",
+    "ou": "#0f172a",
+    "os": "#164e63",
+    "ow": 7,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "note",
+    "shadow": 8,
+    "shadowOn": true,
+    "shsc": "#0ea5e9",
+    "lineAnim": "slideup",
+    "sweepFx": 8,
+    "sweepGlow": 110
+  }
+}

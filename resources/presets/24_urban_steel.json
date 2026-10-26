@@ -1,0 +1,31 @@
+{
+  "id": "urban_steel",
+  "name": "Urban Steel",
+  "cat": "Màu nền công nghiệp",
+  "ar": "16:9",
+  "best": "Phim công nghiệp",
+  "bestEn": "Industrial steel",
+  "desc": "Chữ bạc lạnh, viền xám đen, phù hợp cho video điện ảnh, xu hướng công nghiệp và nền tối kính.",
+  "descEn": "Cold silver text, charcoal-gray outline, ideal for industrial, cinematic, and modern city scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#dfe7ef",
+    "unsung": "#f8fafc",
+    "ou": "#1f2937",
+    "os": "#111827",
+    "ow": 7,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "note",
+    "shadow": 7,
+    "shadowOn": true,
+    "shsc": "#94a3b8",
+    "lineAnim": "none",
+    "sweepFx": 8,
+    "sweepGlow": 100
+  }
+}
