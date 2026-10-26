@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VietKaraStudio Preset Preview</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --border: rgba(255,255,255,0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #020817 0%, #0f172a 100%);
+      color: var(--text);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      padding: 32px 20px 60px;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 0 0 24px;
+      letter-spacing: 0.04em;
+    }
+
+    .grid {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: rgba(17,24,39,0.92);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+    }
+
+    .preview {
+      position: relative;
+      height: 220px;
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .preview::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(255,255,255,0.14), transparent 38%, rgba(0,0,0,0.14));
+      pointer-events: none;
+    }
+
+    .lyric-box {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      width: min(85%, 480px);
+      background: rgba(15, 23, 42, 0.18);
+      border-radius: 18px;
+      padding: 12px 18px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+      backdrop-filter: blur(2px);
+    }
+
+    .lyric-main {
+      font-size: clamp(1.3rem, 2vw, 2.2rem);
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 0;
+      line-height: 1.15;
+      white-space: nowrap;
+      text-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 8px 18px rgba(0,0,0,0.28);
+    }
+
+    .lyric-sub {
+      font-size: 0.82rem;
+      opacity: 0.9;
+      margin-top: 6px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .info {
+      padding: 16px 18px 18px;
+    }
+
+    .name {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .name strong {
+      font-size: 1.08rem;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--muted);
+    }
+
+    .desc {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .swatches {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.12);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+    }
+  </style>
+</head>
+<body>
+  <h1>VietKaraStudio Preset Preview</h1>
+
+  <div class="grid" id="grid"></div>
+
+  <script>
+    const presets = [
+      { id: 17, name: 'Dawn Sunrise', cat: 'Màu nền ấm', bg: '#fbbf24', fg1: '#ffd166', fg2: '#fff7d6', border: '#b45309', shadow: '#f97316', text: 'MÙA HÈ', caption: 'Warm sunrise' },
+      { id: 18, name: 'Ocean Teal', cat: 'Màu nền mát', bg: '#0ea5e9', fg1: '#6ee7d7', fg2: '#ecfeff', border: '#0f172a', shadow: '#164e63', text: 'BIỂN XA', caption: 'Cool sea tones' },
+      { id: 19, name: 'Twilight Violet', cat: 'Màu nền tối', bg: '#312e81', fg1: '#f9a8d4', fg2: '#fdf2f8', border: '#4c1d95', shadow: '#8b5cf6', text: 'TÌNH YÊU', caption: 'Romantic dusk' },
+      { id: 20, name: 'Forest Verdant', cat: 'Màu nền tự nhiên', bg: '#166534', fg1: '#86efac', fg2: '#f0fdf4', border: '#14532d', shadow: '#22c55e', text: 'RỪNG XANH', caption: 'Fresh greenery' },
+      { id: 21, name: 'Cinematic Gold', cat: 'Màu nền ấm', bg: '#78350f', fg1: '#fbbf24', fg2: '#fef3c7', border: '#7c2d12', shadow: '#f59e0b', text: 'CINEMATIC', caption: 'Warm film glow' },
+      { id: 22, name: 'Rose Dusk', cat: 'Màu nền nữ tính', bg: '#881337', fg1: '#fb7185', fg2: '#ffe4e6', border: '#9f1239', shadow: '#f43f5e', text: 'HOÀNG HÔN', caption: 'Soft blush tones' },
+      { id: 23, name: 'Midnight Cyan', cat: 'Màu nền tối', bg: '#0f172a', fg1: '#67e8f9', fg2: '#ecfeff', border: '#082f49', shadow: '#06b6d4', text: 'ĐÊM THÀNH PHỐ', caption: 'Night neon city' },
+      { id: 24, name: 'Urban Steel', cat: 'Màu nền công nghiệp', bg: '#1f2937', fg1: '#dfe7ef', fg2: '#f8fafc', border: '#111827', shadow: '#94a3b8', text: 'URBAN FLOW', caption: 'Industrial steel' },
+      { id: 25, name: 'Snow Ice', cat: 'Màu nền lạnh', bg: '#e0f2fe', fg1: '#f8fafc', fg2: '#e0f2fe', border: '#0f172a', shadow: '#60a5fa', text: 'TÙYẾT XANH', caption: 'Frozen winter' },
+      { id: 26, name: 'Laser Neon', cat: 'Màu nền neon', bg: '#111827', fg1: '#a3ff12', fg2: '#e2fbd7', border: '#7c3aed', shadow: '#22d3ee', text: 'LIGHT UP', caption: 'EDM neon vibe' }
+    ];
+
+    const grid = document.getElementById('grid');
+
+    presets.forEach((preset) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const preview = document.createElement('div');
+      preview.className = 'preview';
+      preview.style.background = `radial-gradient(circle at 20% 20%, ${preset.fg2} 0%, ${preset.bg} 28%, ${preset.bg} 64%, #020817 100%)`;
+
+      const lyric = document.createElement('div');
+      lyric.className = 'lyric-box';
+      lyric.style.border = `2px solid ${preset.border}`;
+      lyric.style.boxShadow = `0 0 0 2px ${preset.shadow}55, 0 16px 34px rgba(0,0,0,0.26)`;
+      lyric.innerHTML = `
+        <p class="lyric-main" style="color:${preset.fg1}; text-shadow: 0 2px 0 ${preset.border}, 0 8px 18px rgba(0,0,0,0.3);">${preset.text}</p>
+        <div class="lyric-sub" style="color:${preset.fg2};">${preset.caption}</div>
+      `;
+      preview.appendChild(lyric);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML = `
+        <div class="name">
+          <strong>${preset.name}</strong>
+          <span class="badge">${preset.id}</span>
+        </div>
+        <p class="desc">${preset.cat}: ${preset.caption}</p>
+        <div class="swatches">
+          <span class="swatch" style="background:${preset.fg1};"></span>
+          <span class="swatch" style="background:${preset.fg2};"></span>
+          <span class="swatch" style="background:${preset.border};"></span>
+          <span class="swatch" style="background:${preset.shadow};"></span>
+        </div>
+      `;
+
+      card.appendChild(preview);
+      card.appendChild(info);
+      grid.appendChild(card);
+    });
+  </script>
+</body>
+</html>
