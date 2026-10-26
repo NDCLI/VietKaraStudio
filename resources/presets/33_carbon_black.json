@@ -1,0 +1,31 @@
+{
+  "id": "carbon_black",
+  "name": "Carbon Black",
+  "cat": "Nền đen tối",
+  "ar": "16:9",
+  "best": "Tối mạnh",
+  "bestEn": "Deep black luxury",
+  "desc": "Chữ trắng bạc, viền xám đen, thích hợp cho video tối, hiệu ứng đen và tạo phong cách mạnh mẽ.",
+  "descEn": "Silver-white lyrics, deep gray outline, perfect for dark, dramatic, and high-contrast cinematic scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#f5f5f5",
+    "unsung": "#e5e7eb",
+    "ou": "#111827",
+    "os": "#030712",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 6,
+    "shadowOn": true,
+    "shsc": "#9ca3af",
+    "lineAnim": "none",
+    "sweepFx": 5,
+    "sweepGlow": 80
+  }
+}

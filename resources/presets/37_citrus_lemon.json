@@ -1,0 +1,31 @@
+{
+  "id": "citrus_lemon",
+  "name": "Citrus Lemon",
+  "cat": "Nền vàng chanh",
+  "ar": "16:9",
+  "best": "Tươi mới",
+  "bestEn": "Fresh citrus energy",
+  "desc": "Chữ vàng chanh, viền xanh cây, rất phù hợp cho video vui nhộn, ban mai, và phong cách trẻ trung.",
+  "descEn": "Lemon-yellow lyrics, deep green outline, perfect for fresh, cheerful, and lively visuals.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#fde047",
+    "unsung": "#fefce8",
+    "ou": "#166534",
+    "os": "#14532d",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "star",
+    "shadow": 9,
+    "shadowOn": true,
+    "shsc": "#84cc16",
+    "lineAnim": "slideup",
+    "sweepFx": 7,
+    "sweepGlow": 94
+  }
+}

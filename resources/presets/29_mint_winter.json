@@ -1,0 +1,31 @@
+{
+  "id": "mint_winter",
+  "name": "Mint Winter",
+  "cat": "Nền xanh nhạt",
+  "ar": "16:9",
+  "best": "Xanh dịu, lạnh",
+  "bestEn": "Refreshing mint",
+  "desc": "Chữ xanh bạc, viền xanh navy, phù hợp cho nền trắng sáng, video trẻ trung và mát lành.",
+  "descEn": "Mint green text, deep navy outline, ideal for fresh, clean, and cool-toned visuals.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#a7f3d0",
+    "unsung": "#ecfdf5",
+    "ou": "#0f172a",
+    "os": "#134e4a",
+    "ow": 7,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "note",
+    "shadow": 8,
+    "shadowOn": true,
+    "shsc": "#34d399",
+    "lineAnim": "slideup",
+    "sweepFx": 7,
+    "sweepGlow": 88
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "peach_fizz",
+  "name": "Peach Fizz",
+  "cat": "Nền hồng cam",
+  "ar": "16:9",
+  "best": "Hồng ngọt, trẻ",
+  "bestEn": "Sweet peach pop",
+  "desc": "Chữ đào nhạt, viền cam đỏ, tạo cảm giác vui tươi, trẻ trung và năng động cho video ngắn.",
+  "descEn": "Soft peach lyrics, coral-red outline, perfect for youthful, happy, and energetic short-form videos.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#fdba74",
+    "unsung": "#fff1e6",
+    "ou": "#c2410c",
+    "os": "#9a3d0d",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "star",
+    "shadow": 10,
+    "shadowOn": true,
+    "shsc": "#fb7185",
+    "lineAnim": "punchzoom",
+    "sweepFx": 7,
+    "sweepGlow": 96
+  }
+}

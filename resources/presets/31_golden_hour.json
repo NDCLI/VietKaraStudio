@@ -1,0 +1,31 @@
+{
+  "id": "golden_hour",
+  "name": "Golden Hour",
+  "cat": "Nền vàng sáng",
+  "ar": "16:9",
+  "best": "Ánh nắng đẹp",
+  "bestEn": "Golden hour glow",
+  "desc": "Chữ vàng cam ấm, viền nâu, rất tốt cho cảnh chiều, video ngoại cảnh và cảm giác hoài niệm.",
+  "descEn": "Amber-gold lyrics, warm brown outline, ideal for golden hour, outdoor memories, and nostalgic footage.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#fcd34d",
+    "unsung": "#fff7cc",
+    "ou": "#7c2d12",
+    "os": "#451a03",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "star",
+    "shadow": 11,
+    "shadowOn": true,
+    "shsc": "#f59e0b",
+    "lineAnim": "slidedown",
+    "sweepFx": 9,
+    "sweepGlow": 125
+  }
+}

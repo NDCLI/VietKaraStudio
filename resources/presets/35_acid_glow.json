@@ -1,0 +1,31 @@
+{
+  "id": "acid_glow",
+  "name": "Acid Glow",
+  "cat": "Nền neon rực",
+  "ar": "16:9",
+  "best": "Neon mạnh",
+  "bestEn": "Acid neon pop",
+  "desc": "Chữ xanh neon, viền tím ngọc, làm nổi bật lời bài hát trong video nhạc cấp tốc, biểu diễn và live show.",
+  "descEn": "Acid green lyrics, vivid purple outline, ideal for high-energy performance and modern neon visuals.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#bef264",
+    "unsung": "#f7fee7",
+    "ou": "#7c3aed",
+    "os": "#4c1d95",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 14,
+    "shadowOn": true,
+    "shsc": "#22d3ee",
+    "lineAnim": "punchzoom",
+    "sweepFx": 12,
+    "sweepGlow": 180
+  }
+}

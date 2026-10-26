@@ -1,0 +1,31 @@
+{
+  "id": "marble_cream",
+  "name": "Marble Cream",
+  "cat": "Nền trắng kem",
+  "ar": "16:9",
+  "best": "Sang, nhẹ",
+  "bestEn": "Elegant cream",
+  "desc": "Chữ nâu sữa, viền nâu đậm, tạo cảm giác thanh lịch và sạch sẽ cho nền sáng, nhẹ nhàng.",
+  "descEn": "Cream-brown lyrics, dark mocha outline, elegant and subtle for soft minimalist compositions.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#a16207",
+    "unsung": "#fef3c7",
+    "ou": "#5b3d2a",
+    "os": "#3c2d22",
+    "ow": 7,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "note",
+    "shadow": 7,
+    "shadowOn": true,
+    "shsc": "#d97706",
+    "lineAnim": "slowfade",
+    "sweepFx": 6,
+    "sweepGlow": 84
+  }
+}

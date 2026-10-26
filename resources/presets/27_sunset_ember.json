@@ -1,0 +1,31 @@
+{
+  "id": "sunset_ember",
+  "name": "Sunset Ember",
+  "cat": "Nền đỏ ấm",
+  "ar": "16:9",
+  "best": "Nền đỏ lửa",
+  "bestEn": "Warm red glow",
+  "desc": "Chữ đỏ cam rực, viền đỏ sẫm, thích hợp cho cảnh hoàng hôn, cast, và video ấm nóng.",
+  "descEn": "Fiery orange-red lyrics, deep red outline, ideal for sunset, glowing warm scenes, and dramatic footage.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#ff7a59",
+    "unsung": "#ffe4d3",
+    "ou": "#7f1d1d",
+    "os": "#450a0a",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "mic",
+    "shadow": 12,
+    "shadowOn": true,
+    "shsc": "#ef4444",
+    "lineAnim": "slowfade",
+    "sweepFx": 10,
+    "sweepGlow": 130
+  }
+}

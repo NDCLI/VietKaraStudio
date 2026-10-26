@@ -1,0 +1,31 @@
+{
+  "id": "plum_noir",
+  "name": "Plum Noir",
+  "cat": "Nền tối, sắc sâu",
+  "ar": "16:9",
+  "best": "Tối sang trọng",
+  "bestEn": "Dark luxury plum",
+  "desc": "Chữ hồng đậm, viền tía đen, tạo cảm giác tối, đẳng cấp và phù hợp cho nhạc trữ tình.",
+  "descEn": "Deep magenta lyrics, black-plum outline, suitable for moody luxury and emotional storytelling.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#f472b6",
+    "unsung": "#fdf2f8",
+    "ou": "#2d0a2f",
+    "os": "#111827",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "heart",
+    "shadow": 11,
+    "shadowOn": true,
+    "shsc": "#a855f7",
+    "lineAnim": "zoom",
+    "sweepFx": 8,
+    "sweepGlow": 110
+  }
+}

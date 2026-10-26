@@ -1,0 +1,31 @@
+{
+  "id": "sky_blue",
+  "name": "Sky Blue",
+  "cat": "Nền xanh trời",
+  "ar": "16:9",
+  "best": "Bầu trời sáng",
+  "bestEn": "Clear sky blue",
+  "desc": "Chữ xanh da trời, viền xanh lam, mang cảm giác bình yên và thoáng đãng cho video outdoor.",
+  "descEn": "Sky blue lyrics, deep azure outline, giving a bright and airy feel for outdoor and travel footage.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#7dd3fc",
+    "unsung": "#eff6ff",
+    "ou": "#1d4ed8",
+    "os": "#0f172a",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 0,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "note",
+    "shadow": 9,
+    "shadowOn": true,
+    "shsc": "#38bdf8",
+    "lineAnim": "slowfade",
+    "sweepFx": 7,
+    "sweepGlow": 100
+  }
+}

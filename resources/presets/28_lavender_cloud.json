@@ -1,0 +1,31 @@
+{
+  "id": "lavender_cloud",
+  "name": "Lavender Cloud",
+  "cat": "Nền tím nhạt",
+  "ar": "16:9",
+  "best": "Tím dịu",
+  "bestEn": "Soft lavender",
+  "desc": "Chữ tím nhạt, viền tím đậm, phù hợp cho video mơ mộng, du lịch và cảm giác thư thái.",
+  "descEn": "Pastel lavender lyrics, deep violet outline, ideal for dreamy, soft, and relaxed mood scenes.",
+  "settings": {
+    "font": "Tahoma",
+    "fs": 210,
+    "sung": "#c4b5fd",
+    "unsung": "#f5f3ff",
+    "ou": "#4c1d95",
+    "os": "#2e1065",
+    "ow": 8,
+    "ouA": 100,
+    "osA": 100,
+    "italic": 1,
+    "pos": 0,
+    "lh": 1.4,
+    "cdStyle": "heart",
+    "shadow": 10,
+    "shadowOn": true,
+    "shsc": "#8b5cf6",
+    "lineAnim": "zoom",
+    "sweepFx": 7,
+    "sweepGlow": 90
+  }
+}
