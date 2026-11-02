@@ -1,5 +1,6 @@
 """Measured song title geometry and independent entrance/exit motion for ASS/preview."""
 from styles import validate_settings
+from bundled_assets import font_text
 
 TITLE_TEMPLATE_STYLES = {
     'gradient': {'colors':['#762ee5','#e83e86','#ffab51'],'opacity':96,'border':'#ffe8f2','border_width':0,'radius':14,'pad_x':.42,'pad_y':.24,'align':'left'},
@@ -28,8 +29,8 @@ def title_plan(project):
         measure=Measure(opts);size=opts['font_size']
         measured=measure.width(text)
         preview_width=measured/max(.01,measure.factor)
-        rows.append(dict(text=text,x=0,y=y,width=measured,size=size))
-        preview_rows.append(dict(text=text,x=0,y=y,width=preview_width,size=size))
+        rows.append(dict(text=text,display_text=font_text(text,measure.family),x=0,y=y,width=measured,size=size))
+        preview_rows.append(dict(text=text,display_text=font_text(text,measure.family),x=0,y=y,width=preview_width,size=size))
         y+=size*1.45
     initial_shrink=min(1,width*.86/max(1,max(row['width'] for row in preview_rows)))
     if initial_shrink<1:

@@ -3,6 +3,7 @@ import math
 
 from layout import display_plan, role_icon_path
 from styles import validate_settings
+from bundled_assets import icon_drawing, font_text
 
 
 def stamp(seconds):
@@ -104,9 +105,9 @@ def build_ass(project):
         tags=animation(row,s)+f"\\fs{row['font_size']:.3f}"
         if gradient and s['sung_gradient']:
             for y1,y2,hex_color in gradient_colors(row):
-                event(2,ds,de,tags+paint(hex_color,'unsung',opacity)+f'\\clip(0,{y1:.2f},{width},{y2:.2f})',literal(row['text']))
+                event(2,ds,de,tags+paint(hex_color,'unsung',opacity)+f'\\clip(0,{y1:.2f},{width},{y2:.2f})',literal(font_text(row['text'], font)))
         else:
-            event(2,ds,de,tags+paint(hex_color,'unsung',opacity),literal(row['text']))
+            event(2,ds,de,tags+paint(hex_color,'unsung',opacity),literal(font_text(row['text'], font)))
     rows=plan['rows']
     for i,row in enumerate(rows):
         ds,de=row['show_start'],row['show_end']
@@ -137,8 +138,9 @@ def build_ass(project):
             icon_row = {**row, 'x':marker['x'], 'y':marker['y']}
             # Geometry is already sized in frame pixels, independent of the lyric font/width.
             tags = ('\\i0\\fscx100\\fscy100' + animation(icon_row, {**s, 'horizontal_scale':100})
-                    + '\\p1' + paint(marker['color'], 'sung'))
-            event(2,ds,de,tags,role_icon_path(marker['role'],marker['size'],ass=True))
+                    + '\\p1\\bord0\\shad0')
+            for (red, green, blue, alpha), shape in icon_drawing(marker['asset'], marker['size']):
+                event(2,ds,de,tags+f'\\1c&H{blue:02X}{green:02X}{red:02X}&\\1a&H{255-alpha:02X}&',shape)
         for word in row['words']:
             a=max(0,round((word['start']-ds)*1000)); b=max(a+10,round((word['end']-ds)*1000))
             margin=s['outline_width']+row['font_size']*.18+s['shadow']+3
@@ -154,19 +156,19 @@ def build_ass(project):
                 shadow_row={**wr,'x':wr['x']+s['shadow'],'y':wr['y']+s['shadow']}
                 shadow_tags=(animation(shadow_row,s)+f"\\fs{row['font_size']:.3f}\\shad0"
                              +f"\\1c{color(s['shadow_color'])}\\3c{color(s['shadow_color'])}\\1a&H00&\\3a&H00&")
-                event(0,ds,de,shadow_tags,literal(word['text']))
+                event(0,ds,de,shadow_tags,literal(font_text(word['text'], font)))
             base=motion+paint(s['unsung'],'unsung',shadow=False)+moving(left+feather/2,0,right+feather,height,right+feather/2,right+feather)
-            event(1,ds,de,base,literal(word['text']))
+            event(1,ds,de,base,literal(font_text(word['text'], font)))
             for y1,y2,hex_color in gradient_colors(row):
                 main=motion+paint(hex_color,'sung',shadow=False)+moving(left,y1,left,y2,left,right-feather/2)
-                event(3,ds,de,main,literal(word['text']))
+                event(3,ds,de,main,literal(font_text(word['text'], font)))
                 if feather:
                     for j in range(4):
                         offset=-feather/2+feather*j/4
                         alpha=100*(1-(j+.5)/4)
                         strip=motion+paint(hex_color,'sung',alpha,shadow=False)
                         strip+=moving(left+offset,y1,left+offset+feather/4,y2,right+offset,right+offset+feather/4)
-                        event(4,ds,de,strip,literal(word['text']))
+                        event(4,ds,de,strip,literal(font_text(word['text'], font)))
             if s['sweep_glow']:
                 # A blurred white copy is visible only around the moving edge and inside this word's interval.
                 band=max(2,min(word['width']*.2,feather+row['font_size']*.07))
@@ -174,7 +176,7 @@ def build_ass(project):
                 tags=(f"\\an7\\pos({word['x']:.2f},{row['y']:.2f})\\fs{row['font_size']:.3f}\\bord0\\shad0\\1c&HFFFFFF&"
                       f"\\1a&H{round(255*(1-min(1,s['sweep_glow']/150))):02X}&\\blur{1+s['sweep_feather']/12+s['sweep_glow']/100:.2f}"
                       +clip(left-band,0,left+band,height)+f'\\t(0,{duration},'+clip(right-band,0,right+band,height)+')')
-                event(5,max(ds,word['start']),min(de,word['end']),tags,literal(word['text']))
+                event(5,max(ds,word['start']),min(de,word['end']),tags,literal(font_text(word['text'], font)))
     if s['display_mode']=='karaoke' and s['countdown'] in ICONS:
         for countdown in plan['countdowns']:
             for j in range(4):
@@ -209,6 +211,6 @@ def build_ass(project):
             tags=(f"\\fn{title['font']}\\fs{row['size']:.3f}\\b{title['weight']}\\i{-1 if title['italic'] else 0}"
                   +f"\\bord{title['outline_width']:.2f}\\shad{title['shadow']:.2f}"
                   +f"\\1c{color(title['color'])}\\3c{color(title['outline'])}\\4c{color(title['shadow_color'])}")
-            event(10,title['start'],split,entering+tags,literal(row['text']))
-            event(10,split,title['end'],leaving+tags,literal(row['text']))
+            event(10,title['start'],split,entering+tags,literal(font_text(row['text'], title['font'])))
+            event(10,split,title['end'],leaving+tags,literal(font_text(row['text'], title['font'])))
     return '\n'.join(lines)+'\n'

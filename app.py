@@ -14,6 +14,7 @@ import uuid
 from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
+from bundled_assets import ASSET_ROOT, bundled_fonts, asset_url, ICON_CHOICES, vni_table, tcvn_table
 from werkzeug.exceptions import HTTPException
 
 import engine
@@ -261,9 +262,35 @@ def get_hardware():
 
 @app.get('/api/fonts')
 def fonts():
+    if request.args.get('catalog') == '1':
+        bundled = bundled_fonts()
+        families = {item['family'] for item in bundled}
+        return jsonify(bundled=bundled,
+                       system=[name for name in layout.vietnamese_fonts() if name not in families],
+                       encodings={'vni':vni_table(), 'tcvn3':tcvn_table()},
+                       icons={role:[{'file':name, 'label':label, 'url':asset_url('ICON/'+name)}
+                                    for name,label in choices] for role,choices in ICON_CHOICES.items()})
     if request.args.get('vietnamese') == '1':
         return jsonify(layout.vietnamese_fonts())
     return jsonify(sorted(set(item[0] for item in layout.font_catalog()), key=str.casefold))
+
+
+@app.get('/api/assets/source/<path:filename>')
+def source_asset(filename):
+    return send_from_directory(ASSET_ROOT, filename)
+
+
+@app.get('/api/fonts/bundled.css')
+def bundled_font_css():
+    rules = []
+    # Use the same preferred bold face as layout measurement and ASS karaoke.
+    for family in sorted({item['family'] for item in bundled_fonts()}):
+        for italic in (False, True):
+            chosen, _ = layout.resolve_font(family, italic)
+            relative = Path(chosen[2]).relative_to(ASSET_ROOT).as_posix()
+            rules.append('@font-face{font-family:'+json.dumps(family)+';src:url('+json.dumps(asset_url(relative))
+                         +');font-weight:100 900;font-style:'+('italic' if italic else 'normal')+';font-display:block;}')
+    return app.response_class('\n'.join(rules), mimetype='text/css')
 
 
 @app.post('/api/layout')

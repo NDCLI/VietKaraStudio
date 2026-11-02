@@ -71,18 +71,20 @@ def test_wrapping_and_single_long_word_leave_room_for_marker():
 
 
 @pytest.mark.parametrize('mode',ANIMATIONS)
-def test_ass_uses_filled_vectors_with_same_line_times_and_preserves_word_sweeps(mode):
+def test_ass_artwork_layers_share_line_times_and_preserve_word_sweeps(mode):
     p=project({'line_animation':mode,'horizontal_scale':150,'sweep_feather':8})
     plan=display_plan(p)
     content=build_ass(p)
     events=[line for line in content.splitlines() if line.startswith('Dialogue:')]
     markers=[line for line in events if '\\p1' in line]
-    assert len(markers)==len(plan['rows'])
-    for marker,row in zip(markers,plan['rows']):
-        fields=marker.split(',',9)
-        assert fields[1:3]==[stamp(row['show_start']),stamp(row['show_end'])]
-        assert '}m ' in marker and ' b ' in marker
-        assert '\\fscx100\\fscy100' in marker
+    assert len(markers)>len(plan['rows'])
+    for row in plan['rows']:
+        layers=[marker for marker in markers if marker.split(',',9)[1:3]==[stamp(row['show_start']),stamp(row['show_end'])]]
+        assert len(layers)>1
+        for marker in layers:
+            assert '}m ' in marker and ' l ' in marker
+            assert '\\fscx100\\fscy100' in marker
+            assert '\\bord0\\shad0' in marker
     assert '\\clip(' in content and '\\t(' in content
     assert all(any(line.endswith('}'+word['text']) for line in events) for word in p['words'])
 

@@ -20,6 +20,7 @@ function scheduleLayout(){
 }
 function studioStyle(){
   const p=state.project;if(!p)return;const s=p.settings,preview=$('preview');s.display_mode='karaoke';
+  renderSourceAssets();
   $('fontSample').style.fontFamily=s.font;$('fontSample').style.fontStyle=s.italic?'italic':'normal';
   preview.style.backgroundColor=s.background;preview.classList.toggle('portrait',s.aspect==='portrait');
   preview.style.backgroundImage='';
@@ -77,9 +78,7 @@ function rowMotion(row,s,t){
 }
 function roleIconMarkup(row,settings,scale){
   const marker=row.role_icon;if(!marker)return '';
-  const size=marker.size*scale,outline=settings.outline_width*2/marker.size*32;
-  const shadow=settings.shadow?`filter:drop-shadow(${settings.shadow*scale}px ${settings.shadow*scale}px 0 ${settings.shadow_color});`:'';
-  return `<svg class="studio-role-icon" viewBox="0 0 32 32" role="img" aria-label="${esc(marker.label)}" style="left:${(marker.x-row.x)*scale}px;top:${(marker.y-row.y)*scale}px;width:${size}px;height:${size}px;${shadow}"><path d="${marker.path}" fill="none" stroke="${colorAlpha(settings.outline_sung,settings.outline_sung_opacity)}" stroke-width="${outline}" stroke-linejoin="round"/><path d="${marker.path}" fill="${marker.color}"/></svg>`;
+  return `<img class="studio-role-icon" src="${esc(marker.url)}" alt="${esc(marker.label)}" style="left:${(marker.x-row.x)*scale}px;top:${(marker.y-row.y)*scale}px;width:${marker.width*scale}px;height:${marker.size*scale}px;object-fit:contain">`;
 }
 function studioFrame(){
   if(!state.project)return;
@@ -109,7 +108,7 @@ function studioFrame(){
           const neighbor=plan.rows[active.index+d];if(!d||!neighbor)continue;
           const w=neighbor.width*.7;
           const x=active.align==='center'?(plan.width-w)/2:active.align==='left'?active.x:active.x+active.width-w;
-          rows.push({...active,text:neighbor.text,x,y:active.y+d*active.font_size*s.line_height,width:w,font_size:neighbor.font_size*.7,opacity:Math.max(.2,.65-Math.abs(d)*.15),ghost:true});
+          rows.push({...active,text:neighbor.text,display_text:neighbor.display_text,x,y:active.y+d*active.font_size*s.line_height,width:w,font_size:neighbor.font_size*.7,opacity:Math.max(.2,.65-Math.abs(d)*.15),ghost:true});
         }
       }
     }
@@ -124,7 +123,7 @@ function studioFrame(){
       const box=s.display_mode==='subtitle'&&s.subtitle_box?`background:${colorAlpha(s.subtitle_box_color,s.subtitle_box_opacity)};border-radius:${px(s.subtitle_box_radius)};padding:${px(row.font_size*.18)};margin:-${px(row.font_size*.18)};`:'';
       const color=s.display_mode==='subtitle'||row.ghost?s.unsung:row.color;
       const gradient=s.sung_gradient&&!row.ghost?`background-image:linear-gradient(to top,${s.gradient_bottom} ${s.gradient_start}%,${s.gradient_top} ${s.gradient_end}%);background-clip:text;-webkit-background-clip:text;color:transparent;`:'';
-      return `<div class="studio-line plain-line" style="${rowStyle}${box}"><span style="color:${color};${gradient}display:inline-block;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${esc(row.text)}</span></div>`;
+      return `<div class="studio-line plain-line" style="${rowStyle}${box}"><span style="color:${color};${gradient}display:inline-block;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${esc(row.display_text??row.text)}</span></div>`;
     }
     const words=row.words.map(w=>{
       const source=p.words[w.source_index],word=source?wordOnBeat(source):w;
@@ -137,9 +136,9 @@ function studioFrame(){
       const fillMask=progress<=0?'none':progress>=1?'none':`linear-gradient(${angle}deg,#000 ${edge-feather/2}%,transparent ${edge+feather/2}%)`;
       const baseMask='none'; // Keep the complete glyph beneath the colored sweep; no transparent seam.
       const grad=s.sung_gradient&&row.role==='all'?`background-image:linear-gradient(to top,${s.gradient_bottom} ${s.gradient_start}%,${s.gradient_top} ${s.gradient_end}%);background-clip:text;-webkit-background-clip:text;color:transparent;`:`color:${row.color};`;
-      const glow=s.sweep_glow&&progress>0&&progress<1?`<span class="studio-glow" style="opacity:${Math.min(1,s.sweep_glow/150)};filter:blur(${(1+s.sweep_feather/12+s.sweep_glow/100)*scale}px);mask-image:linear-gradient(${angle}deg,transparent ${edge-10}%,#000 ${edge}%,transparent ${edge+10}%);-webkit-mask-image:linear-gradient(${angle}deg,transparent ${edge-10}%,#000 ${edge}%,transparent ${edge+10}%)">${esc(w.text)}</span>`:'';
-      const shadowLayer=s.shadow?`<span class="studio-shadow" style="color:${s.shadow_color};-webkit-text-stroke:var(--outline-width) ${s.shadow_color};transform:translate(${px(s.shadow)},${px(s.shadow)})">${esc(w.text)}</span>`:'';
-      return `<span class="studio-word" style="--mask-pad:${pad}px;left:${px(w.x-row.x)};width:${size.toFixed(3)}px;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${shadowLayer}<span class="studio-base" style="color:${s.unsung};visibility:${progress>=1?'hidden':'visible'};mask-image:${baseMask};-webkit-mask-image:${baseMask}">${esc(w.text)}</span><span class="studio-fill" style="${grad}visibility:${progress<=0?'hidden':'visible'};mask-image:${fillMask};-webkit-mask-image:${fillMask}">${esc(w.text)}</span>${glow}</span>`;
+      const glow=s.sweep_glow&&progress>0&&progress<1?`<span class="studio-glow" style="opacity:${Math.min(1,s.sweep_glow/150)};filter:blur(${(1+s.sweep_feather/12+s.sweep_glow/100)*scale}px);mask-image:linear-gradient(${angle}deg,transparent ${edge-10}%,#000 ${edge}%,transparent ${edge+10}%);-webkit-mask-image:linear-gradient(${angle}deg,transparent ${edge-10}%,#000 ${edge}%,transparent ${edge+10}%)">${esc(w.display_text??w.text)}</span>`:'';
+      const shadowLayer=s.shadow?`<span class="studio-shadow" style="color:${s.shadow_color};-webkit-text-stroke:var(--outline-width) ${s.shadow_color};transform:translate(${px(s.shadow)},${px(s.shadow)})">${esc(w.display_text??w.text)}</span>`:'';
+      return `<span class="studio-word" style="--mask-pad:${pad}px;left:${px(w.x-row.x)};width:${size.toFixed(3)}px;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${shadowLayer}<span class="studio-base" style="color:${s.unsung};visibility:${progress>=1?'hidden':'visible'};mask-image:${baseMask};-webkit-mask-image:${baseMask}">${esc(w.display_text??w.text)}</span><span class="studio-fill" style="${grad}visibility:${progress<=0?'hidden':'visible'};mask-image:${fillMask};-webkit-mask-image:${fillMask}">${esc(w.display_text??w.text)}</span>${glow}</span>`;
     }).join('');
     return `<div class="studio-line karaoke-line" data-row="${row.slot}" style="${rowStyle}width:${px(row.width)};height:${px(row.height)}">${roleIconMarkup(row,s,scale)}${words}</div>`;
   }).join('');
@@ -208,16 +207,7 @@ function initStudio(){
   });
   $('swapRolesBtn').onclick=()=>{if(state.job||state.manualTiming)return;remember();for(const w of state.project.words)w.role=w.role==='male'?'female':w.role==='female'?'male':w.role;renderWords();renderSelected();renderStyle();drawTimeline();dirty();};
   $('alternateRolesBtn').onclick=()=>{if(state.job)return;remember();const ids=[...new Set(state.project.words.map(w=>w.line))];for(const w of state.project.words)w.role=ids.indexOf(w.line)%2?'female':'male';renderWords();drawTimeline();dirty();};
-  api('/api/fonts?vietnamese=1').then(fonts=>{
-    const current=state.project?.settings.font||'Arial',titleCurrent=state.project?.settings.title_font||'Arial';
-    $('fontName').innerHTML=fonts.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
-    $('titleFont').innerHTML=fonts.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('');
-    if(!fonts.includes(current))$('fontName').add(new Option(current+' · font project',current));
-    if(!fonts.includes(titleCurrent))$('titleFont').add(new Option(titleCurrent+' · font project',titleCurrent));
-    $('fontName').value=current;$('titleFont').value=titleCurrent;
-    $('fontCountNote').textContent=fonts.length+' phông chữ có đủ ký tự và dấu tiếng Việt.';
-    $('titleFontCountNote').textContent='Có '+fonts.length+' phông chữ tiêu đề hỗ trợ tiếng Việt.';
-  }).catch(()=>{$('fontCountNote').textContent='Chưa quét được phông chữ; đang hiện danh sách cơ bản.';$('titleFontCountNote').textContent='Đang dùng danh sách phông chữ cơ bản.';});
+  initSourceAssets();
 }
 
 function timelineGutter(width){return width<480?70:94;}

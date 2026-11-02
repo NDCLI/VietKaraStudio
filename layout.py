@@ -8,6 +8,7 @@ import struct
 
 from PIL import ImageFont
 from fontTools.ttLib import TTFont
+from bundled_assets import ASSET_ROOT, bundled_fonts, font_text, role_asset, icon_geometry, asset_url
 
 from styles import validate_settings
 from timing import beat_words, lyric_lines
@@ -57,7 +58,10 @@ def role_icon_path(role, size=32, ass=False):
 
 def role_icon_space(opts):
     if opts['role_icons'] and opts['singing_mode'] == 'duet' and opts['display_mode'] == 'karaoke':
-        return opts['font_size'] * .94  # .72 em icon plus .22 em gap
+        # Reserve the widest chosen artwork when wrapping before roles are known.
+        ratio = max(icon_geometry(role_asset(role, opts))[0] / icon_geometry(role_asset(role, opts))[1]
+                    for role in ('male', 'female', 'all'))
+        return opts['font_size'] * (.72 * ratio + .22)
     return 0
 
 
@@ -92,7 +96,8 @@ def font_catalog():
                 result.append((family, style, str(file)))
             except OSError:
                 pass
-    return result
+    # Bundled faces win ties over a differently installed version of the family.
+    return [(f['family'], f['style'], str(ASSET_ROOT / f['file'])) for f in bundled_fonts()] + result
 
 
 @lru_cache(maxsize=80)
@@ -172,7 +177,7 @@ class Measure:
 
     @lru_cache(maxsize=2048)
     def width(self, text):
-        return float(self.font.getlength(text)) * self.scale
+        return float(self.font.getlength(font_text(text, self.family))) * self.scale
 
     def fits(self, tokens, width):
         extra = 2 * self.opts['outline_width'] + self.opts['shadow'] + (self.opts['font_size'] * .15 if self.opts['italic'] else 0)
@@ -323,9 +328,14 @@ def display_plan(project):
             prefix = ' '.join(w['text'] for w in words[:j])
             left = x + (icon_space + (measure.width(prefix + ' ') if j else 0)) * shrink
             word_width = measure.width(word['text']) * shrink
-            positioned.append({**word, 'x': round(left, 3), 'width': round(word_width, 3)})
+            positioned.append({**word, 'display_text':font_text(word['text'], measure.family),
+                               'x': round(left, 3), 'width': round(word_width, 3)})
+        icon_file = role_asset(role, opts)
+        icon_width, icon_height = icon_geometry(icon_file)
         marker = ({'x':round(x,3), 'y':round(y+size*.08,3), 'size':round(size*.72,3),
                    'role':role, 'path':role_icon_path(role), 'color':color,
+                   'asset':icon_file, 'url':asset_url('ICON/'+icon_file),
+                   'width':round(size*.72*icon_width/icon_height,3),
                    'label':{'male':opts['role_a_name'], 'female':opts['role_b_name']}.get(role, 'Cùng hát')}
                   if icon_space and role_changed else None)
         previous_role = role
@@ -334,6 +344,7 @@ def display_plan(project):
                      'start':start, 'end':end, 'show_start':ds, 'show_end':max(ds+.01,de),
                      'x':round(x,3), 'y':round(y,3), 'width':round(row_width,3), 'height':round(size*1.2,3),
                      'font_size':round(size,3), 'color':color, 'align':align, 'role':role, 'text':text,
+                     'display_text':font_text(text, measure.family),
                      'role_icon':marker, 'words':positioned})
         # A new lyric paragraph/row is not necessarily an instrumental break.
         # Count in only at the opening or after at least eight seconds without lyrics.

@@ -1,6 +1,7 @@
 """Validated settings shared by projects, presets and subtitle rendering."""
 import math
 import re
+from bundled_assets import ICON_CHOICES, ICON_SETTINGS
 
 DEFAULT_SETTINGS = {
     "aspect": "landscape", "font": "Arial", "font_size": 72,
@@ -14,6 +15,8 @@ DEFAULT_SETTINGS = {
     "role_a_name": "Nam", "role_b_name": "Nữ", "role_a_color": "#62b5ff", "role_b_color": "#ff87b7",
     "role_all_color": "#f4cf72",
     "role_icons": True,
+    "role_a_icon": "man-new-blue.png", "role_b_icon": "lady-pink.png",
+    "role_all_icon": "men(blue) & lady(pink).png",
     "align": "center", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
     "sweep_feather": 0, "sweep_glow": 0, "sung_gradient": False,
     "gradient_top": "#ffffff", "gradient_bottom": "#1a3ad6", "gradient_start": 0, "gradient_end": 100,
@@ -48,6 +51,9 @@ def validate_settings(values, base=None):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(result[key])):
             raise ValueError(f"Màu {key} không hợp lệ.")
         result[key] = result[key].lower()
+    for role, key in ICON_SETTINGS.items():
+        if result[key] not in {name for name, label in ICON_CHOICES[role]}:
+            raise ValueError(f'Biểu tượng {key} không hợp lệ.')
     for key, low, high in (("font_size", 20, 240), ("outline_width", 0, 12),
                            ("shadow", 0, 15), ("line_height", 1, 2.5),
                            ("title_start", 0, 86400), ("title_end", .1, 86400), ("title_size", 30, 220),

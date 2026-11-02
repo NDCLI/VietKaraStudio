@@ -2,9 +2,9 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Dùng **beat gốc** cho video xuất; vocal tách riêng phục vụ nhận dạng và căn lời.
 
-## Bản cục bộ 1.1.1 và bản vá 1.1.2
+## Bản cục bộ 1.1.1 và bản vá 1.1.4
 
-Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để có mục tự cập nhật. Release 1.1.2 chỉ gồm gói vá nhỏ cho bản Setup 1.1.1; app giữ nguyên project, nhạc, model và runtime AI. Cài Setup 1.1.1 một lần trước khi nhận bản vá tự động.
+Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để có mục tự cập nhật. Release 1.1.4 gồm gói vá nhỏ cho bản Setup 1.1.1; app giữ nguyên project, nhạc, model và runtime AI. Cài Setup 1.1.1 một lần trước khi nhận bản vá tự động.
 
 Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model AI tải riêng trong Cài đặt. Setup kiểm tra và cài Edge WebView2 Runtime nếu thiếu (cần Internet). Bản phát hành chưa ký số.
 
@@ -20,10 +20,13 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
 - Chỉnh bố cục nhiều tính năng, chọn video làm nguồn, tiêu đề căn trái có nền ôm sát chữ; cập nhật trạng thái tác vụ bằng câu dễ hiểu.
 - Tự kiểm tra và tải bản vá từ GitHub Releases; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
+- Icon nam, nữ, song ca và 315 font trong `SOURCE/`; tự chuyển mã VNI/TCVN3 khi xem trước và xuất video.
 
 ## Chạy từ mã nguồn
 
 Cài Python 3.12 x64 và FFmpeg/FFprobe (trong `bin/` hoặc PATH), sau đó chạy `Start.cmd`. Launcher chuẩn bị môi trường Python và mở cửa sổ app. Dùng `.venv/Scripts/python.exe launch.py --browser` để mở bằng trình duyệt.
+
+Icon và font trong `SOURCE/` được chép vào `resources/source/` và đóng gói cùng ứng dụng. Khi thay đổi các tệp nguồn, chạy `.venv/Scripts/python.exe tools/import_source_assets.py` để cập nhật danh mục và dấu kiểm tài nguyên.
 
 GPU NVIDIA dùng PyTorch CUDA cho Demucs, CTranslate2 cho Whisper và NVENC khi xuất video. Xem `requirements-gpu.txt` và `configure_gpu.py`; driver phải tương thích. Một số bước xử lý vẫn chạy CPU.
 

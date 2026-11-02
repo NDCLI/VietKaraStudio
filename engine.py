@@ -387,7 +387,21 @@ def render(project, directory, job):
         args += ["-f", "lavfi", "-i", f"color=c=0x{bg[1:]}:s={width}x{height}:r={fps}"]
     # Never use reference.wav, vocals.wav, or reference_instrumental.wav as an audio input.
     args += ['-i',str(directory/'beat.wav')]
-    visual_filter=f'setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,ass=lyrics.ass'
+    from bundled_assets import FONT_ROOT
+    # A relative fontsdir avoids Windows drive-colon escaping in FFmpeg filters.
+    fonts_dir = export / 'fonts'
+    fonts_dir.mkdir(exist_ok=True)
+    from layout import resolve_font
+    for family, italic in ((opts['font'], opts['italic']), (opts['title_font'], opts['title_italic'])):
+        chosen, _ = resolve_font(family, italic)
+        font_path = Path(chosen[2])
+        if font_path.parent == FONT_ROOT:
+            # libass selects weight/style by metadata; include this family's faces.
+            from bundled_assets import ASSET_ROOT, bundled_fonts
+            for face in bundled_fonts():
+                if face['family'] == chosen[0]:
+                    shutil.copy2(ASSET_ROOT / face['file'], fonts_dir / Path(face['file']).name)
+    visual_filter=f'setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,ass=lyrics.ass:fontsdir=fonts'
     overlay=media_tools.custom_countdown_filter(project,directory,display_plan(project),width,height)
     graph=f'[0:v]{visual_filter}[base]'
     last='base'

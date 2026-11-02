@@ -15,14 +15,6 @@ function timelineResize(word,previous,next,kind,delta,linked,duration){
   return result;
 }
 function initTimelineEditing(){
-  const colors=['#e8833a','#e0c341','#8bc34a','#10b981','#14b8a6','#86c8f2','#6366f1','#a855f7','#f6b3ce'];
-  $('timelinePalette').innerHTML=colors.map((c,i)=>`<button type="button" class="timeline-swatch" data-label-color="${c}" style="--swatch:${c}" title="Màu nhãn ${i+1} · chọn từ rồi bấm màu" aria-label="Màu nhãn ${i+1}" aria-pressed="false"></button>`).join('')+'<button type="button" class="timeline-swatch clear-swatch" data-label-color="" title="Xóa màu nhãn của từ đang chọn" aria-label="Xóa màu nhãn">×</button>';
-  $('timelinePalette').onclick=event=>{
-    const button=event.target.closest('[data-label-color]');if(!button||state.job||state.manualTiming)return;
-    const selected=timelineSelectedIndices();if(!selected.length)return toast('Chọn từ trên timeline trước. Giữ Ctrl để chọn nhiều từ.');
-    remember();for(const i of selected){const w=state.project.words[i];if(button.dataset.labelColor)w.label_color=button.dataset.labelColor;else delete w.label_color;}
-    renderWords();drawTimeline();dirty();renderTimelineEditing();
-  };
   $('timelineLinked').onchange=()=>{
     if(state.job||state.manualTiming)return;
     state.project.settings.timeline_linked=$('timelineLinked').checked;renderTimelineEditing();dirty();
@@ -35,8 +27,7 @@ function renderTimelineEditing(){
   if(!state.project)return;
   $('timelineLinked').checked=state.project.settings.timeline_linked!==false;
   $('timelineLinkedLabel').textContent=$('timelineLinked').checked?'Liên kết':'Độc lập';
-  const indices=timelineSelectedIndices(),colors=new Set(indices.map(i=>state.project.words[i].label_color||''));
-  document.querySelectorAll('[data-label-color]').forEach(b=>b.setAttribute('aria-pressed',String(indices.length>0&&colors.size===1&&colors.has(b.dataset.labelColor))));
+  const indices=timelineSelectedIndices();
   $('timelineSelectionCount').textContent=indices.length>1?`${indices.length} từ`:'';
 }
 if(typeof module!=='undefined')module.exports={timelineResize};

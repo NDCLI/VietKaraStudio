@@ -19,7 +19,7 @@ function initWorkspaceTools(){
     if(!state.project)return;
     await saveNow();audio.pause();$('separatedBeatPreview').pause();$('separatedVocalPreview').pause();
     document.querySelectorAll('[data-app-page]').forEach(p=>p.hidden=p.dataset.appPage!==b.dataset.page);
-    document.querySelectorAll('[data-page]').forEach(p=>p.classList.toggle('on',p===b));
+    document.querySelectorAll('[data-page]').forEach(p=>{p.classList.toggle('on',p===b);if(p===b)p.setAttribute('aria-current','page');else p.removeAttribute('aria-current');});
     if(b.dataset.page==='settings'){await refreshModels();if(window.refreshUpdateStatus)window.refreshUpdateStatus();}
     if(b.dataset.page==='karaoke')drawTimeline();
   }));
