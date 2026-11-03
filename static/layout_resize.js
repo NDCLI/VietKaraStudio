@@ -1,5 +1,5 @@
 'use strict';
-const studioLayoutDefaults={left:255,right:295,waves:120,lyrics:136};
+const studioLayoutDefaults={left:280,right:280,waves:82,lyrics:180};
 let studioLayoutSize={...studioLayoutDefaults};
 function applyStudioLayout(){
   const root=$('karaokePage'),width=root.clientWidth;
@@ -15,7 +15,16 @@ function applyStudioLayout(){
   }
   fitStudioPreview();drawTimeline();
 }
-function saveStudioLayout(){try{localStorage.setItem('obs_studio_layout_v1',JSON.stringify(studioLayoutSize));}catch{}}
+function saveStudioLayout(){try{localStorage.setItem('obs_studio_layout_v2',JSON.stringify(studioLayoutSize));}catch{}}
+function resetStudioLayout(){
+  studioLayoutSize={...studioLayoutDefaults};$('karaokePage').classList.remove('left-collapsed','right-collapsed','waves-hidden');
+  state.showWaves=true;$('waveformPanel').hidden=false;$('waveformHeightGrip').hidden=false;$('toggleWavesBtn').setAttribute('aria-pressed','true');
+  try{localStorage.removeItem('obs_studio_panels_v1');localStorage.removeItem('obs_studio_layout_v2');}catch{}
+  $('collapseLeftBtn').textContent='‹';$('collapseRightBtn').textContent='›';
+  $('collapseLeftBtn').setAttribute('aria-label','Thu gọn bảng lời và nguồn');$('collapseLeftBtn').title='Thu gọn bảng';
+  $('collapseRightBtn').setAttribute('aria-label','Thu gọn bảng thuộc tính');$('collapseRightBtn').title='Thu gọn bảng';
+  applyStudioLayout();saveStudioLayout();
+}
 function fitStudioPreview(){
   const column=document.querySelector('.editor-column'),stage=$('preview');
   if(!column||!stage||document.fullscreenElement===stage||!column.clientWidth||!column.clientHeight)return;
@@ -24,7 +33,7 @@ function fitStudioPreview(){
   stage.style.width=width.toFixed(2)+'px';stage.style.height=(width/ratio).toFixed(2)+'px';
 }
 function initLayoutResize(){
-  try{const saved=JSON.parse(localStorage.getItem('obs_studio_layout_v1'));for(const key of Object.keys(studioLayoutDefaults))if(Number.isFinite(saved?.[key]))studioLayoutSize[key]=saved[key];}catch{}
+  try{const saved=JSON.parse(localStorage.getItem('obs_studio_layout_v2'));for(const key of Object.keys(studioLayoutDefaults))if(Number.isFinite(saved?.[key]))studioLayoutSize[key]=saved[key];}catch{}
   const gripIds=['leftColumnGrip','rightColumnGrip','studioHeightGrip','waveformHeightGrip'];
   function update(id,dx,dy,initial){
     studioLayoutSize={...initial};

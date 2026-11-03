@@ -168,7 +168,35 @@ function rebuildLineText(){
   state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();renderSelected();drawTimeline();dirty();
 }
 function setStyleValue(key,value){if(!state.project||state.job)return;state.project.settings[key]=value;renderStyle();dirty();}
+function initWorkspaceChrome(){
+  const root=$('karaokePage'),saved=(()=>{try{return JSON.parse(localStorage.getItem('obs_studio_panels_v1')||'{}');}catch{return {};}})();
+  root.classList.toggle('left-collapsed',!!saved.left);root.classList.toggle('right-collapsed',!!saved.right);
+  root.classList.toggle('waves-hidden',!state.showWaves);
+  $('collapseLeftBtn').textContent=saved.left?'›':'‹';$('collapseRightBtn').textContent=saved.right?'‹':'›';
+  $('collapseLeftBtn').setAttribute('aria-label',saved.left?'Mở bảng lời và nguồn':'Thu gọn bảng lời và nguồn');$('collapseLeftBtn').title=saved.left?'Mở bảng':'Thu gọn bảng';
+  $('collapseRightBtn').setAttribute('aria-label',saved.right?'Mở bảng thuộc tính':'Thu gọn bảng thuộc tính');$('collapseRightBtn').title=saved.right?'Mở bảng':'Thu gọn bảng';
+  const savePanels=()=>{try{localStorage.setItem('obs_studio_panels_v1',JSON.stringify({left:root.classList.contains('left-collapsed'),right:root.classList.contains('right-collapsed')}));}catch{}};
+  $('collapseLeftBtn').onclick=()=>{root.classList.toggle('left-collapsed');const collapsed=root.classList.contains('left-collapsed');$('collapseLeftBtn').setAttribute('aria-label',collapsed?'Mở bảng lời và nguồn':'Thu gọn bảng lời và nguồn');$('collapseLeftBtn').title=collapsed?'Mở bảng':'Thu gọn bảng';$('collapseLeftBtn').textContent=collapsed?'›':'‹';savePanels();fitStudioPreview();drawTimeline();};
+  $('collapseRightBtn').onclick=()=>{root.classList.toggle('right-collapsed');const collapsed=root.classList.contains('right-collapsed');$('collapseRightBtn').setAttribute('aria-label',collapsed?'Mở bảng thuộc tính':'Thu gọn bảng thuộc tính');$('collapseRightBtn').title=collapsed?'Mở bảng':'Thu gọn bảng';$('collapseRightBtn').textContent=collapsed?'‹':'›';savePanels();fitStudioPreview();drawTimeline();};
+  document.querySelectorAll('[data-left-tab]').forEach(button=>button.onclick=()=>{
+    const name=button.dataset.leftTab;
+    document.querySelectorAll('[data-left-tab]').forEach(tab=>{const active=tab===button;tab.classList.toggle('on',active);tab.setAttribute('aria-selected',String(active));});
+    document.querySelectorAll('[data-left-panel]').forEach(panel=>panel.hidden=panel.dataset.leftPanel!==name);
+  });
+  $('editLyricsBtn').onclick=()=>{const editor=$('lyricsEditor');editor.open=!editor.open;$('editLyricsBtn').setAttribute('aria-expanded',String(editor.open));if(editor.open){document.querySelector('[data-left-tab="lyrics"]').click();$('lyricsText').focus();}};
+  document.querySelectorAll('[data-menu-click]').forEach(button=>button.onclick=()=>{
+    const target=button.dataset.menuClick;
+    if(target==='timelineManualTab')showInspector('sync');
+    else if(target==='resetLayoutBtn')resetStudioLayout();
+    else $(target)?.click();
+    button.closest('.menu-pop')?.removeAttribute('open');
+  });
+  document.querySelectorAll('.workspace-menu>.menu-pop').forEach(menu=>menu.addEventListener('toggle',()=>{
+    if(menu.open)document.querySelectorAll('.workspace-menu>.menu-pop').forEach(other=>{if(other!==menu)other.open=false;});
+  }));
+}
 function initStudio(){
+  initWorkspaceChrome();
   initExportMenu();
   initBranding();
   initTimelineEditing();
@@ -176,7 +204,7 @@ function initStudio(){
   initWorkspaceTools();initSongTitle();initWaveTrackControls();
   initTimelineTools();
   document.querySelectorAll('[data-inspector-tab]').forEach(b=>b.onclick=()=>showInspector(b.dataset.inspectorTab));
-  $('toggleWavesBtn').onclick=()=>{state.showWaves=!state.showWaves;$('waveformPanel').hidden=!state.showWaves;$('waveformHeightGrip').hidden=!state.showWaves;$('toggleWavesBtn').setAttribute('aria-pressed',String(state.showWaves));drawTimeline();};
+  $('toggleWavesBtn').onclick=()=>{state.showWaves=!state.showWaves;$('waveformPanel').hidden=!state.showWaves;$('waveformHeightGrip').hidden=!state.showWaves;$('karaokePage').classList.toggle('waves-hidden',!state.showWaves);$('toggleWavesBtn').setAttribute('aria-pressed',String(state.showWaves));drawTimeline();};
   document.querySelectorAll('[data-display-mode]').forEach(b=>b.onclick=()=>setStyleValue('display_mode',b.dataset.displayMode));
   document.querySelectorAll('[data-singing-mode]').forEach(b=>b.onclick=()=>setStyleValue('singing_mode',b.dataset.singingMode));
   document.querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>setStyleValue('align',b.dataset.align));
@@ -208,10 +236,23 @@ function initStudio(){
   $('swapRolesBtn').onclick=()=>{if(state.job||state.manualTiming)return;remember();for(const w of state.project.words)w.role=w.role==='male'?'female':w.role==='female'?'male':w.role;renderWords();renderSelected();renderStyle();drawTimeline();dirty();};
   $('alternateRolesBtn').onclick=()=>{if(state.job)return;remember();const ids=[...new Set(state.project.words.map(w=>w.line))];for(const w of state.project.words)w.role=ids.indexOf(w.line)%2?'female':'male';renderWords();drawTimeline();dirty();};
   initSourceAssets();
+  showInspector('design');
 }
 
 function timelineGutter(width){return width<480?70:94;}
-function showInspector(name){if(name==='timing'){$('wordTools').open=true;$('wordTools').scrollIntoView({block:'nearest'});}}
+function showInspector(name){
+  const designNames=['design','duet','title','background','logo','countdown','presets'];
+  if(!designNames.includes(name)&&!['timing','sync'].includes(name))name='design';
+  document.querySelectorAll('[data-inspector-tab]').forEach(button=>{const active=button.dataset.inspectorTab===name;button.classList.toggle('on',active);button.setAttribute('aria-selected',String(active));});
+  const design=designNames.includes(name);document.querySelector('[data-inspector-pane="design"]').hidden=!design;$('wordTools').hidden=design;
+  if(design){
+    document.querySelectorAll('.style-panel [data-property-section]').forEach(section=>{section.hidden=section.dataset.propertySection!==name;section.open=!section.hidden;});
+    $('inspectorScope').textContent='Đang sửa: cả bài';
+  }else{
+    $('selectedPanel').hidden=name==='sync';$('syncPanel').hidden=name!=='sync';
+    $('inspectorScope').textContent=name==='sync'?'Đang sửa: mốc đồng bộ':'Đang sửa: từ / câu';
+  }
+}
 function compactProjectView(){
   const p=state.project;
   if(state.viewProject!==p.id){state.viewProject=p.id;showInspector('design');}
