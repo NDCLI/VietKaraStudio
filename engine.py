@@ -425,6 +425,8 @@ def render(project, directory, job):
     video_options = render_info.encoding_options(opts['render_quality'],video_device['encoder'])
     video_name='karaoke.'+opts['render_format']
     trailer = ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-t", str(duration)]
+    if opts.get('audio_normalize'):
+        trailer += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
     if opts['render_format'] in ('mp4','mov'):trailer += ['-movflags','+faststart']
     trailer += [video_name]
     job.update(5, f"Đang dựng video từ beat gốc · {video_device['name']}…")
@@ -448,6 +450,12 @@ def render(project, directory, job):
                 render_info.encoding_options(opts['render_quality'],'libx264') + trailer,
                 job, cwd=export, progress=progress)
     job.check()
+    manifest['postflight'] = render_info.verify_output(export / video_name, duration, width, height)
+    try:
+        manifest['postflight']['sample_sheet'] = render_info.sample_frames(
+            export / video_name, export / 'qa-contact.jpg', duration)
+    except Exception as exc:
+        manifest['postflight']['sample_sheet'] = {'ok': False, 'error': str(exc)[-500:]}
     manifest['encoder']=video_device['encoder']
     (export/'render-info.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     output_path=str(export/video_name)
@@ -468,5 +476,7 @@ def render(project, directory, job):
             partial.replace(destination)
         finally:partial.unlink(missing_ok=True)
         output_path=str(destination)
-    return {"video": f"/api/projects/{project['id']}/exports/{job.id}/{video_name}","format":opts['render_format'],
+    return {"video": f"/api/projects/{project['id']}/exports/{job.id}/{video_name}",
+            "qa_contact": f"/api/projects/{project['id']}/exports/{job.id}/qa-contact.jpg" if (export/'qa-contact.jpg').is_file() else None,
+            "format":opts['render_format'],
             "encoder": video_device["encoder"], "output_path": output_path}

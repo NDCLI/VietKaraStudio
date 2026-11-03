@@ -486,6 +486,7 @@ def media_upload(pid, slot):
     file.save(incoming)
     project_archive.create_version(path, load(pid), f"Trước khi thay nguồn {slot}")
     def work(job):
+        relinked = False
         try:
             job.update(5, "Đang chuẩn bị file âm thanh…" if slot != "background" else "Đang chuẩn bị ảnh nền…")
             if slot in ('countdown', 'logo'):
@@ -496,33 +497,39 @@ def media_upload(pid, slot):
                     image.thumbnail((2048,2048) if slot == 'logo' else (512,512))
                     image.save(destination,'PNG')
                 job.check()
-                destination.replace(path/f'{slot}.png')
                 project=load(pid)
+                relinked=_matches_missing_media(project,slot,destination)
+                destination.replace(path/f'{slot}.png')
                 project[f'{slot}_name']=filename
-                if slot == 'logo':
+                if slot == 'logo' and not relinked:
                     project['logo_version']=uuid.uuid4().hex
                     project['logo_image']={'width':image.width,'height':image.height}
-                project['settings']=validate_settings({'logo_enabled':True} if slot == 'logo' else {'countdown':'image'},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'logo_enabled':True} if slot == 'logo' else {'countdown':'image'},project['settings'])
             elif slot == 'background' and ext in media_tools.VIDEO_EXTENSIONS:
                 metadata=media_tools.probe_video(incoming)
+                project=load(pid)
+                relinked=_matches_missing_media(project,slot,incoming)
                 proxy=path/'background_preview_next.mp4'
                 media_tools.make_proxy(incoming,proxy,job)
                 job.check()
                 proxy.replace(path/'background_preview.mp4')
                 source_file='background_source'+ext
                 incoming.replace(path/source_file)
-                project=load(pid)
                 project['background_video']={'name':filename,'source_file':source_file,'preview_file':'background_preview.mp4',**metadata}
-                project['settings']=validate_settings({'background_type':'video'},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'background_type':'video'},project['settings'])
             elif slot == "background":
                 destination = path / "background_next.jpg"
                 engine.command([engine.binary("ffmpeg"), "-y", "-v", "error", "-i", incoming,
                                 "-frames:v", "1", "-update", "1", destination], job)
                 job.check()
-                destination.replace(path / "background.jpg")
                 project = load(pid)
+                relinked=_matches_missing_media(project,slot,destination)
+                destination.replace(path / "background.jpg")
                 project["background_name"] = filename
-                project['settings']=validate_settings({'background_type':'image','use_background':True},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'background_type':'image','use_background':True},project['settings'])
             else:
                 video=None
                 if ext in media_tools.VIDEO_EXTENSIONS:
@@ -534,30 +541,33 @@ def media_upload(pid, slot):
                 engine.convert(incoming, temporary, job)
                 metadata = {"name": filename, **engine.waveform(temporary)}
                 job.check()
+                project = load(pid)
+                relinked = _matches_missing_media(project, slot, temporary)
+                was_missing = bool((project.get("missing_media") or {}).get(slot))
+                had_reference = bool(project.get("reference") or (project.get("missing_media") or {}).get("reference"))
+                replaced_existing = bool(project.get(slot) or was_missing)
                 temporary.replace(path / f"{slot}.wav")
                 if video:
                     proxy.replace(path/video['preview_file'])
                     incoming.replace(path/video['source_file'])
                     metadata['video']=video
-                project = load(pid)
-                had_reference = bool(project.get("reference"))
-                replaced_existing = bool(project.get(slot))
                 project[slot] = metadata
-                if replaced_existing:
-                    project["anchors"] = []
-                project["alignment"] = None
-                if slot == "reference":
-                    project.pop('vocals',None)
-                    if had_reference:
-                        project["words"] = []
-                    for old in ("vocals.wav", "reference_instrumental.wav"):
-                        (path / old).unlink(missing_ok=True)
+                if not relinked:
+                    if replaced_existing:
+                        project["anchors"] = []
+                    project["alignment"] = None
+                    if slot == "reference":
+                        project.pop('vocals',None)
+                        if had_reference:
+                            project["words"] = []
+                        for old in ("vocals.wav", "reference_instrumental.wav"):
+                            (path / old).unlink(missing_ok=True)
                 if project["name"] == "Bài karaoke mới":
                     project["name"] = Path(filename).stem[:150]
             if isinstance(project.get("missing_media"), dict):
                 project["missing_media"].pop(slot, None)
             save(project)
-            return {"project_id": pid}
+            return {"project_id": pid, "relinked": relinked, "slot": slot}
         finally:
             incoming.unlink(missing_ok=True)
     try:
@@ -565,6 +575,20 @@ def media_upload(pid, slot):
     except Exception:
         incoming.unlink(missing_ok=True)
         raise
+
+
+def _matches_missing_media(project, slot, media_path):
+    expected = (project.get("missing_media") or {}).get(slot, {}).get("fingerprint")
+    if not isinstance(expected, dict):
+        return False
+    try:
+        stat = media_path.stat()
+        if stat.st_size != int(expected.get("size", -1)):
+            return False
+        digest = str(expected.get("sha256", ""))
+        return bool(re.fullmatch(r"[0-9a-f]{64}", digest) and project_archive.sha256(media_path) == digest)
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 @app.get("/api/projects/<pid>/audio/<slot>")
@@ -900,7 +924,7 @@ def render(pid):
 
 @app.get("/api/projects/<pid>/exports/<jid>/<filename>")
 def export_file(pid, jid, filename):
-    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json"):
+    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json", "qa-contact.jpg"):
         raise ValueError("File không hợp lệ.")
     return send_file(directory(pid) / "exports" / jid / filename, as_attachment=True)
 

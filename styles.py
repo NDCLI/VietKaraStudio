@@ -25,7 +25,7 @@ DEFAULT_SETTINGS = {
     "logo_enabled": False, "logo_size": 12, "logo_x": 96, "logo_y": 4,
     "logo_opacity": 100, "logo_effect": "none",
     "timeline_linked": True,
-    "render_quality": "high", "render_fps": "source",
+    "render_quality": "high", "render_fps": "source", "audio_normalize": False,
     "render_format": "mp4",
     "title_enabled": False, "title_text": "", "title_credit": "", "title_font": "Arial",
     "title_start": 0, "title_end": 8, "title_size": 105, "title_x": 50, "title_y": 28,
@@ -87,7 +87,7 @@ def validate_settings(values, base=None):
         result[key]=str(result[key]).replace('\r',' ').replace('\n',' ').strip()[:180]
     if result['title_end']<=result['title_start']:
         raise ValueError('Thời gian kết thúc tiêu đề phải sau bắt đầu.')
-    for key in ("italic", "title_italic", "use_background", "sung_gradient", "subtitle_box", "logo_enabled", "timeline_linked", "role_icons", "title_enabled"):
+    for key in ("italic", "title_italic", "use_background", "sung_gradient", "subtitle_box", "logo_enabled", "timeline_linked", "role_icons", "title_enabled", "audio_normalize"):
         if type(result[key]) is not bool:
             raise ValueError(f"Giá trị {key} phải là true hoặc false.")
     for key, choices in (("title_enter", TITLE_EFFECTS), ("title_exit", TITLE_EFFECTS), ("title_template", TITLE_TEMPLATES), ("aspect", ("landscape", "portrait")),

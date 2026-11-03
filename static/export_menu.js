@@ -18,7 +18,7 @@ async function refreshExportMenu(){
     ['Tiêu đề',s.title_enabled&&s.title_text?`${s.title_text} · ${s.title_start}–${s.title_end}s · ${s.title_enter} / ${s.title_exit}`:'Tắt'],
     ['Đếm ngược',s.countdown==='none'?'Tắt':countdown+' · đầu bài / sau nhạc dạo'],
     ['Logo',info.logo?`${p.logo_name} · ${s.logo_size}% · độ rõ ${s.logo_opacity}% · ${$('logoEffect').selectedOptions[0]?.textContent||s.logo_effect}`:'Tắt / chưa có ảnh'],
-    ['Âm thanh',`Beat gốc · ${o.audio}`],['Thư mục',info.folder]];
+    ['Âm thanh',`Beat gốc · ${o.audio}${s.audio_normalize?' · Chuẩn hóa gần −16 LUFS / −1,5 dBTP':''}${info.audio_quality?` · peak ${info.audio_quality.peak_dbfs} dBFS · RMS ${info.audio_quality.rms_dbfs} dBFS`:''}`],['Thư mục',info.folder]];
   $('exportInventory').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl><details><summary>Không đưa vào video</summary><p>'+info.excluded.map(esc).join(' · ')+'</p></details><p class="hint">Video được dựng từ beat gốc; file xuất chỉ gồm video đã ghép chữ, logo và nền.</p>';
   $('exportNotice').textContent=[...info.errors,...info.warnings].join('\n');$('exportNotice').classList.toggle('export-error',info.errors.length>0);
   const checks=info.checks||[],box=$('exportChecks');box.hidden=!checks.length;
