@@ -398,6 +398,14 @@ def render(project, directory, job, render_id=None):
             if not reference_path.is_file():raise ValueError('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
             vocal_path=separate(reference_path,directory,job,hardware.select_ai()['demucs'])
         args += ['-i',str(vocal_path)]
+    import scene_tools
+    scene_items = scene_tools.timeline(project, duration, directory)
+    next_input = 3 if guide_audio else 2
+    scene_inputs = []
+    for scene in scene_items:
+        args += ['-loop', '1', '-framerate', str(fps), '-i', str(scene['image_path'])]
+        scene_inputs.append({**scene, 'input_index': next_input})
+        next_input += 1
     from bundled_assets import FONT_ROOT
     # A relative fontsdir avoids Windows drive-colon escaping in FFmpeg filters.
     fonts_dir = export / 'fonts'
@@ -412,10 +420,29 @@ def render(project, directory, job, render_id=None):
             for face in bundled_fonts():
                 if face['family'] == chosen[0]:
                     shutil.copy2(ASSET_ROOT / face['file'], fonts_dir / Path(face['file']).name)
-    visual_filter=f'setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,ass=lyrics.ass:fontsdir=fonts'
-    graph=f'[0:v]{visual_filter}[base]'
+    background_filter=f'setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1'
+    visual_filter=background_filter+',ass=lyrics.ass:fontsdir=fonts'
+    graph=f'[0:v]{background_filter}[scene_base]'
+    last_background='scene_base'
+    for index, scene in enumerate(scene_inputs):
+        start, end = scene['start'], scene['end']
+        clip_duration = max(.05, end - start)
+        fade = min(scene['fade_seconds'], clip_duration / 2)
+        scene_filter=(f"[{scene['input_index']}:v]scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                      f"crop={width}:{height},setsar=1,format=rgba,colorchannelmixer=aa={scene['opacity']/100:.4f}")
+        if fade >= .05:
+            scene_filter += f',fade=t=in:st=0:d={fade:.3f}:alpha=1'
+            scene_filter += f',fade=t=out:st={max(0, clip_duration-fade):.3f}:d={fade:.3f}:alpha=1'
+        scene_filter += f',trim=duration={clip_duration:.3f},setpts=PTS-STARTPTS+{start:.3f}/TB[scene_image{index}]'
+        graph += ';' + scene_filter
+        graph += (f";[{last_background}][scene_image{index}]overlay=x=0:y=0:eof_action=pass:shortest=0:"
+                  f"enable='between(t,{start:.3f},{end:.3f})'[scene_bg{index}]")
+        last_background = f'scene_bg{index}'
+    if scene_inputs:
+        graph += f';[{last_background}]ass=lyrics.ass:fontsdir=fonts[base]'
+    else:
+        graph = f'[0:v]{visual_filter}[base]'
     last='base'
-    next_input=3 if guide_audio else 2
     overlay=media_tools.custom_countdown_filter(project,directory,display_plan(project),width,height,next_input)
     if overlay:
         countdown_graph,last=overlay
@@ -429,7 +456,7 @@ def render(project, directory, job, render_id=None):
         graph+=';'+logo_graph
     if guide_audio:
         graph+=';[1:a:0][2:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]'
-    if overlay or logo or guide_audio:
+    if scene_inputs or overlay or logo or guide_audio:
         args+=['-filter_complex',graph,'-map',f'[{last}]','-map','[audio]' if guide_audio else '1:a:0']
     else:
         args+=['-vf',visual_filter,'-map','0:v:0','-map','1:a:0']

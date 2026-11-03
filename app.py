@@ -28,6 +28,7 @@ import media_tools
 import audio_sync
 import batch_render
 import project_archive
+import scene_tools
 import updater
 from styles import DEFAULT_SETTINGS, validate_settings
 from timing import (beat_words, estimate_words, finite, validate_anchors,
@@ -176,6 +177,7 @@ def save(project):
     with LOCK:
         project["schema"] = 2
         project["words"] = validate_words(project.get("words", []))
+        project["scenes"] = scene_tools.validate(project.get("scenes", []))
         project["updated_at"] = time.time()
         dest = engine.DATA / "projects" / project["id"] / "project.json"
         temp = dest.with_suffix(".tmp")
@@ -186,8 +188,10 @@ def save(project):
 def public(project):
     result = deepcopy(project)
     result["settings"] = validate_settings(project.get("settings", {}))
+    project_dir = engine.DATA / "projects" / project["id"]
+    result["scenes"] = scene_tools.public(project.get("scenes", []), project_dir)
     result["beat_words"] = beat_words(project)
-    result["vocals_ready"] = (engine.DATA / "projects" / project["id"] / "vocals.wav").is_file()
+    result["vocals_ready"] = (project_dir / "vocals.wav").is_file()
     if result['vocals_ready'] and not result.get('vocals'):
         result['vocals']={'name':'Vocal riêng',**engine.waveform(engine.DATA/'projects'/project['id']/'vocals.wav')}
     return result
@@ -340,10 +344,20 @@ def get_layout():
     data=request.get_json()
     project={'settings':validate_settings(data.get('settings',{})),
              'words':validate_words(data.get('words',[])), 'anchors':validate_anchors(data.get('anchors',[])),
-             'beat':data.get('beat')}
+             'beat':data.get('beat'), 'scenes':scene_tools.validate(data.get('scenes',[]))}
     if project['beat']:
         project['beat']={'duration':max(0,finite(project['beat']['duration']))}
-    return jsonify(layout.display_plan(project))
+    result=layout.display_plan(project)
+    project_id=data.get('project_id')
+    if project_id:
+        path=directory(project_id)
+        result['scene_overlays']=[{key:value for key,value in scene.items() if key!='image_path'} |
+                                  {'url':f"/api/projects/{project_id}/scenes/{scene['id']}/image?v="+
+                                         str((path/'project.json').stat().st_mtime_ns)}
+                                  for scene in scene_tools.timeline(project,project.get('beat',{}).get('duration',0),path)]
+    else:
+        result['scene_overlays']=[]
+    return jsonify(result)
 
 
 @app.post('/api/projects/<pid>/autosplit')
@@ -408,7 +422,7 @@ def new_project():
     path.mkdir(parents=True, exist_ok=True)
     project = {"id": pid, "schema": 2, "name": str(data.get("name", "Bài karaoke mới"))[:150],
                "reference": None, "beat": None, "words": [], "anchors": [],
-               "settings": deepcopy(DEFAULT_SETTINGS), "text": "", "alignment": None}
+               "settings": deepcopy(DEFAULT_SETTINGS), "text": "", "alignment": None, "scenes": []}
     save(project)
     return jsonify(public(project)), 201
 
@@ -437,6 +451,8 @@ def update_project(pid):
             project["anchors"] = validate_anchors(data["anchors"])
         if "settings" in data:
             project["settings"] = validate_settings(data["settings"], project["settings"])
+        if "scenes" in data:
+            project["scenes"] = scene_tools.validate(data["scenes"])
         save(project)
     return jsonify(public(project))
 
@@ -652,6 +668,76 @@ def video_reference(pid):
         save(project)
         return {'project_id':pid}
     return task(pid,'upload',work)
+
+
+@app.post("/api/projects/<pid>/scenes/<scene_id>/image")
+def upload_scene_image(pid, scene_id):
+    idle(pid)
+    path = directory(pid)
+    target_name = scene_tools.media_name(scene_id)
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        raise ValueError("Hãy chọn ảnh nền cho cảnh.")
+    extension = Path(uploaded.filename).suffix.lower()
+    if extension not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise ValueError("Ảnh cảnh chỉ nhận PNG, JPG hoặc WebP.")
+    project = load(pid)
+    scene = next((item for item in project.get("scenes", []) if item.get("id") == scene_id), None)
+    if not scene:
+        raise ValueError("Hãy tạo cảnh cho phân đoạn trước khi nạp ảnh.")
+    if uploaded.content_length and uploaded.content_length > 150 * 1024 ** 2:
+        raise ValueError("Ảnh cảnh vượt quá giới hạn 150 MB.")
+    destination = path / target_name
+    temporary = path / (target_name + ".next")
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(uploaded.stream) as source:
+            if source.width * source.height > 60_000_000:
+                raise ValueError("Ảnh cảnh vượt quá giới hạn 60 megapixel.")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+            image.thumbnail((8192, 8192))
+            image.save(temporary, "PNG", optimize=True)
+    except ValueError:
+        temporary.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        temporary.unlink(missing_ok=True)
+        raise ValueError("Không đọc được ảnh cảnh. Hãy chọn một file ảnh hợp lệ.") from exc
+    try:
+        if destination.is_file():
+            project_archive.create_version(path, project, "Trước khi thay ảnh cảnh")
+        temporary.replace(destination)
+        project["scenes"] = scene_tools.validate(project.get("scenes", []))
+        save(project)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return jsonify(public(load(pid)))
+
+
+@app.delete("/api/projects/<pid>/scenes/<scene_id>")
+def delete_scene(pid, scene_id):
+    idle(pid)
+    path = directory(pid)
+    name = scene_tools.media_name(scene_id)
+    project = load(pid)
+    if not any(scene.get("id") == scene_id for scene in project.get("scenes", [])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    project_archive.create_version(path, project, "Trước khi bỏ cảnh nền")
+    project["scenes"] = [scene for scene in project.get("scenes", []) if scene.get("id") != scene_id]
+    save(project)
+    return jsonify(public(load(pid)))
+
+
+@app.get("/api/projects/<pid>/scenes/<scene_id>/image")
+def get_scene_image(pid, scene_id):
+    path = directory(pid)
+    name = scene_tools.media_name(scene_id)
+    if not any(scene.get("id") == scene_id for scene in load(pid).get("scenes", [])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image = path / name
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh nền.")
+    return send_file(image, mimetype="image/png", conditional=True)
 
 
 def recognize_cached(path, job, model, language, lyrics, preference, region=None):
@@ -998,7 +1084,8 @@ def import_project():
     project = {"id": uuid.uuid4().hex, "schema": 2, "name": str(data.get("name", "Project đã nhập"))[:150],
                "reference": None, "beat": None, "words": validate_words(data.get("words", [])),
                "anchors": validate_anchors(data.get("anchors", [])), "text": str(data.get("text", ""))[:300000],
-               "alignment": None, "settings": deepcopy(DEFAULT_SETTINGS)}
+               "alignment": None, "settings": deepcopy(DEFAULT_SETTINGS),
+               "scenes": scene_tools.validate(data.get("scenes", []))}
     project["settings"] = validate_settings(data.get("settings", {}))
     (engine.DATA / "projects" / project["id"]).mkdir(parents=True, exist_ok=True)
     save(project)
@@ -1044,6 +1131,7 @@ def import_project_bundle():
                    "anchors": validate_anchors(data.get("anchors", [])),
                    "text": str(data.get("text", ""))[:300000], "alignment": data.get("alignment"),
                    "settings": validate_settings(data.get("settings", {})),
+                   "scenes": scene_tools.validate(data.get("scenes", [])),
                    "background_video": background_video,
                    "relink_assets": fingerprints, "missing_media": missing_media}
         for key in ("background_name", "logo_name", "logo_image", "logo_version", "countdown_name", "processing"):

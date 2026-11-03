@@ -69,6 +69,10 @@ def required_media(project: dict, source: Path) -> list[Path]:
         needed.append("logo.png")
     if settings.get("countdown") == "image" and settings.get("display_mode") == "karaoke":
         needed.append("countdown.png")
+    for scene in project.get("scenes", []):
+        name = scene.get("media_name")
+        if isinstance(name, str) and name in available:
+            needed.append(name)
     if settings.get("audio_output", "beat") == "guide":
         if "vocals.wav" in available:
             needed.append("vocals.wav")

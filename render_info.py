@@ -203,6 +203,13 @@ def describe(project,directory):
     anchors=project.get('anchors',[])
     beat_duration=float((project.get('beat') or {}).get('duration') or 0)
     reference_duration=float((project.get('reference') or {}).get('duration') or 0)
+    import scene_tools
+    scene_sections={word.get('section_name') for word in words if word.get('section_name')}
+    for scene in scene_tools.validate(project.get('scenes',[])):
+        if scene['section_name'] in scene_sections and not (directory/scene['media_name']).is_file():
+            warnings.append(f"Cảnh {scene['section_name']} chưa có ảnh; sẽ dùng nền chung.")
+    scene_manifest=[{key:value for key,value in scene.items() if key!='image_path'}
+                    for scene in scene_tools.timeline(project,beat_duration,directory)]
     for index,word in enumerate(words):
         start=float(word.get('start',0));end=float(word.get('end',start));duration=end-start
         if word.get('estimated'):
@@ -322,6 +329,7 @@ def describe(project,directory):
     return {'project':project.get('name',''),'output':{'width':width,'height':height,'fps':round(fps,5),'format':s['render_format'].upper()+' · H.264','audio':audio_label+' · AAC · 320 kbps'+(' · chuẩn hóa gần −16 LUFS' if s['audio_normalize'] else ''),'quality':s['render_quality']},
             'folder':folder or 'Thư mục exports của project (mặc định)',
             'duration':(project.get('beat') or {}).get('duration',0),'background':{'kind':kind,'name':path.name if path else s['background'],'source':source},
+            'scenes':scene_manifest,
             'words':len(words),'lines':len({w['line'] for w in words}),
             'logo':bool(s['logo_enabled'] and project.get('logo_name')),'settings':s,'warnings':warnings,'errors':errors,
             'checks':checks,'audio_quality':audio_quality,
