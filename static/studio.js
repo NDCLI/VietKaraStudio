@@ -337,7 +337,7 @@ for(const canvas of [$('timeline'),$('waveformCanvas')])canvas.addEventListener(
   state.pan=Math.max(0,Math.min(old.duration-span,anchor-fraction*span));
   $('pan').value=state.pan;drawTimeline();
 },{passive:false});
-$('timelineAutoBtn').onclick=()=>{if(!state.job&&!state.manualTiming)$('alignLyricsBtn').click();};
+$('timelineAutoBtn').onclick=()=>{if(state.job||state.manualTiming)return;if(state.project.reference&&state.project.beat)api(endpoint('/sync-suggest'),{method:'POST',body:{}}).then(followJob).catch(handleError);else $('alignLyricsBtn').click();};
 $('timelineManualBtn').onclick=wrap(openTappingDialog);
 
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import uuid
 
 
 def finite(value, label="Giá trị"):
@@ -50,6 +51,9 @@ def validate_words(words):
     if not isinstance(words, list) or len(words) > 30000:
         raise ValueError("Danh sách từ không hợp lệ.")
     out = []
+    used_ids = set()
+    used_line_ids = set()
+    line_ids = {}
     for i, word in enumerate(words):
         start, end = finite(word["start"]), finite(word["end"])
         if start < 0 or end <= start:
@@ -60,13 +64,29 @@ def validate_words(words):
         role = word.get("role", "all")
         if role not in ("all", "male", "female"):
             role = "all"
-        out.append({"text": text, "start": round(start, 4), "end": round(end, 4),
-                    "line": max(0, int(word.get("line", 0))), "role": role,
-                    "estimated": bool(word.get("estimated", False))})
+        line = max(0, int(word.get("line", 0)))
+        identifier = str(word.get('id', ''))
+        if not re.fullmatch(r'[0-9a-f]{32}', identifier) or identifier in used_ids:
+            identifier = uuid.uuid4().hex
+        used_ids.add(identifier)
+        line_id = line_ids.get(line)
+        if line_id is None:
+            candidate = str(word.get('line_uid', ''))
+            if not re.fullmatch(r'[0-9a-f]{32}', candidate) or candidate in used_line_ids:
+                candidate = uuid.uuid4().hex
+            line_id = line_ids[line] = candidate
+            used_line_ids.add(line_id)
+        out.append({"id": identifier, "line_uid": line_id, "text": text,
+                    "start": round(start, 4), "end": round(end, 4),
+                    "line": line, "role": role, "estimated": bool(word.get("estimated", False))})
         if word.get("locked"):
             out[-1]["locked"] = True
         if word.get("section"):
             out[-1]["section"] = True
+        if word.get('section_name'):
+            section_name = str(word['section_name']).strip()[:40]
+            if section_name:
+                out[-1]['section_name'] = section_name
         if word.get("manual"):
             out[-1]["manual"] = True
         if word.get('label_color'):

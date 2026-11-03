@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import threading
+import tempfile
 import time
 import uuid
 from urllib.parse import urlparse
@@ -23,6 +24,8 @@ import hardware
 import presets
 import layout
 import media_tools
+import audio_sync
+import project_archive
 import updater
 from styles import DEFAULT_SETTINGS, validate_settings
 from timing import (beat_words, estimate_words, finite, validate_anchors,
@@ -80,6 +83,8 @@ def separate_tool(pid):
     from_video = payload.get('source') == 'background'
     from_youtube = payload.get('source') == 'youtube'
     apply_project = from_video and payload.get('apply_to_project') is True
+    if apply_project:
+        project_archive.create_version(project_path, load(pid), "Trước khi thay media bằng kết quả tách vocal/beat")
     source = media_tools.local_asset(project_path, load(pid).get('background_video', {}).get('source_file')) if from_video else None
     youtube_url = str(payload.get('url', '')).strip() if from_youtube else ''
     if from_video and not source:
@@ -121,7 +126,9 @@ def separate_tool(pid):
                     current = load(pid)
                     for original, target in (('reference.wav', 'reference.wav'), ('reference_instrumental.wav', 'beat.wav'),
                                              ('vocals.wav', 'vocals.wav'), ('reference_instrumental.wav', 'reference_instrumental.wav')):
-                        shutil.copy2(folder / original, project_path / target)
+                        staged = project_path / (target + '.next')
+                        shutil.copy2(folder / original, staged)
+                        staged.replace(project_path / target)
                     current.update(metadata)
                     current['reference']['name'] = current['background_video']['name']
                     current['words'] = []; current['anchors'] = []; current['alignment'] = None
@@ -154,11 +161,19 @@ def directory(pid):
 
 def load(pid):
     with LOCK:
-        return json.loads((directory(pid) / "project.json").read_text(encoding="utf-8"))
+        project = json.loads((directory(pid) / "project.json").read_text(encoding="utf-8"))
+        words = project.get("words", [])
+        if project.get("schema", 1) < 2 or any(not word.get("id") or not word.get("line_uid") for word in words):
+            project["words"] = validate_words(words)
+            project["schema"] = 2
+            save(project)
+        return project
 
 
 def save(project):
     with LOCK:
+        project["schema"] = 2
+        project["words"] = validate_words(project.get("words", []))
         project["updated_at"] = time.time()
         dest = engine.DATA / "projects" / project["id"] / "project.json"
         temp = dest.with_suffix(".tmp")
@@ -364,7 +379,7 @@ def new_project():
     pid = uuid.uuid4().hex
     path = engine.DATA / "projects" / pid
     path.mkdir(parents=True, exist_ok=True)
-    project = {"id": pid, "schema": 1, "name": str(data.get("name", "Bài karaoke mới"))[:150],
+    project = {"id": pid, "schema": 2, "name": str(data.get("name", "Bài karaoke mới"))[:150],
                "reference": None, "beat": None, "words": [], "anchors": [],
                "settings": deepcopy(DEFAULT_SETTINGS), "text": "", "alignment": None}
     save(project)
@@ -399,6 +414,31 @@ def update_project(pid):
     return jsonify(public(project))
 
 
+@app.get("/api/projects/<pid>/versions")
+def get_project_versions(pid):
+    return jsonify(project_archive.list_versions(directory(pid)))
+
+
+@app.post("/api/projects/<pid>/versions")
+def create_project_version(pid):
+    idle(pid)
+    data = request.get_json(silent=True) or {}
+    record = project_archive.create_version(directory(pid), load(pid), data.get("note", ""))
+    return jsonify(record), 201
+
+
+@app.post("/api/projects/<pid>/versions/<identifier>/restore")
+def restore_project_version(pid, identifier):
+    idle(pid)
+    path = directory(pid)
+    current = load(pid)
+    project_archive.create_version(path, current, "Tự lưu trước khi khôi phục phiên bản")
+    restored = project_archive.restore_version(path, identifier)
+    restored["id"] = pid
+    save(restored)
+    return jsonify(public(load(pid)))
+
+
 @app.post("/api/projects/<pid>/media/<slot>")
 def media_upload(pid, slot):
     idle(pid)
@@ -418,6 +458,7 @@ def media_upload(pid, slot):
         raise ValueError("Định dạng file chưa được hỗ trợ.")
     incoming = path / ("incoming_" + uuid.uuid4().hex + ext)
     file.save(incoming)
+    project_archive.create_version(path, load(pid), f"Trước khi thay nguồn {slot}")
     def work(job):
         try:
             job.update(5, "Đang chuẩn bị file âm thanh…" if slot != "background" else "Đang chuẩn bị ảnh nền…")
@@ -487,6 +528,8 @@ def media_upload(pid, slot):
                         (path / old).unlink(missing_ok=True)
                 if project["name"] == "Bài karaoke mới":
                     project["name"] = Path(filename).stem[:150]
+            if isinstance(project.get("missing_media"), dict):
+                project["missing_media"].pop(slot, None)
             save(project)
             return {"project_id": pid}
         finally:
@@ -562,11 +605,13 @@ def video_reference(pid):
 
 @app.post("/api/projects/<pid>/analyze")
 def analyze(pid):
+    idle(pid)
     project = load(pid)
     if not project.get("reference"):
         raise ValueError("Hãy nạp bản có giọng hát tham chiếu.")
     if any(word.get('locked') for word in project.get('words', [])):
         raise ValueError('Mở khóa các câu đã khóa trước khi nhận lời và căn lại toàn bài.')
+    project_archive.create_version(directory(pid), project, "Trước khi AI nhận lời và căn toàn bài")
     options = request.get_json(silent=True) or {}
     lyrics = str(options.get("lyrics", ""))[:300000]
     def work(job):
@@ -660,6 +705,18 @@ def align_region(pid):
         return {'line_ids': line_ids, 'old_words': old_words, 'new_words': new_words,
                 'words': candidate, 'text': text, 'diagnostics': result.get('alignment_diagnostics', {})}
     return task(pid, 'align-region', work)
+
+
+@app.post('/api/projects/<pid>/sync-suggest')
+def sync_suggest(pid):
+    idle(pid)
+    project = load(pid)
+    if not project.get('reference') or not project.get('beat'):
+        raise ValueError('Hãy nạp cả bản hát tham chiếu và beat trước khi dò đồng bộ.')
+    path = directory(pid)
+    if not (path / 'reference.wav').is_file() or not (path / 'beat.wav').is_file():
+        raise ValueError('Thiếu file âm thanh gốc để dò. Hãy nạp lại nguồn của project.')
+    return task(pid, 'sync-suggest', lambda job: audio_sync.suggest(path / 'reference.wav', path / 'beat.wav', job))
 
 
 @app.post('/api/projects/<pid>/suggest-roles')
@@ -762,6 +819,13 @@ def export_file(pid, jid, filename):
 @app.get("/api/projects/<pid>/download/<kind>")
 def download(pid, kind):
     project = load(pid)
+    if kind in ("bundle-light", "bundle-full"):
+        output = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+        project_archive.write_bundle(output, project, directory(pid), kind == "bundle-full")
+        output.seek(0)
+        safe_name = re.sub(r'[^\w\- ]', '', project["name"])[:70] or "vietkara-project"
+        return send_file(output, mimetype="application/zip", as_attachment=True,
+                         download_name=safe_name + ("-day-du.zip" if kind == "bundle-full" else "-gon.zip"))
     if kind == "json":
         content = json.dumps({k:v for k,v in project.items() if k not in ("reference", "beat")},
                              ensure_ascii=False, indent=2)
@@ -776,13 +840,68 @@ def download(pid, kind):
 @app.post("/api/projects/import")
 def import_project():
     data = request.get_json()
-    if data.get("schema") != 1:
+    if data.get("schema") not in (1, 2):
         raise ValueError("Định dạng project chưa được hỗ trợ.")
-    project = {"id": uuid.uuid4().hex, "schema": 1, "name": str(data.get("name", "Project đã nhập"))[:150],
+    project = {"id": uuid.uuid4().hex, "schema": 2, "name": str(data.get("name", "Project đã nhập"))[:150],
                "reference": None, "beat": None, "words": validate_words(data.get("words", [])),
                "anchors": validate_anchors(data.get("anchors", [])), "text": str(data.get("text", ""))[:300000],
                "alignment": None, "settings": deepcopy(DEFAULT_SETTINGS)}
     project["settings"] = validate_settings(data.get("settings", {}))
     (engine.DATA / "projects" / project["id"]).mkdir(parents=True, exist_ok=True)
     save(project)
+    return jsonify(public(project)), 201
+
+
+@app.post("/api/projects/import-bundle")
+def import_project_bundle():
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        raise ValueError("Chọn file project ZIP cần nhập.")
+    pid = uuid.uuid4().hex
+    path = engine.DATA / "projects" / pid
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        data, copied, fingerprints = project_archive.read_bundle(uploaded.stream, path)
+        reference = deepcopy(data.get("reference")) if isinstance(data.get("reference"), dict) else None
+        beat = deepcopy(data.get("beat")) if isinstance(data.get("beat"), dict) else None
+        missing_media = {}
+        if reference and "reference.wav" not in copied:
+            missing_media["reference"] = {"name": reference.get("name", "Bản hát"),
+                                          "fingerprint": fingerprints.get("reference.wav")}
+            reference = None
+        if beat and "beat.wav" not in copied:
+            missing_media["beat"] = {"name": beat.get("name", "Beat"),
+                                     "fingerprint": fingerprints.get("beat.wav")}
+            beat = None
+        for item in (reference, beat):
+            video = item.get("video") if item else None
+            if video and video.get("source_file") not in copied:
+                item.pop("video", None)
+        background_video = deepcopy(data.get("background_video")) if isinstance(data.get("background_video"), dict) else None
+        if background_video and background_video.get("source_file") not in copied:
+            missing_media["background"] = {"name": background_video.get("name", "Video nền"),
+                                            "fingerprint": fingerprints.get(background_video.get("source_file"))}
+            background_video = None
+        elif data.get("background_name") and "background.jpg" not in copied:
+            missing_media["background"] = {"name": data.get("background_name"),
+                                            "fingerprint": fingerprints.get("background.jpg")}
+        project = {"id": pid, "schema": 2, "name": str(data.get("name", "Project đã nhập"))[:150],
+                   "reference": reference, "beat": beat,
+                   "words": validate_words(data.get("words", [])),
+                   "anchors": validate_anchors(data.get("anchors", [])),
+                   "text": str(data.get("text", ""))[:300000], "alignment": data.get("alignment"),
+                   "settings": validate_settings(data.get("settings", {})),
+                   "background_video": background_video,
+                   "relink_assets": fingerprints, "missing_media": missing_media}
+        for key in ("background_name", "logo_name", "logo_image", "logo_version", "countdown_name", "processing"):
+            if key in data:
+                project[key] = data[key]
+        if data.get("logo_name") and "logo.png" not in copied:
+            project["missing_media"]["logo"] = {"name": data["logo_name"], "fingerprint": fingerprints.get("logo.png")}
+        if data.get("countdown_name") and "countdown.png" not in copied:
+            project["missing_media"]["countdown"] = {"name": data["countdown_name"], "fingerprint": fingerprints.get("countdown.png")}
+        save(project)
+    except Exception:
+        shutil.rmtree(path, ignore_errors=True)
+        raise
     return jsonify(public(project)), 201
