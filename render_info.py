@@ -173,6 +173,8 @@ def describe(project,directory):
     if source and fps>fps_value(source.get('fps',30))+.1:warnings.append('FPS xuất cao hơn nguồn chỉ lặp khung hình, không tạo chuyển động mới.')
     if not project.get('beat') or not (directory/'beat.wav').is_file():errors.append('Chưa có beat gốc.')
     if not project.get('words'):errors.append('Chưa có lời để xuất.')
+    if s['audio_output']=='guide' and not (directory/'vocals.wav').is_file() and not (directory/'reference.wav').is_file():
+        errors.append('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
     if s['logo_enabled'] and project.get('logo_name') and not (directory/'logo.png').is_file():errors.append('Thiếu file logo. Hãy nạp lại ảnh logo.')
     if s['countdown']=='image' and not (directory/'countdown.png').is_file():errors.append('Thiếu ảnh đếm ngược.')
     words=project.get('words',[])
@@ -315,10 +317,12 @@ def describe(project,directory):
                 warnings.append('Peak beat dưới 0,5 dB so với ngưỡng clipping; nên kiểm tra âm lượng.')
         except Exception as exc:
             warnings.append('Chưa đo được peak/RMS của beat: '+str(exc)[:180])
-    return {'project':project.get('name',''),'output':{'width':width,'height':height,'fps':round(fps,5),'format':s['render_format'].upper()+' · H.264','audio':'AAC · 320 kbps'+(' · chuẩn hóa gần −16 LUFS' if s['audio_normalize'] else ''),'quality':s['render_quality']},
+    audio_label='Beat gốc'
+    if s['audio_output']=='guide':audio_label='Beat + vocal hướng dẫn'
+    return {'project':project.get('name',''),'output':{'width':width,'height':height,'fps':round(fps,5),'format':s['render_format'].upper()+' · H.264','audio':audio_label+' · AAC · 320 kbps'+(' · chuẩn hóa gần −16 LUFS' if s['audio_normalize'] else ''),'quality':s['render_quality']},
             'folder':folder or 'Thư mục exports của project (mặc định)',
             'duration':(project.get('beat') or {}).get('duration',0),'background':{'kind':kind,'name':path.name if path else s['background'],'source':source},
             'words':len(words),'lines':len({w['line'] for w in words}),
             'logo':bool(s['logo_enabled'] and project.get('logo_name')),'settings':s,'warnings':warnings,'errors':errors,
             'checks':checks,'audio_quality':audio_quality,
-            'audio_source':(project.get('beat') or {}).get('name'),'excluded':['Giọng hát tham chiếu','Âm thanh video nền','Màu nhãn timeline','Bố cục màn hình chỉnh sửa']}
+            'audio_source':(project.get('beat') or {}).get('name'),'excluded':(['Giọng hát tham chiếu'] if s['audio_output']=='beat' else [])+['Âm thanh video nền','Màu nhãn timeline','Bố cục màn hình chỉnh sửa']}

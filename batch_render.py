@@ -10,6 +10,7 @@ from pathlib import Path
 
 import engine
 import project_archive
+from styles import validate_settings
 
 
 def _write(path: Path, value: dict) -> None:
@@ -68,14 +69,46 @@ def required_media(project: dict, source: Path) -> list[Path]:
         needed.append("logo.png")
     if settings.get("countdown") == "image" and settings.get("display_mode") == "karaoke":
         needed.append("countdown.png")
+    if settings.get("audio_output", "beat") == "guide":
+        if "vocals.wav" in available:
+            needed.append("vocals.wav")
+        elif "reference.wav" in available:
+            needed.append("reference.wav")
+        else:
+            raise ValueError(f"Project {project.get('name', '')} cần bản hát hoặc vocal đã tách cho bản hướng dẫn.")
     return [available[name] for name in dict.fromkeys(needed) if name in available]
 
 
-def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str) -> dict:
+def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
+           aspects: list[str] | None = None, include_guide: bool = False) -> dict:
     batch_id, job_id = uuid.uuid4().hex, uuid.uuid4().hex
     root = data_root / "batch-renders" / batch_id
-    snapshots = [(project, source, required_media(project, source)) for project, source in projects]
-    required_bytes = sum(media.stat().st_size for _, _, media_list in snapshots for media in media_list)
+    requested_aspects = list(dict.fromkeys(aspects or ["current"]))
+    if not requested_aspects or any(value not in ("current", "landscape", "portrait") for value in requested_aspects):
+        raise ValueError("Tỉ lệ đầu ra theo lô không hợp lệ.")
+    snapshots = []
+    media_by_project = {}
+    for project, source in projects:
+        current_aspect = validate_settings(project.get("settings", {}))["aspect"]
+        seen_outputs = set()
+        for requested in requested_aspects:
+            target_aspect = current_aspect if requested == "current" else requested
+            for audio_output in (("beat", "guide") if include_guide else ("beat",)):
+                output_key = (target_aspect, audio_output)
+                if output_key in seen_outputs:
+                    continue
+                seen_outputs.add(output_key)
+                snapshot = deepcopy(project)
+                snapshot["settings"] = validate_settings({"aspect": target_aspect,
+                                                          "audio_output": audio_output},
+                                                         project.get("settings", {}))
+                media_list = required_media(snapshot, source)
+                snapshots.append((project, snapshot, source, media_list, requested, audio_output))
+                media_by_project.setdefault(project["id"], {})
+                media_by_project[project["id"]].update({media.name: media for media in media_list})
+    required_by_path = {str(media.resolve()): media for media_list in media_by_project.values()
+                        for media in media_list.values()}
+    required_bytes = sum(media.stat().st_size for media in required_by_path.values())
     free_bytes = shutil.disk_usage(data_root).free
     if required_bytes + 256 * 1024 ** 2 > free_bytes:
         raise ValueError(f"Không đủ dung lượng trống để chụp hàng đợi ({required_bytes / 1024**3:.1f} GB cần, "
@@ -83,16 +116,33 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str) -> di
     root.mkdir(parents=True, exist_ok=False)
     items = []
     try:
-        for project, source, media_list in snapshots:
-            frozen = root / "items" / project["id"]
+        media_snapshots = {}
+        for project_id, media_list in media_by_project.items():
+            frozen_media = root / "media" / project_id
+            frozen_media.mkdir(parents=True)
+            media_snapshots[project_id] = {}
+            for name, media in media_list.items():
+                destination = frozen_media / name
+                shutil.copy2(media, destination)
+                media_snapshots[project_id][name] = destination
+        for project, snapshot, source, media_list, requested_aspect, audio_output in snapshots:
+            render_id = uuid.uuid4().hex
+            frozen = root / "items" / render_id
             frozen.mkdir(parents=True)
-            snapshot = deepcopy(project)
             (frozen / "snapshot.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
             assets = []
             for media in media_list:
-                shutil.copy2(media, frozen / media.name)
+                destination = frozen / media.name
+                try:
+                    destination.hardlink_to(media_snapshots[project["id"]][media.name])
+                except OSError:
+                    shutil.copy2(media_snapshots[project["id"]][media.name], destination)
                 assets.append(media.name)
-            items.append({"project_id": project["id"], "name": project["name"],
+            aspect_label = "Hiện tại" if requested_aspect == "current" else ("Ngang 16:9" if requested_aspect == "landscape" else "Dọc 9:16")
+            audio_label = "Beat gốc" if audio_output == "beat" else "Beat + vocal hướng dẫn"
+            items.append({"project_id": project["id"], "render_id": render_id,
+                          "name": f"{project['name']} · {aspect_label} · {audio_label}",
+                          "variant": {"aspect": snapshot["settings"]["aspect"], "audio": audio_output},
                           "directory": str(frozen), "assets": assets, "status": "queued", "result": None})
         record = {"id": batch_id, "job_id": job_id, "owner": owner, "created_at": time.time(),
                   "updated_at": time.time(), "status": "queued", "next_index": 0,
@@ -124,15 +174,39 @@ def run(data_root: Path, batch_id: str, job) -> dict:
         item["error"] = None
         save_record(data_root, record)
         try:
-            result = engine.render(project, frozen, job)
+            render_id = item.get("render_id") or job.id
+            result = engine.render(project, frozen, job, render_id=render_id)
             job.check()
-            generated = frozen / "exports" / job.id
-            destination = data_root / "projects" / item["project_id"] / "exports" / job.id
+            generated = frozen / "exports" / render_id
+            destination = data_root / "projects" / item["project_id"] / "exports" / render_id
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists():
                 shutil.rmtree(destination)
             if generated.is_dir():
                 shutil.move(str(generated), str(destination))
+                output_path = Path(result.get("output_path", ""))
+                try:
+                    relative_output = output_path.relative_to(generated)
+                except (ValueError, OSError):
+                    pass
+                else:
+                    result["output_path"] = str(destination / relative_output)
+            # A guide variant without pre-separated vocals creates them on its own
+            # frozen snapshot. Reuse that separation for sibling aspect variants.
+            if item.get("variant", {}).get("audio") == "guide":
+                vocals = frozen / "vocals.wav"
+                if vocals.is_file():
+                    for sibling in record["items"][index + 1:]:
+                        sibling_dir = Path(sibling.get("directory", ""))
+                        if (sibling.get("project_id") != item["project_id"] or
+                                sibling.get("variant", {}).get("audio") != "guide" or
+                                (sibling_dir / "vocals.wav").exists()):
+                            continue
+                        sibling_vocals = sibling_dir / "vocals.wav"
+                        try:
+                            sibling_vocals.hardlink_to(vocals)
+                        except OSError:
+                            shutil.copy2(vocals, sibling_vocals)
             item["status"] = "done"
             item["result"] = result
             item["error"] = None

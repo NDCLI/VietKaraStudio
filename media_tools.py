@@ -161,8 +161,8 @@ def background_source(project, directory):
     return 'color',None
 
 
-def custom_countdown_filter(project, directory, plan, width, height):
-    """Return an FFmpeg overlay graph for a custom transparent PNG, input index 2."""
+def custom_countdown_filter(project, directory, plan, width, height, input_index=2):
+    """Return an FFmpeg overlay graph for a custom transparent PNG."""
     if project['settings']['countdown']!='image' or project['settings']['display_mode']!='karaoke' or not plan['countdowns']:
         return None
     if not (directory/'countdown.png').is_file():raise ValueError('Hãy chọn ảnh đếm ngược PNG trước khi xuất.')
@@ -173,7 +173,7 @@ def custom_countdown_filter(project, directory, plan, width, height):
         for j in range(4):
             if window['end']-j>window['start']:
                 events.append((window,j))
-    parts=[f'[2:v]format=rgba,split={len(events)}'+''.join(f'[cd{i}]' for i in range(len(events)))+';']
+    parts=[f'[{input_index}:v]format=rgba,split={len(events)}'+''.join(f'[cd{i}]' for i in range(len(events)))+';']
     current='base'
     for i,(window,j) in enumerate(events):
         size=max(2,round(window['size']*factor))

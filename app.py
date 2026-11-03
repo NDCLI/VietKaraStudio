@@ -19,6 +19,7 @@ from bundled_assets import ASSET_ROOT, bundled_fonts, asset_url, ICON_CHOICES, v
 from werkzeug.exceptions import HTTPException
 
 import engine
+import analysis_cache
 from app_runtime import task_command
 import hardware
 import presets
@@ -653,6 +654,33 @@ def video_reference(pid):
     return task(pid,'upload',work)
 
 
+def recognize_cached(path, job, model, language, lyrics, preference, region=None):
+    """Reuse recognition only when source content and every analysis input match."""
+    reference = path / "reference.wav"
+    key = analysis_cache.cache_key(reference, model, language, lyrics, preference, region)
+    cached = analysis_cache.load(engine.DATA, key) if key else None
+    if cached:
+        job.check()
+        temporary = path / ("vocals_cache_next_" + uuid.uuid4().hex + ".wav")
+        try:
+            shutil.copy2(cached["vocals"], temporary)
+            job.check()
+            temporary.replace(path / "vocals.wav")
+        except OSError:
+            temporary.unlink(missing_ok=True)
+            cached = None
+        if cached:
+            job.record_device("demucs", {"device": "cache", "name": "Vocal dùng lại từ cache"})
+            job.record_device("whisper", {"device": "cache", "name": "Nhận lời dùng lại từ cache"})
+            job.update(95, "Đang nạp kết quả nhận lời đã lưu theo nguồn và thiết lập…")
+            return deepcopy(cached["result"]), True
+    result = engine.recognize(path, job, model, language, lyrics, preference, region=region)
+    job.check()
+    if key:
+        analysis_cache.store(engine.DATA, key, result, path / "vocals.wav")
+    return result, False
+
+
 @app.post("/api/projects/<pid>/analyze")
 def analyze(pid):
     idle(pid)
@@ -664,9 +692,10 @@ def analyze(pid):
     project_archive.create_version(directory(pid), project, "Trước khi AI nhận lời và căn toàn bài")
     options = request.get_json(silent=True) or {}
     lyrics = str(options.get("lyrics", ""))[:300000]
+    model, language, preference = (options.get("model", "medium"),
+                                   options.get("language", "vi"), options.get("device", "auto"))
     def work(job):
-        result = engine.recognize(directory(pid), job, options.get("model", "medium"),
-                                  options.get("language", "vi"), lyrics, options.get("device", "auto"))
+        result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference)
         job.check()
         with LOCK:
             current = load(pid)
@@ -677,8 +706,9 @@ def analyze(pid):
                                       "device": result["device"], "compute_type": result["compute_type"],
                                       'alignment_diagnostics':result.get('alignment_diagnostics',{})}
             save(current)
-        return {"project_id": pid, "words": len(current["words"]), "device": result["device"],
-                "device_name": result["device_name"], "compute_type": result["compute_type"]}
+        return {"project_id": pid, "words": len(current["words"]), "device": result.get("device", "cache"),
+                "device_name": result.get("device_name", "cache"),
+                "compute_type": result.get("compute_type", "cache"), "cache_hit": cache_hit}
     return task(pid, "analyze", work)
 
 
@@ -715,11 +745,12 @@ def align_region(pid):
         raise ValueError('Đoạn căn lại dài hơn 2 phút. Hãy chọn ít câu hơn.')
     if end - start < 1:
         raise ValueError('Không đủ âm thanh quanh câu để căn lại.')
+    model, language, preference = (options.get('model', 'medium'),
+                                   options.get('language', 'vi'), options.get('device', 'auto'))
 
     def work(job):
-        result = engine.recognize(directory(pid), job, options.get('model', 'medium'),
-                                  options.get('language', 'vi'), lyrics,
-                                  options.get('device', 'auto'), region={'start': start, 'end': end})
+        result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference,
+                                             region={'start': start, 'end': end})
         job.check()
         aligned = [[] for _ in line_ids]
         for word in result['words']:
@@ -753,6 +784,7 @@ def align_region(pid):
             text_by_line.setdefault(word['line'], []).append(word['text'])
         text = '\n'.join(' '.join(tokens) for tokens in text_by_line.values())
         return {'line_ids': line_ids, 'old_words': old_words, 'new_words': new_words,
+                'cache_hit': cache_hit,
                 'words': candidate, 'text': text, 'diagnostics': result.get('alignment_diagnostics', {})}
     return task(pid, 'align-region', work)
 
@@ -834,6 +866,14 @@ def create_render_batch():
     project_ids = list(dict.fromkeys(raw_ids))
     if len(project_ids) != len(raw_ids):
         raise ValueError("Danh sách project bị trùng.")
+    aspects = data.get("aspects", ["current"])
+    if (not isinstance(aspects, list) or not aspects or len(aspects) > 3 or
+            any(value not in ("current", "landscape", "portrait") for value in aspects)):
+        raise ValueError("Chọn tỉ lệ hiện tại, ngang hoặc dọc cho đầu ra theo lô.")
+    aspects = list(dict.fromkeys(["current", *aspects]))
+    include_guide = data.get("include_guide", False)
+    if type(include_guide) is not bool:
+        raise ValueError("Lựa chọn vocal hướng dẫn không hợp lệ.")
     selected = []
     for pid in project_ids:
         idle(pid)
@@ -843,7 +883,7 @@ def create_render_batch():
         if not project.get("words"):
             raise ValueError(f"Project {project['name']} chưa có lời để xuất.")
         selected.append((project, directory(pid)))
-    record = batch_render.create(engine.DATA, selected, project_ids[0])
+    record = batch_render.create(engine.DATA, selected, project_ids[0], aspects, include_guide)
     job = start_batch_job(record)
     return jsonify(job.public()), 202
 

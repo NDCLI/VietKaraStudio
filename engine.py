@@ -348,8 +348,8 @@ def export_text(project, kind):
     raise ValueError("Định dạng không hợp lệ.")
 
 
-def render(project, directory, job):
-    """Invariant: the ONLY audio input of every export is the uploaded original beat."""
+def render(project, directory, job, render_id=None):
+    """Render from the original beat, optionally mixed with separated guide vocals."""
     if not project.get("beat") or not (directory / "beat.wav").exists():
         raise ValueError("Hãy nạp beat gốc trước khi xuất.")
     if not beat_words(project):
@@ -358,7 +358,8 @@ def render(project, directory, job):
     project = {**project, 'settings':opts}
     import media_tools
     from layout import display_plan
-    export = directory / "exports" / job.id
+    render_id = render_id if isinstance(render_id, str) and re.fullmatch(r"[0-9a-f]{32}", render_id) else job.id
+    export = directory / "exports" / render_id
     export.mkdir(parents=True, exist_ok=True)
     (export / "lyrics.ass").write_text(build_ass(project), encoding="utf-8-sig")
     width, height = (1080, 1920) if opts.get("aspect") == "portrait" else (1920, 1080)
@@ -387,8 +388,16 @@ def render(project, directory, job):
         args += ["-loop", "1", "-framerate", str(fps), "-i", str(background)]
     else:
         args += ["-f", "lavfi", "-i", f"color=c=0x{bg[1:]}:s={width}x{height}:r={fps}"]
-    # Never use reference.wav, vocals.wav, or reference_instrumental.wav as an audio input.
+    # The default soundtrack is always beat.wav; guide variants optionally add separated vocals.
     args += ['-i',str(directory/'beat.wav')]
+    guide_audio = opts['audio_output'] == 'guide'
+    if guide_audio:
+        vocal_path=directory/'vocals.wav'
+        if not vocal_path.is_file():
+            reference_path=directory/'reference.wav'
+            if not reference_path.is_file():raise ValueError('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
+            vocal_path=separate(reference_path,directory,job,hardware.select_ai()['demucs'])
+        args += ['-i',str(vocal_path)]
     from bundled_assets import FONT_ROOT
     # A relative fontsdir avoids Windows drive-colon escaping in FFmpeg filters.
     fonts_dir = export / 'fonts'
@@ -404,10 +413,10 @@ def render(project, directory, job):
                 if face['family'] == chosen[0]:
                     shutil.copy2(ASSET_ROOT / face['file'], fonts_dir / Path(face['file']).name)
     visual_filter=f'setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,ass=lyrics.ass:fontsdir=fonts'
-    overlay=media_tools.custom_countdown_filter(project,directory,display_plan(project),width,height)
     graph=f'[0:v]{visual_filter}[base]'
     last='base'
-    next_input=2
+    next_input=3 if guide_audio else 2
+    overlay=media_tools.custom_countdown_filter(project,directory,display_plan(project),width,height,next_input)
     if overlay:
         countdown_graph,last=overlay
         args+=['-loop','1','-framerate',str(fps),'-i',str(directory/'countdown.png')]
@@ -418,8 +427,10 @@ def render(project, directory, job):
         logo_graph,last=logo
         args+=['-loop','1','-framerate',str(fps),'-i',str(directory/'logo.png')]
         graph+=';'+logo_graph
-    if overlay or logo:
-        args+=['-filter_complex',graph,'-map',f'[{last}]','-map','1:a:0']
+    if guide_audio:
+        graph+=';[1:a:0][2:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]'
+    if overlay or logo or guide_audio:
+        args+=['-filter_complex',graph,'-map',f'[{last}]','-map','[audio]' if guide_audio else '1:a:0']
     else:
         args+=['-vf',visual_filter,'-map','0:v:0','-map','1:a:0']
     video_options = render_info.encoding_options(opts['render_quality'],video_device['encoder'])
@@ -434,7 +445,8 @@ def render(project, directory, job):
         if line.startswith("out_time_us="):
             try:
                 seconds = int(line.split("=", 1)[1]) / 1e6
-                job.update(min(98, 5 + seconds / duration * 93), f"Đang ghép chữ và beat gốc · {video_device['name']}…")
+                soundtrack='beat gốc + vocal hướng dẫn' if guide_audio else 'beat gốc'
+                job.update(min(98, 5 + seconds / duration * 93), f"Đang ghép chữ và {soundtrack} · {video_device['name']}…")
             except ValueError:
                 pass
     try:
@@ -462,7 +474,7 @@ def render(project, directory, job):
     if project.get('export_directory'):
         target=Path(project['export_directory'])
         stem=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',project.get('name','karaoke')).strip(' .')[:65] or 'karaoke'
-        stem=stem+'_'+job.id
+        stem=stem+'_'+render_id
         # The selected export folder receives the rendered video only.
         name=video_name
         job.check()
@@ -476,7 +488,7 @@ def render(project, directory, job):
             partial.replace(destination)
         finally:partial.unlink(missing_ok=True)
         output_path=str(destination)
-    return {"video": f"/api/projects/{project['id']}/exports/{job.id}/{video_name}",
-            "qa_contact": f"/api/projects/{project['id']}/exports/{job.id}/qa-contact.jpg" if (export/'qa-contact.jpg').is_file() else None,
+    return {"video": f"/api/projects/{project['id']}/exports/{render_id}/{video_name}",
+            "qa_contact": f"/api/projects/{project['id']}/exports/{render_id}/qa-contact.jpg" if (export/'qa-contact.jpg').is_file() else None,
             "format":opts['render_format'],
             "encoder": video_device["encoder"], "output_path": output_path}
