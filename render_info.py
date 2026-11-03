@@ -38,14 +38,51 @@ def describe(project,directory):
     if not project.get('words'):errors.append('Chưa có lời để xuất.')
     if s['logo_enabled'] and project.get('logo_name') and not (directory/'logo.png').is_file():errors.append('Thiếu file logo. Hãy nạp lại ảnh logo.')
     if s['countdown']=='image' and not (directory/'countdown.png').is_file():errors.append('Thiếu ảnh đếm ngược.')
-    estimated=sum(bool(w.get('estimated')) for w in project.get('words',[]))
+    words=project.get('words',[])
+    estimated=sum(bool(w.get('estimated')) for w in words)
     if estimated:warnings.append(f'{estimated} từ đang có thời gian ước lượng; nên nghe kiểm tra trước khi xuất.')
+    checks=[]
+    def check(message,word_index,word,severity='warning'):
+        checks.append({'severity':severity,'message':message,'word_index':word_index,
+                       'line':word.get('line',0),'time':float(word.get('start',0))})
+    estimated_by_line={}
+    previous_by_line={}
+    from timing import map_time
+    anchors=project.get('anchors',[])
+    beat_duration=float((project.get('beat') or {}).get('duration') or 0)
+    reference_duration=float((project.get('reference') or {}).get('duration') or 0)
+    for index,word in enumerate(words):
+        start=float(word.get('start',0));end=float(word.get('end',start));duration=end-start
+        if word.get('estimated'):
+            key=word.get('line',0)
+            if key not in estimated_by_line:estimated_by_line[key]=[0,index,word]
+            estimated_by_line[key][0]+=1
+        if duration<.07:check('Từ có mốc quá ngắn để đọc rõ.',index,word)
+        if duration>2.5:check('Từ kéo dài trên 2,5 giây; hãy nghe lại đoạn này.',index,word)
+        beat_start=map_time(start,anchors);beat_end=map_time(end,anchors)
+        if reference_duration and (start<-.05 or end>reference_duration+.1):
+            check('Mốc từ vượt quá thời lượng bản hát tham chiếu.',index,word)
+        if beat_duration and (beat_start<-.05 or beat_start>beat_duration+.05 or beat_end>beat_duration+.1):
+            check('Mốc từ vượt quá thời lượng beat.',index,word)
+        previous=previous_by_line.get(word.get('line',0))
+        if previous:
+            prev_index,prev=previous
+            if start<prev.get('start',0)-.03:
+                check('Thứ tự thời gian của lời bị đảo.',index,word)
+            elif start<prev.get('end',0)-.08:
+                check('Mốc từ này chồng lên từ ngay trước.',index,word)
+            if word.get('line')==prev.get('line') and start-prev.get('end',0)>4.5:
+                check('Khoảng nghỉ trong cùng câu dài hơn 4,5 giây.',index,word)
+        previous_by_line[word.get('line',0)]=(index,word)
+    for line_id,(count,index,word) in estimated_by_line.items():
+        check(f'{count} từ trong câu đang có mốc ước lượng.',index,word)
     from pathlib import Path
     folder=project.get('export_directory','')
     if folder and (not Path(folder).is_absolute() or not Path(folder).is_dir()):errors.append('Thư mục xuất không còn tồn tại. Hãy chọn lại.')
     return {'project':project.get('name',''),'output':{'width':width,'height':height,'fps':round(fps,5),'format':s['render_format'].upper()+' · H.264','audio':'AAC · 320 kbps','quality':s['render_quality']},
             'folder':folder or 'Thư mục exports của project (mặc định)',
             'duration':(project.get('beat') or {}).get('duration',0),'background':{'kind':kind,'name':path.name if path else s['background'],'source':source},
-            'words':len(project.get('words',[])),'lines':len({w['line'] for w in project.get('words',[])}),
+            'words':len(words),'lines':len({w['line'] for w in words}),
             'logo':bool(s['logo_enabled'] and project.get('logo_name')),'settings':s,'warnings':warnings,'errors':errors,
+            'checks':checks,
             'audio_source':(project.get('beat') or {}).get('name'),'excluded':['Giọng hát tham chiếu','Âm thanh video nền','Màu nhãn timeline','Bố cục màn hình chỉnh sửa']}

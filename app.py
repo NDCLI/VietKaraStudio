@@ -565,6 +565,8 @@ def analyze(pid):
     project = load(pid)
     if not project.get("reference"):
         raise ValueError("Hãy nạp bản có giọng hát tham chiếu.")
+    if any(word.get('locked') for word in project.get('words', [])):
+        raise ValueError('Mở khóa các câu đã khóa trước khi nhận lời và căn lại toàn bài.')
     options = request.get_json(silent=True) or {}
     lyrics = str(options.get("lyrics", ""))[:300000]
     def work(job):
@@ -583,6 +585,81 @@ def analyze(pid):
         return {"project_id": pid, "words": len(current["words"]), "device": result["device"],
                 "device_name": result["device_name"], "compute_type": result["compute_type"]}
     return task(pid, "analyze", work)
+
+
+@app.post('/api/projects/<pid>/align-region')
+def align_region(pid):
+    idle(pid)
+    project = load(pid)
+    if not project.get('reference'):
+        raise ValueError('Hãy nạp bản có giọng hát tham chiếu.')
+    if not project.get('words'):
+        raise ValueError('Cần có lời đã căn trước khi căn lại một câu.')
+    options = request.get_json(silent=True) or {}
+    raw_ids = options.get('line_ids')
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 8:
+        raise ValueError('Chọn từ 1 đến 8 câu để căn lại.')
+    if any(type(value) is not int or value < 0 for value in raw_ids):
+        raise ValueError('Danh sách câu không hợp lệ.')
+    line_ids = list(dict.fromkeys(raw_ids))
+    line_order = list(dict.fromkeys(word['line'] for word in project['words']))
+    selected = {line_id: [word for word in project['words'] if word['line'] == line_id] for line_id in line_ids}
+    if any(not words for words in selected.values()):
+        raise ValueError('Không tìm thấy câu cần căn lại.')
+    if any(any(word.get('locked') for word in words) for words in selected.values()):
+        raise ValueError('Câu này đang khóa. Mở khóa trước khi căn lại.')
+    lyrics = '\n'.join(' '.join(word['text'] for word in selected[line_id]) for line_id in line_ids)
+    if sum(len(words) for words in selected.values()) > 500:
+        raise ValueError('Đoạn chọn quá dài. Hãy căn lại từng phần ngắn hơn.')
+    reference_duration = float(project['reference'].get('duration') or 0)
+    start = max(0., min(word['start'] for words in selected.values() for word in words) - 1.2)
+    end = max(word['end'] for words in selected.values() for word in words) + 1.2
+    if reference_duration:
+        end = min(reference_duration, end)
+    if end - start > 120:
+        raise ValueError('Đoạn căn lại dài hơn 2 phút. Hãy chọn ít câu hơn.')
+    if end - start < 1:
+        raise ValueError('Không đủ âm thanh quanh câu để căn lại.')
+
+    def work(job):
+        result = engine.recognize(directory(pid), job, options.get('model', 'medium'),
+                                  options.get('language', 'vi'), lyrics,
+                                  options.get('device', 'auto'), region={'start': start, 'end': end})
+        job.check()
+        aligned = [[] for _ in line_ids]
+        for word in result['words']:
+            index = int(word.get('line', 0))
+            if index < 0 or index >= len(line_ids):
+                continue
+            line_id = line_ids[index]
+            source = selected[line_id][0]
+            word['line'] = line_id
+            word['role'] = source.get('role', 'all')
+            if source.get('row') in (0, 1):
+                word['row'] = source['row']
+            aligned[index].append(word)
+        if any(not words for words in aligned):
+            raise RuntimeError('AI chưa căn đủ các câu đã chọn. Chia câu ngắn hơn rồi thử lại.')
+        replacements = {line_id: aligned[index] for index, line_id in enumerate(line_ids)}
+        line_words = {line_id: [] for line_id in line_order}
+        for word in project['words']:
+            if word['line'] not in replacements:
+                line_words.setdefault(word['line'], []).append(word)
+        for line_id, words in replacements.items():
+            line_words[line_id] = words
+        candidate = []
+        for line_id in line_order:
+            candidate.extend(sorted(line_words.get(line_id, []), key=lambda word: (word['start'], word['end'])))
+        candidate = validate_words(candidate)
+        old_words = [word for line_id in line_ids for word in selected[line_id]]
+        new_words = [word for line_id in line_ids for word in replacements[line_id]]
+        text_by_line = {}
+        for word in candidate:
+            text_by_line.setdefault(word['line'], []).append(word['text'])
+        text = '\n'.join(' '.join(tokens) for tokens in text_by_line.values())
+        return {'line_ids': line_ids, 'old_words': old_words, 'new_words': new_words,
+                'words': candidate, 'text': text, 'diagnostics': result.get('alignment_diagnostics', {})}
+    return task(pid, 'align-region', work)
 
 
 @app.post('/api/projects/<pid>/suggest-roles')
@@ -615,6 +692,8 @@ def suggest_roles(pid):
 def estimate(pid):
     idle(pid)
     project = load(pid)
+    if any(word.get('locked') for word in project.get('words', [])):
+        raise ValueError('Mở khóa các câu đã khóa trước khi tạo lại mốc toàn bài.')
     duration = (project.get("reference") or project.get("beat") or {}).get("duration")
     if not duration:
         raise ValueError("Hãy nạp audio trước.")

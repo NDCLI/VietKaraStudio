@@ -213,17 +213,18 @@ function initStudio(){
   $('fontLarger').onclick=()=>setStyleValue('font_size',Math.min(240,state.project.settings.font_size+2));
   $('countdownInput').onchange=wrap(async()=>{const input=$('countdownInput');await upload('countdown',input.files[0]);input.value='';});
   $('splitLineBtn').onclick=()=>{
-    if(state.job)return;const w=selectedWord();if(!w)return;
+    if(state.job)return;const w=selectedWord();if(!w)return;if(lineLocked(w.line))return toast('Mở khóa câu trước khi tách.');
     const words=state.project.words,first=words.findIndex(x=>x.line===w.line);
     if(first===state.selected)return toast('Từ này đã ở đầu câu.');
     remember();const old=w.line,next=Math.max(...words.map(x=>x.line))+1;
     words.forEach((x,i)=>{if(i>=state.selected&&x.line===old){x.line=next;delete x.row;delete x.section;}});rebuildLineText();
   };
   $('mergeLineBtn').onclick=()=>{
-    if(state.job)return;const w=selectedWord();if(!w)return;
+    if(state.job)return;const w=selectedWord();if(!w)return;if(lineLocked(w.line))return toast('Mở khóa câu trước khi gộp.');
     const groups=[...new Set(state.project.words.map(x=>x.line))],at=groups.indexOf(w.line);
     if(at<=0)return toast('Đây là câu đầu tiên.');
-    remember();const old=w.line,previous=state.project.words.find(x=>x.line===groups[at-1]);
+    const previous=state.project.words.find(x=>x.line===groups[at-1]);if(lineLocked(previous.line))return toast('Câu trước đang khóa. Mở khóa trước khi gộp.');
+    remember();const old=w.line;
     for(const item of state.project.words)if(item.line===old){item.line=previous.line;item.role=previous.role;delete item.section;if(previous.row==null)delete item.row;else item.row=previous.row;}
     rebuildLineText();
   };

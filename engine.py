@@ -234,7 +234,7 @@ def separate(reference, directory, job, device=None):
     return cached
 
 
-def recognize(directory, job, model="medium", language="vi", lyrics="", preference="auto"):
+def recognize(directory, job, model="medium", language="vi", lyrics="", preference="auto", region=None):
     if model not in ("small", "medium", "large-v3-turbo"):
         raise ValueError("Model không hợp lệ.")
     if language not in ("vi", "en", "auto"):
@@ -247,6 +247,8 @@ def recognize(directory, job, model="medium", language="vi", lyrics="", preferen
     result_path = directory / "asr_result.json"
     params = {"vocals": str(vocals), "model": model, "models_root": str(DATA), "language": language, "lyrics": lyrics,
               "output": str(result_path), **devices["whisper"]}
+    if region is not None:
+        params["region"] = {"start": float(region["start"]), "end": float(region["end"])}
     def write_request():
         request_path.write_text(json.dumps(params, ensure_ascii=False), encoding="utf-8")
     write_request()

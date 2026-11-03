@@ -1,6 +1,7 @@
 'use strict';
 function openTappingDialog(){
   if(state.job||state.manualTiming)return;
+  if(state.project.words.some(word=>word.locked))throw Error('Mở khóa các câu đã khóa trước khi căn nhịp toàn bài.');
   if(!state.project.beat)throw Error('Hãy nạp beat gốc trước khi căn bằng phím.');
   const tokens=$('lyricsText').value.split(/\s+/).filter(Boolean);
   if(!tokens.length)throw Error('Nhập lời đúng, mỗi câu một dòng, trước khi gõ nhịp.');

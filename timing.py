@@ -63,6 +63,8 @@ def validate_words(words):
         out.append({"text": text, "start": round(start, 4), "end": round(end, 4),
                     "line": max(0, int(word.get("line", 0))), "role": role,
                     "estimated": bool(word.get("estimated", False))})
+        if word.get("locked"):
+            out[-1]["locked"] = True
         if word.get("section"):
             out[-1]["section"] = True
         if word.get("manual"):
