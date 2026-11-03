@@ -39,6 +39,94 @@ def _features(path: Path):
     return features.astype(np.float32), len(mono) / target_rate
 
 
+def _local_regions(reference, beat, scale, lag, frame_rate, job=None):
+    """Inspect short local windows around the global map without auto-applying edits."""
+    import numpy as np
+
+    # Use the same resampled beat timebase as the global alignment. This makes
+    # a reference window and its candidate beat window directly comparable.
+    transformed_count = max(1, int(math.ceil((len(beat) - 1) / scale)) + 1)
+    source_positions = np.arange(transformed_count, dtype=np.float32) * scale
+    left = np.minimum(source_positions.astype(np.int32), len(beat) - 1)
+    right = np.minimum(left + 1, len(beat) - 1)
+    weight = (source_positions - left).astype(np.float32)[:, None]
+    beat = beat[left] * (1 - weight) + beat[right] * weight
+
+    window = max(32, round(8 * frame_rate))
+    if len(reference) < window or len(beat) < window:
+        return []
+    stride = max(window, round(15 * frame_rate))
+    starts = list(range(0, len(reference) - window + 1, stride))
+    last = len(reference) - window
+    if not starts or last - starts[-1] > window / 2:
+        starts.append(last)
+    if len(starts) > 240:
+        stride = math.ceil(last / 239)
+        starts = list(range(0, last + 1, stride))
+        if starts[-1] != last:
+            starts.append(last)
+
+    radius = round(45 * frame_rate / scale)
+    candidate_step = max(1, round(.25 * frame_rate / scale))
+    offsets = np.arange(window, dtype=np.int32)[None, :]
+    regions = []
+    for number, ref_start in enumerate(starts):
+        if job:
+            job.check()
+        predicted = ref_start - lag
+        low = max(0, predicted - radius)
+        high = min(len(beat) - window, predicted + radius)
+        if high < low:
+            regions.append({"reference_start": round(ref_start / frame_rate, 2),
+                            "reference_end": round((ref_start + window) / frame_rate, 2),
+                            "beat_start": None, "beat_end": None, "similarity": 0.,
+                            "offset_seconds": None, "status": "uncertain",
+                            "note": "Không có đủ vùng chồng để so khớp."})
+            continue
+        candidates = np.arange(low, high + 1, candidate_step, dtype=np.int32)
+        if candidates[-1] != high:
+            candidates = np.append(candidates, high)
+        query = reference[ref_start:ref_start + window]
+        windows = beat[candidates[:, None] + offsets, :]
+        scores = np.einsum("cwf,wf->c", windows, query, optimize=True) / window
+        best_score = float(scores.max())
+        near_best = np.flatnonzero(scores >= best_score - .015)
+        chosen_index = min(near_best, key=lambda item: abs(int(candidates[item]) - predicted))
+        chosen = int(candidates[chosen_index])
+        distant = np.abs(candidates - chosen) >= round(6 * frame_rate / scale)
+        second_score = float(scores[distant].max()) if np.any(distant) else -1.
+        margin = best_score - second_score
+        deviation = (chosen - predicted) * scale / frame_rate
+        ref_end = (ref_start + window) / frame_rate
+        item = {"reference_start": round(ref_start / frame_rate, 2),
+                "reference_end": round(ref_end, 2),
+                "beat_start": round(chosen * scale / frame_rate, 2),
+                "beat_end": round((chosen + window) * scale / frame_rate, 2),
+                "similarity": round(best_score, 3),
+                "offset_seconds": round(deviation, 2),
+                "margin": round(max(0., margin), 3)}
+        if best_score < .38:
+            item.update(status="uncertain", note="Chưa thấy đoạn tương ứng rõ; có thể là nhạc dạo hoặc khác cấu trúc.")
+        elif margin < .012:
+            item.update(status="uncertain", note="Có nhiều đoạn âm thanh tương tự; kiểm tra khả năng điệp khúc lặp.")
+        elif abs(deviation) >= 5:
+            item.update(status="shifted", note="Đoạn này lệch khỏi mốc tuyến tính toàn bài.")
+        else:
+            item.update(status="matched", note="Khớp gần với mốc tuyến tính toàn bài.")
+        regions.append(item)
+        if job and number % 8 == 0:
+            job.update(88 + 6 * number / max(1, len(starts)),
+                       f"Đang kiểm tra từng đoạn bản hát / beat · {number + 1}/{len(starts)}…")
+
+    for previous, current in zip(regions, regions[1:]):
+        if (previous.get("status") != "uncertain" and current.get("status") != "uncertain" and
+                previous.get("offset_seconds") is not None and current.get("offset_seconds") is not None and
+                abs(current["offset_seconds"] - previous["offset_seconds"]) >= 7):
+            current["status"] = "structure"
+            current["note"] = "Độ lệch đổi đột ngột; có thể một bản bị thêm, cắt hoặc lặp đoạn. Hãy đặt mốc riêng quanh đây."
+    return regions
+
+
 def suggest(reference_path: Path, beat_path: Path, job=None) -> dict:
     """Find a best global linear mapping. The result is advisory and never applied here."""
     import numpy as np
@@ -120,12 +208,16 @@ def suggest(reference_path: Path, beat_path: Path, job=None) -> dict:
         structure = "Độ dài hoặc cấu trúc hai bản có thể khác nhau"
     else:
         structure = "Có vẻ cùng cấu trúc"
+    regions = _local_regions(reference, beat, scale, lag, frame_rate, job)
     if job:
-        job.update(95, "Đã tìm xong mốc đề xuất; chưa thay đổi project.")
+        job.update(95, "Đã rà mốc toàn bài và từng vùng; chưa thay đổi project.")
     return {"anchors": anchors, "confidence": confidence, "score": round(best["score"], 3),
             "margin": round(margin, 3), "coverage": round(overlap_fraction, 3),
             "offset_seconds": round(offset, 3), "beat_per_reference": round(scale, 5),
             "reference_overlap": [round(reference_start, 3), round(reference_end, 3)],
             "beat_overlap": [round(beat_start, 3), round(beat_end, 3)],
             "reference_duration": round(reference_duration, 3), "beat_duration": round(beat_duration, 3),
-            "structure": structure, "requires_confirmation": True}
+            "structure": structure, "regions": regions,
+            "structural_regions": sum(item["status"] == "structure" for item in regions),
+            "uncertain_regions": sum(item["status"] == "uncertain" for item in regions),
+            "requires_confirmation": True}
