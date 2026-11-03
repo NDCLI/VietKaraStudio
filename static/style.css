@@ -328,6 +328,18 @@ body{overflow:hidden;background:#101416}
 .media-tab .upload-copy strong{font-size:10px}
 .media-tab .upload-copy small{font-size:9px}
 .media-helper{padding:7px 3px;border-top:1px solid #303a3b;font-size:9px}
+.media-tab{overflow:auto;scrollbar-color:#465252 transparent;scrollbar-width:thin}
+.media-video-tools{margin-top:10px;padding:10px;border:1px solid #374345;border-radius:6px;background:#18181b}
+.media-video-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.media-video-heading strong{font-size:10px;color:#dce4e4}
+.media-video-heading .mini-tag{margin:0;font-size:8px}
+.media-video-file{margin-bottom:8px}
+.media-video-file>span{font-size:8px;color:#89999a;letter-spacing:.5px}
+.media-video-file>#sourceVideoInfo{margin:3px 0 0;font-size:9px;color:#b8c2c2;overflow-wrap:anywhere}
+.media-video-actions{display:flex;flex-direction:column;gap:5px}
+.media-video-actions button{min-height:31px;margin:0!important;font-size:9px}
+.media-video-tools>#karaokeSeparationStatus:empty{display:none}
+.media-video-tools>#karaokeSeparationStatus{margin:7px 0 0;font-size:9px}
 .inspector-tabs{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
 .inspector-tabs button{min-width:0;min-height:30px;padding:5px 3px;border:1px solid transparent;border-radius:4px;background:#222a2c;color:#98a6a7;font-size:9px;font-weight:500;white-space:nowrap}
 .inspector-tabs button:hover{background:#303a3c;color:#e8efef}

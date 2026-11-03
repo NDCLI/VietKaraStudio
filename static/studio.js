@@ -55,6 +55,7 @@ function studioStyle(){
   $('wordRole').querySelector('[value=female]').textContent=s.role_b_name;
   $('logoInfo').textContent=p.logo_name||'PNG nền trong suốt sẽ giữ nguyên độ trong suốt.';
   $('sourceVideoInfo').textContent=p.background_video?.name||p.background_name||'';
+  $('sourceVideoTools').hidden=!p.background_video;
   $('sourceVideoActions').hidden=!p.background_video;
   renderStyleControls();
   document.querySelectorAll('[data-value-for]').forEach(el=>el.textContent=$(el.dataset.valueFor).value);

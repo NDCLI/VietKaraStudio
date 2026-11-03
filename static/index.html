@@ -50,6 +50,12 @@
       </label>
     </div>
     <p class="hint media-helper">Bản hát tham chiếu dùng để nhận lời và đối chiếu. Beat gốc là âm thanh trong video xuất.</p>
+    <section id="sourceVideoTools" class="media-video-tools" aria-label="Trích âm thanh từ video" hidden>
+      <div class="media-video-heading"><strong>Trích âm thanh từ video</strong><span class="mini-tag">VIDEO</span></div>
+      <div class="media-video-file"><span>VIDEO NỀN</span><p id="sourceVideoInfo" class="hint"></p></div>
+      <div id="sourceVideoActions" class="media-video-actions" hidden><button id="videoReferenceBtn" class="secondary full small">Dùng âm thanh video để nhận lời</button><button id="videoSeparateBtn" class="ghost full small">Tách vocal / beat từ video</button></div>
+      <p id="karaokeSeparationStatus" class="hint" role="status"></p>
+    </section>
     </section>
   </aside>
 
@@ -84,7 +90,7 @@
       <details class="tool-group" data-tone="blue" data-property-section="background"><summary>Nền</summary>
       <label>Loại nền<select id="backgroundType"><option value="auto">Ảnh đã nạp / màu nền</option><option value="original">Video gốc của bản hát / beat</option><option value="image">Ảnh của tôi</option><option value="video">Video của tôi</option><option value="color">Màu đơn sắc</option></select></label>
       <div class="color-row"><label>Màu nền<input type="color" id="bgColor" value="#101d2b"></label></div>
-      <div id="backgroundFileTools"><label class="background-upload"><input id="backgroundInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm,.mkv,.avi,.m4v" hidden><span data-icon="image"></span> Chọn ảnh / video từ máy</label><p id="backgroundInfo" class="hint"></p></div><p id="sourceVideoInfo" class="hint"></p><div id="sourceVideoActions" hidden><button id="videoReferenceBtn" class="secondary full small">Dùng âm thanh video để nhận lời</button><button id="videoSeparateBtn" class="ghost full small">Tách vocal / beat từ video</button></div><p id="karaokeSeparationStatus" class="hint" role="status"></p>
+      <div id="backgroundFileTools"><label class="background-upload"><input id="backgroundInput" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm,.mkv,.avi,.m4v" hidden><span data-icon="image"></span> Chọn ảnh / video từ máy</label><p id="backgroundInfo" class="hint"></p></div>
       </details><details class="tool-group" data-tone="violet" data-property-section="countdown"><summary>Đếm ngược</summary>
       <div data-karaoke-only class="form-row"><label>Đếm ngược<select id="countdownStyle"><option value="none">Không dùng</option><option value="mic">Micro</option><option value="star">Sao vàng</option><option value="heart">Trái tim</option><option value="note">Nốt nhạc</option><option value="moon">Trăng khuyết</option><option value="image">Ảnh PNG của tôi</option></select></label><label>Hiện trước · giây<input id="countdownSeconds" type="number" min="1" max="8" value="4"></label></div>
       <label id="countdownUpload" class="background-upload" hidden><input id="countdownInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>Chọn ảnh đếm ngược</label>
