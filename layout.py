@@ -305,7 +305,7 @@ def display_plan(project):
         role_changed = role != previous_role
         size = opts['font_size']
         text = ' '.join(w['text'] for w in words)
-        icon_space = role_icon_space(opts) if role_changed else 0
+        icon_space = role_icon_space(opts) if role_changed and role in ('male', 'female', 'all') else 0
         row_width = measure.width(text) + icon_space
         shrink = min(1, width * .9 / max(1, row_width))
         size *= shrink
@@ -320,8 +320,15 @@ def display_plan(project):
         if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
         bottom = baseline - height * opts['vertical_offset']/100
         y = max(0, bottom - size*(1.15 + (opts['line_height'] if slot == 0 and opts['display_mode']=='karaoke' else 0)))
-        color = {'male': opts['role_a_color'], 'female': opts['role_b_color'],
-                 'all': opts['role_all_color']}.get(role, opts['sung'])
+        role_colors={'male':opts['role_a_color'],'female':opts['role_b_color'],'all':opts['role_all_color'],
+                     'voice_c':opts['role_c_color'],'voice_d':opts['role_d_color'],
+                     'voice_e':opts['role_e_color'],'voice_f':opts['role_f_color'],
+                     'unknown':opts['role_unknown_color']}
+        role_labels={'male':opts['role_a_name'],'female':opts['role_b_name'],'all':'Cùng hát',
+                     'voice_c':opts['role_c_name'],'voice_d':opts['role_d_name'],
+                     'voice_e':opts['role_e_name'],'voice_f':opts['role_f_name'],
+                     'unknown':opts['role_unknown_name']}
+        color = role_colors.get(role, opts['sung'])
         positioned, cursor = [], x
         for j, word in enumerate(words):
             # Measure prefixes so kerning between adjacent tokens is included in placement.
@@ -336,7 +343,7 @@ def display_plan(project):
                    'role':role, 'path':role_icon_path(role), 'color':color,
                    'asset':icon_file, 'url':asset_url('ICON/'+icon_file),
                    'width':round(size*.72*icon_width/icon_height,3),
-                   'label':{'male':opts['role_a_name'], 'female':opts['role_b_name']}.get(role, 'Cùng hát')}
+                   'label':role_labels.get(role,'Cùng hát')}
                   if icon_space and role_changed else None)
         previous_role = role
         plan.append({'index':i, 'line':words[0]['line'], 'slot':slot, 'section_start':bool(first),

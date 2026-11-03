@@ -233,7 +233,15 @@ def describe(project,directory):
     for current_index,(start,end,line) in enumerate(line_groups):
         for other_start,other_end,other in line_groups[:current_index]:
             overlap=min(end,other_end)-max(start,other_start)
-            if overlap<=.12 or any(word.get('role','all')!='all' for word in line+other):
+            if overlap<=.12:
+                continue
+            roles_a={word.get('role','all') for word in line}
+            roles_b={word.get('role','all') for word in other}
+            # Overlap between two explicitly assigned, distinct singers is intentional.
+            # Shared or unknown roles remain ambiguous and should still be reviewed.
+            distinct_singers=(roles_a and roles_b and 'all' not in roles_a|roles_b and
+                              'unknown' not in roles_a|roles_b and roles_a.isdisjoint(roles_b))
+            if distinct_singers:
                 continue
             pair=tuple(sorted((line[0].get('line_uid',line[0].get('line',0)),
                                other[0].get('line_uid',other[0].get('line',0)))))
@@ -255,6 +263,11 @@ def describe(project,directory):
         if s['singing_mode']=='duet':
             foregrounds.update({'vai '+s['role_a_name']:s['role_a_color'],
                                 'vai '+s['role_b_name']:s['role_b_color'],
+                                s['role_c_name']:s['role_c_color'],
+                                s['role_d_name']:s['role_d_color'],
+                                s['role_e_name']:s['role_e_color'],
+                                s['role_f_name']:s['role_f_color'],
+                                s['role_unknown_name']:s['role_unknown_color'],
                                 'cùng hát':s['role_all_color']})
         for label,color in foregrounds.items():
             ratio=_contrast_ratio(color,s['background'])

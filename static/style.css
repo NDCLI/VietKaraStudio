@@ -303,6 +303,7 @@ body{overflow:hidden;background:#101416}
 .line-role.role-male{border-color:#3b5364;color:#a9d9ee}
 .line-role.role-female{border-color:#59455c;color:#e4b5e8}
 .line-role.role-all{border-color:#4b5943;color:#d0dda7}
+.line-role.role-voice_c,.line-role.role-voice_d,.line-role.role-voice_e,.line-role.role-voice_f,.line-role.role-unknown{color:#e1e8ef}
 .source-panel .word-chips{gap:3px}
 .source-panel .word-chip{padding:3px 5px;border-color:#3a4648;border-radius:4px;background:#252d2f;color:#cbd4d5;font-size:9px}
 .source-panel .word-chip.selected{border-color:#66caa5;background:#233b32;color:#a8f0d0}

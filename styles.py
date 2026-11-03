@@ -13,6 +13,9 @@ DEFAULT_SETTINGS = {
     "display_mode": "karaoke", "resolution": "1080p", "background_type": "auto",
     "countdown": "none", "countdown_seconds": 4, "singing_mode": "solo",
     "role_a_name": "Nam", "role_b_name": "Nữ", "role_a_color": "#62b5ff", "role_b_color": "#ff87b7",
+    "role_c_name": "Giọng 3", "role_d_name": "Giọng 4", "role_e_name": "Giọng 5", "role_f_name": "Giọng 6",
+    "role_unknown_name": "Chưa rõ", "role_c_color": "#f2a76b", "role_d_color": "#9a91f4",
+    "role_e_color": "#73c98c", "role_f_color": "#e87b91", "role_unknown_color": "#a7b3c5",
     "role_all_color": "#f4cf72",
     "role_icons": True,
     "role_a_icon": "man-new-blue.png", "role_b_icon": "lady-pink.png",
@@ -35,7 +38,8 @@ DEFAULT_SETTINGS = {
     "title_enter": "fade", "title_exit": "fade", "title_effect_seconds": .7,
 }
 COLOR_KEYS = ("sung", "unsung", "background", "outline_unsung", "outline_sung", "shadow_color",
-              "role_a_color", "role_b_color", "role_all_color", "gradient_top", "gradient_bottom", "subtitle_box_color",
+              "role_a_color", "role_b_color", "role_c_color", "role_d_color", "role_e_color", "role_f_color",
+              "role_unknown_color", "role_all_color", "gradient_top", "gradient_bottom", "subtitle_box_color",
               "title_color", "title_outline", "title_shadow_color")
 TITLE_EFFECTS = ("none", "fade", "slide_up", "slide_down", "slide_left", "slide_right", "zoom", "flip")
 TITLE_TEMPLATES = ("none", "gradient", "midnight", "crystal", "neon", "retro", "pastel")
@@ -81,8 +85,11 @@ def validate_settings(values, base=None):
         result[key] = round(result[key])
     if result["gradient_start"] >= result["gradient_end"]:
         result["gradient_end"] = min(100, result["gradient_start"] + 1)
-    for key in ("role_a_name", "role_b_name"):
-        result[key] = str(result[key]).strip()[:30] or ("Vai A" if key == "role_a_name" else "Vai B")
+    for key in ("role_a_name", "role_b_name", "role_c_name", "role_d_name", "role_e_name", "role_f_name", "role_unknown_name"):
+        fallback = {"role_a_name": "Nam", "role_b_name": "Nữ", "role_c_name": "Giọng 3",
+                    "role_d_name": "Giọng 4", "role_e_name": "Giọng 5", "role_f_name": "Giọng 6",
+                    "role_unknown_name": "Chưa rõ"}[key]
+        result[key] = str(result[key]).strip()[:30] or fallback
     for key in ('title_text','title_credit'):
         result[key]=str(result[key]).replace('\r',' ').replace('\n',' ').strip()[:180]
     if result['title_end']<=result['title_start']:

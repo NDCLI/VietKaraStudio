@@ -62,7 +62,7 @@ def validate_words(words):
         if not text:
             continue
         role = word.get("role", "all")
-        if role not in ("all", "male", "female"):
+        if role not in ("all", "male", "female", "voice_c", "voice_d", "voice_e", "voice_f", "unknown"):
             role = "all"
         line = max(0, int(word.get("line", 0)))
         identifier = str(word.get('id', ''))

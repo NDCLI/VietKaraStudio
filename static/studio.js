@@ -53,6 +53,7 @@ function studioStyle(){
   $('gradientSettings').hidden=!s.sung_gradient;
   $('wordRole').querySelector('[value=male]').textContent=s.role_a_name;
   $('wordRole').querySelector('[value=female]').textContent=s.role_b_name;
+  for(const [role,key] of [['voice_c','role_c_name'],['voice_d','role_d_name'],['voice_e','role_e_name'],['voice_f','role_f_name'],['unknown','role_unknown_name']])$('wordRole').querySelector(`[value=${role}]`).textContent=s[key];
   $('logoInfo').textContent=p.logo_name||'PNG nền trong suốt sẽ giữ nguyên độ trong suốt.';
   $('sourceVideoInfo').textContent=p.background_video?.name||p.background_name||'';
   $('sourceVideoTools').hidden=!p.background_video;
