@@ -216,8 +216,9 @@
   <p id="tapPrepareNotice" class="hint"></p>
   <button id="beginTapBtn" class="primary full">▶ Nghe beat &amp; bắt đầu căn</button>
 </dialog>
-<dialog id="projectDialog"><div class="dialog-heading"><h2>Project của bạn</h2><button data-close class="icon-btn">✕</button></div><div id="projectList"></div><div class="project-version-actions"><button id="createVersionBtn" class="secondary">Lưu phiên bản hiện tại</button><button id="showVersionsBtn" class="ghost">Lịch sử phiên bản</button></div><div id="versionList" class="version-list" hidden></div><div class="dialog-footer"><label class="secondary import-label">Nhập project<input id="importProjectInput" type="file" accept=".json,.zip" hidden></label><button id="backupBtn" class="ghost">JSON gọn</button><button id="bundleLightBtn" class="ghost">ZIP gọn</button><button id="bundleFullBtn" class="ghost">ZIP đầy đủ</button></div><p class="hint">ZIP gọn lưu lời, mốc và dấu vân tay nguồn để relink. ZIP đầy đủ kèm file media đã nạp. Lịch sử phiên bản lưu bản chụp project cùng media.</p></dialog>
+<dialog id="projectDialog"><div class="dialog-heading"><h2>Project của bạn</h2><button data-close class="icon-btn">✕</button></div><div id="projectList"></div><div class="project-version-actions"><button id="createVersionBtn" class="secondary">Lưu phiên bản hiện tại</button><button id="showVersionsBtn" class="ghost">Lịch sử phiên bản</button><button id="queueBatchBtn" class="primary">Dựng các project đã chọn</button></div><div id="versionList" class="version-list" hidden></div><button id="showBatchHistoryBtn" class="ghost small">Lịch sử dựng theo lô</button><div id="batchHistory" class="version-list" hidden></div><div class="dialog-footer"><label class="secondary import-label">Nhập project<input id="importProjectInput" type="file" accept=".json,.zip" hidden></label><button id="backupBtn" class="ghost">JSON gọn</button><button id="bundleLightBtn" class="ghost">ZIP gọn</button><button id="bundleFullBtn" class="ghost">ZIP đầy đủ</button></div><p class="hint">ZIP gọn lưu lời, mốc và dấu vân tay nguồn để relink. ZIP đầy đủ kèm file media đã nạp. Lịch sử phiên bản lưu bản chụp project cùng media.</p></dialog>
 <dialog id="syncPreviewDialog"><div class="dialog-heading"><h2>Đề xuất đồng bộ bản hát – beat</h2><button data-close class="icon-btn">✕</button></div><div id="syncCandidateSummary"></div><div id="syncAnchorComparison" class="sync-anchor-comparison"></div><div class="dialog-footer"><button id="discardSyncSuggestion" class="ghost">Bỏ đề xuất</button><button id="applySyncSuggestion" class="primary">Áp dụng mốc đề xuất</button></div></dialog>
+<dialog id="batchResultDialog"><div class="dialog-heading"><h2>Kết quả dựng theo lô</h2><button data-close class="icon-btn">✕</button></div><div id="batchResultSummary"></div><div id="batchResultItems" class="version-list"></div><div class="dialog-footer"><button id="closeBatchResults" class="secondary">Đóng</button></div></dialog>
 <dialog id="presetDialog" class="preset-dialog">
   <div class="dialog-heading"><h2>Thư viện preset</h2><button data-close class="icon-btn" aria-label="Đóng preset">✕</button></div>
   <p class="hint">Chọn mẫu để xem, bấm Áp dụng để đổi kiểu chữ. Preset VCL giữ nguyên tỉ lệ và nền của project.</p>
@@ -243,5 +244,5 @@
 <script src="/static/song_title.js?v=source-1"></script>
 <script src="/static/workspace_tools.js"></script>
 <script src="/static/updates.js"></script>
-<script src="/static/app.js?v=1.1.8-roadmap-core"></script>
+<script src="/static/app.js?v=1.1.9-batch-queue"></script>
 </body></html>

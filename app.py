@@ -25,6 +25,7 @@ import presets
 import layout
 import media_tools
 import audio_sync
+import batch_render
 import project_archive
 import updater
 from styles import DEFAULT_SETTINGS, validate_settings
@@ -222,6 +223,31 @@ def task(pid, kind, fn):
                 job.state, job.message = "error", str(exc)[-4500:]
     POOL.submit(work)
     return jsonify(job.public()), 202
+
+
+def start_batch_job(record):
+    owner = record["owner"]
+    job = engine.Job(record["job_id"], owner, "batch-render")
+    with LOCK:
+        existing = JOBS.get(job.id)
+        if existing and existing.state in ("queued", "running"):
+            return existing
+        JOBS[job.id] = job
+    def work():
+        try:
+            job.state = "running"
+            result = batch_render.run(engine.DATA, record["id"], job)
+            with job._lock:
+                job.result = result
+                job.state, job.progress, job.message = "done", 100, "Hoàn tất hàng đợi dựng video"
+        except engine.Cancelled:
+            batch_render.set_status(engine.DATA, record["id"], "cancelled")
+            job.state, job.message = "cancelled", "Đã dừng hàng đợi. Có thể tiếp tục từ project chưa xong."
+        except Exception as error:
+            batch_render.set_status(engine.DATA, record["id"], "error")
+            job.state, job.message = "error", str(error)[-3000:]
+    POOL.submit(work)
+    return job
 
 
 @app.before_request
@@ -775,6 +801,69 @@ def job_cancel(jid):
     return jsonify(JOBS[jid].public())
 
 
+@app.post("/api/batches/render")
+def create_render_batch():
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get("project_ids")
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 50:
+        raise ValueError("Chọn từ 1 đến 50 project để dựng theo lô.")
+    project_ids = list(dict.fromkeys(raw_ids))
+    if len(project_ids) != len(raw_ids):
+        raise ValueError("Danh sách project bị trùng.")
+    selected = []
+    for pid in project_ids:
+        idle(pid)
+        project = load(pid)
+        if not project.get("beat") or not (directory(pid) / "beat.wav").is_file():
+            raise ValueError(f"Project {project['name']} chưa có beat gốc.")
+        if not project.get("words"):
+            raise ValueError(f"Project {project['name']} chưa có lời để xuất.")
+        selected.append((project, directory(pid)))
+    record = batch_render.create(engine.DATA, selected, project_ids[0])
+    job = start_batch_job(record)
+    return jsonify(job.public()), 202
+
+
+@app.get("/api/batches/<batch_id>")
+def get_render_batch(batch_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise ValueError("Mã hàng đợi không hợp lệ.")
+    return jsonify(batch_render.load_record(engine.DATA, batch_id))
+
+
+@app.get("/api/batches")
+def list_render_batches():
+    root = engine.DATA / "batch-renders"
+    records = []
+    if root.is_dir():
+        for file in root.glob("*/batch.json"):
+            try:
+                record = json.loads(file.read_text(encoding="utf-8"))
+                records.append({"id": record["id"], "status": record["status"],
+                               "created_at": record["created_at"], "next_index": record.get("next_index", 0),
+                               "count": len(record.get("items", [])), "completed": record.get("completed", 0),
+                               "failed": record.get("failed", 0)})
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+    return jsonify(sorted(records, key=lambda item: item["created_at"], reverse=True)[:30])
+
+
+@app.post("/api/batches/<batch_id>/resume")
+def resume_render_batch(batch_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise ValueError("Mã hàng đợi không hợp lệ.")
+    record = batch_render.load_record(engine.DATA, batch_id)
+    if record.get("status") not in ("cancelled", "error", "done"):
+        raise ValueError("Chỉ có thể tiếp tục hàng đợi đã dừng hoặc hoàn tất có project lỗi.")
+    record["next_index"] = batch_render.first_pending(record)
+    if record["next_index"] >= len(record["items"]):
+        raise ValueError("Hàng đợi đã hoàn tất, không còn project cần dựng lại.")
+    record["job_id"] = uuid.uuid4().hex
+    record["status"] = "queued"
+    batch_render.save_record(engine.DATA, record)
+    return jsonify(start_batch_job(record).public()), 202
+
+
 @app.get('/api/projects/<pid>/render-info')
 def render_information(pid):
     import render_info
@@ -905,3 +994,30 @@ def import_project_bundle():
         shutil.rmtree(path, ignore_errors=True)
         raise
     return jsonify(public(project)), 201
+
+
+def recover_render_batches():
+    root = engine.DATA / "batch-renders"
+    if not root.is_dir():
+        return
+    for file in root.glob("*/batch.json"):
+        try:
+            record = json.loads(file.read_text(encoding="utf-8"))
+            if record.get("status") not in ("queued", "running") or not record.get("items"):
+                continue
+            record["next_index"] = batch_render.first_pending(record)
+            for item in record["items"]:
+                if item.get("status") == "running":
+                    item["status"] = "queued"
+            if record["next_index"] >= len(record["items"]):
+                record["status"] = "done"
+                batch_render.save_record(engine.DATA, record)
+                continue
+            record["status"] = "queued"
+            batch_render.save_record(engine.DATA, record)
+            start_batch_job(record)
+        except (OSError, ValueError, KeyError, TypeError):
+            app.logger.exception("Unable to recover a batch render queue")
+
+
+recover_render_batches()
