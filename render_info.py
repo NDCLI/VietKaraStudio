@@ -41,6 +41,19 @@ def _font_codepoints(path: str) -> frozenset[int]:
         return frozenset((font.getBestCmap() or {}).keys())
 
 
+def _relative_luminance(color: str) -> float:
+    channels=[]
+    for offset in (1, 3, 5):
+        value=int(color[offset:offset+2],16)/255
+        channels.append(value/12.92 if value<=.04045 else ((value+.055)/1.055)**2.4)
+    return .2126*channels[0]+.7152*channels[1]+.0722*channels[2]
+
+
+def _contrast_ratio(first: str, second: str) -> float:
+    high,low=sorted((_relative_luminance(first),_relative_luminance(second)),reverse=True)
+    return (high+.05)/(low+.05)
+
+
 def verify_output(path: Path, duration: float, width: int, height: int) -> dict:
     """Confirm the rendered file has playable video and audio streams."""
     import engine
@@ -237,6 +250,44 @@ def describe(project,directory):
             index=int(row['words'][0].get('source_index',0))
             word=words[index] if index<len(words) else {'line':row.get('line',0),'start':row['start']}
             check(f"Câu phải thu nhỏ chữ còn {round(row['font_size']/s['font_size']*100)}% để vừa khung.",index,word)
+    if kind=='color':
+        foregrounds={'chữ đã hát':s['sung'],'chữ chưa hát':s['unsung']}
+        if s['singing_mode']=='duet':
+            foregrounds.update({'vai '+s['role_a_name']:s['role_a_color'],
+                                'vai '+s['role_b_name']:s['role_b_color'],
+                                'cùng hát':s['role_all_color']})
+        for label,color in foregrounds.items():
+            ratio=_contrast_ratio(color,s['background'])
+            if ratio<4.5:
+                warnings.append(f"Độ tương phản {label} / nền màu chỉ {ratio:.1f}:1; cân nhắc tăng độ tương phản.")
+    if s['logo_enabled'] and project.get('logo_name') and (directory/'logo.png').is_file() and s['logo_opacity']>10:
+        try:
+            dimensions=project.get('logo_image') or {}
+            ratio=float(dimensions.get('width',0))/max(1,float(dimensions.get('height',0)))
+            if ratio<=0:
+                from PIL import Image
+                with Image.open(directory/'logo.png') as logo:
+                    ratio=logo.width/max(1,logo.height)
+            logo_width=max(2,round(min(plan['width']*s['logo_size']/100,plan['height']*.4*ratio)))
+            logo_height=max(2,round(logo_width/ratio))
+            logo_x=(plan['width']-logo_width)*s['logo_x']/100
+            logo_y=(plan['height']-logo_height)*s['logo_y']/100
+            collisions=set()
+            for row in plan['rows']:
+                if (row['x']<logo_x+logo_width and row['x']+row['width']>logo_x and
+                        row['y']<logo_y+logo_height and row['y']+row['height']>logo_y):
+                    word=row['words'][0]
+                    line_id=word.get('line_uid',word.get('line',0))
+                    if line_id in collisions:
+                        continue
+                    collisions.add(line_id)
+                    index=int(word.get('source_index',0))
+                    source_word=words[index] if index<len(words) else word
+                    check('Logo chồng lên vùng lời; đổi vị trí logo hoặc vị trí câu.',index,source_word)
+            if len(collisions)>30:
+                warnings.append(f'Logo chồng lên {len(collisions)} câu; xem các điểm QA và đổi vị trí logo.')
+        except Exception as exc:
+            warnings.append('Chưa kiểm tra được va chạm logo / lời: '+str(exc)[:160])
     folder=project.get('export_directory','')
     if folder and (not Path(folder).is_absolute() or not Path(folder).is_dir()):errors.append('Thư mục xuất không còn tồn tại. Hãy chọn lại.')
     audio_quality=None
