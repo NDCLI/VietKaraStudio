@@ -98,6 +98,16 @@ def run(request, device):
     if sample_rate != 16000:
         divisor = math.gcd(sample_rate, 16000)
         samples = resample_poly(samples, 16000 // divisor, sample_rate // divisor).astype(np.float32)
+    region = request.get("region")
+    region_offset = 0.
+    if region:
+        region_offset = max(0., float(region.get("start", 0)))
+        region_end = min(len(samples) / 16000, float(region.get("end", len(samples) / 16000)))
+        first_sample = min(len(samples), round(region_offset * 16000))
+        last_sample = min(len(samples), round(region_end * 16000))
+        if last_sample - first_sample < 16000:
+            raise RuntimeError("Đoạn căn lại quá ngắn. Hãy chọn câu có đủ phần nhạc xung quanh.")
+        samples = samples[first_sample:last_sample]
     compute_type = request.get("compute_type") or ("float16" if device == "cuda" else "int8")
     device_index = int(request.get("device_index", 0))
     from model_manager import resolve_whisper
@@ -107,14 +117,14 @@ def run(request, device):
     language = request["language"] if request["language"] != "auto" else None
     words, texts = [], []
     lyrics = request.get("lyrics", "").strip()
-    trim_offset=0.
+    trim_offset=region_offset
     repaired_prefix=0
     label = request.get("name") or device
     progress(50, f"Đang {'căn lời' if lyrics else 'nhận dạng'} bằng Whisper {request['model']} · {label} ({compute_type})…")
     if lyrics:
         import unicodedata
         first,last=vocal_bounds(samples)
-        trim_offset=first/16000
+        trim_offset=region_offset+first/16000
         aligned_samples=samples[first:last]
         progress(51,f"Đang căn lời từ vùng vocal {trim_offset:.2f}s · {label}…")
         result = model.align(aligned_samples, unicodedata.normalize('NFC',lyrics).lower(), language=language or "vi",
