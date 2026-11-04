@@ -28,7 +28,16 @@ async function refreshExportMenu(){
   $('renderBtn').textContent='Dựng '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p')+' · '+({standard:'Tiêu chuẩn',high:'Chất lượng cao',maximum:'Rất cao'}[s.render_quality]||'Chất lượng cao');
 }
 function initExportMenu(){
-  $('exportChecks').onclick=e=>{const button=e.target.closest('[data-qa-word]');if(!button)return;const index=Number(button.dataset.qaWord);$('exportDialog').close();if(Number.isInteger(index)&&index>=0&&index<state.project.words.length)selectWord(index,true);};
+  $('exportChecks').onclick = event => {
+    const button = event.target.closest('[data-qa-word]');
+    if (!button) return;
+    const index = Number(button.dataset.qaWord);
+    const word = Number.isInteger(index) && state.project.words[index];
+    if (!word) return;
+    $('exportDialog').close();
+    selectWord(index, false);
+    seekBeat(Math.max(0, mapTime(word.start)));
+  };
   for(const [id,key] of [['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).onchange=wrap(async()=>{
     if(state.job)return;state.project.settings[key]=$(id).value;renderStyle();await saveNow();await refreshExportMenu();
   });
