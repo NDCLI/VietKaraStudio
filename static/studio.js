@@ -192,7 +192,7 @@ function rebuildLineText(){
   const ids=new Map();for(const w of state.project.words){if(!ids.has(w.line))ids.set(w.line,ids.size);w.line=ids.get(w.line);}
   state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();renderSelected();drawTimeline();dirty();
 }
-function setStyleValue(key,value){if(!state.project||state.job)return;state.project.settings[key]=value;renderStyle();dirty();}
+function setStyleValue(key,value){if(!state.project||state.job)return;state.project.settings[key]=value;renderStyle();if(key==='singing_mode')renderWords();dirty();}
 function initWorkspaceChrome(){
   const root=$('karaokePage'),saved=(()=>{try{return JSON.parse(localStorage.getItem('obs_studio_panels_v1')||'{}');}catch{return {};}})();
   root.classList.toggle('left-collapsed',!!saved.left);root.classList.toggle('right-collapsed',!!saved.right);
