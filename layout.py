@@ -338,7 +338,9 @@ def display_plan(project):
                      'voice_c':opts['role_c_name'],'voice_d':opts['role_d_name'],
                      'voice_e':opts['role_e_name'],'voice_f':opts['role_f_name'],
                      'unknown':opts['role_unknown_name']}
-        color = role_colors.get(role, opts['sung'])
+        color = opts['sung']
+        if opts['singing_mode'] == 'duet' and opts['display_mode'] == 'karaoke':
+            color = role_colors.get(role, color)
         positioned, cursor = [], x
         for j, word in enumerate(words):
             # Measure prefixes so kerning between adjacent tokens is included in placement.
