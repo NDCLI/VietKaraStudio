@@ -280,7 +280,10 @@ def display_plan(project):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
         role = words[0].get('role', 'all') if opts['singing_mode']=='duet' else 'all'
-        slots.append(words[0].get('row', role_slots.get(role, block_row%2)))
+        slot = block_row % 2
+        if opts['singing_mode'] == 'duet':
+            slot = words[0].get('row', role_slots.get(role, slot))
+        slots.append(slot)
         block_row+=1
     lane_count = min(6, max(2, max(slots, default=1)+1)) if opts['display_mode'] == 'karaoke' else 1
     block_row=0

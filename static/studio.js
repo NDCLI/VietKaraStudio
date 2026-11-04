@@ -383,7 +383,8 @@ function studioTimeline(){
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
   const laneTop=24,laneColors=['#112a29','#202d1b','#1e2935','#29243a','#34252d','#26332b'];
   const slots=new Map();for(const row of state.layout?.rows||[])for(const w of row.words)slots.set(w.source_index,row.slot);
-  const laneCount=Math.min(6,Math.max(2,...[...slots.values()].map(slot=>slot+1))),laneHeight=Math.max(12,(H-laneTop)/laneCount),blockH=Math.max(8,Math.min(30,laneHeight-4));
+  const duet=state.project.settings.singing_mode==='duet';
+  const laneCount=duet?Math.min(6,Math.max(2,...[...slots.values()].map(slot=>slot+1))):2,laneHeight=Math.max(12,(H-laneTop)/laneCount),blockH=Math.max(8,Math.min(30,laneHeight-4));
   for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=laneColors[lane];ctx.fillRect(G,laneTop+lane*laneHeight,P,laneHeight-2);}
   ctx.save();ctx.beginPath();ctx.rect(G,0,P,H);ctx.clip();
   const step=[1,2,5,10,20,30,60,120,300,600].find(v=>v>=range.span/9)||600;
@@ -392,7 +393,7 @@ function studioTimeline(){
   state.rectangles=[];
   state.project.words.forEach((word,i)=>{
     const a=x(mapTime(word.start)),b=x(mapTime(word.end));if(b<G||a>W)return;
-    const slot=Math.max(0,Math.min(laneCount-1,slots.get(i)??word.row??word.line%2)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
+    const slot=Math.max(0,Math.min(laneCount-1,(duet ? (slots.get(i) ?? word.row) : (slots.get(i) % 2 || 0)) ?? word.line%2)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
     const common=selectedWord()&&word.line===selectedWord().line;
     ctx.fillStyle=selected?'#48bfa6':word.estimated?'#34404a':['#176a63','#506d30','#42627e','#69568b','#8b5265','#47745a'][slot];
     if(word.label_color)ctx.fillStyle=word.label_color;
