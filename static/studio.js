@@ -89,7 +89,12 @@ function studioFrame(){
   if(!state.project)return;
   const p=state.project,s=p.settings,t=beatNow(),plan=state.manualTiming?.plan||state.layout,stage=$('preview'),lyrics=$('previewLyrics');
   $('previewEmpty').hidden=!!p.words.length;
-  $('previewTime').textContent=time(t);$('currentTime').textContent=time(audio.currentTime,true);if(document.activeElement!==$('seek'))$('seek').value=audio.currentTime;
+  const rawTime=audio.currentTime;
+  const previewTime=$('previewTime'),currentTime=$('currentTime'),seek=$('seek');
+  const beatLabel=time(t),audioLabel=time(rawTime,true);
+  if(previewTime.textContent!==beatLabel)previewTime.textContent=beatLabel;
+  if(currentTime.textContent!==audioLabel)currentTime.textContent=audioLabel;
+  if(document.activeElement!==seek&&Math.abs(Number(seek.value)-rawTime)>=0.01)seek.value=rawTime;
   syncBackground(t);syncSceneImages(t,state.layout);syncSceneDecoration(t,state.layout);updateLogoFrame(t);drawSongTitle(t);
   if(!plan){lyrics.innerHTML='';$('previewCountdown').hidden=true;return;}
   const scale=stage.clientWidth/plan.width;

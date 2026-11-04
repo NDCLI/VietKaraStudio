@@ -78,6 +78,7 @@ function studioWaveforms(){
   const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
   $('waveTrackControls').style.width=G+'px';
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
+  const playhead=beatNow();
   ctx.fillStyle='#121416';ctx.fillRect(0,0,W,H);
   for(const [slot,lane,color,title] of [['beat',0,'#ef9039','Beat'],['reference',1,'#20c89c','Có vocal'],['vocals',2,'#bfa0ff','Vocal riêng']]){
     const top=lane*H/3,mid=top+H/6,amplitude=Math.max(4,H/6-5),m=state.project[slot];
@@ -88,9 +89,9 @@ function studioWaveforms(){
     for(let pixel=0;pixel<P;pixel+=2){
       const t=range.start+pixel/P*range.span,source=slot!=='beat'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
       if(index<0||index>=m.peaks.length)continue;
-      const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=beatNow()?color:'#5b626d';ctx.fillRect(G+pixel,mid-a,1.4,Math.max(1,a*2));
+      const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=playhead?color:'#5b626d';ctx.fillRect(G+pixel,mid-a,1.4,Math.max(1,a*2));
     }
     ctx.restore();
   }
-  const cursor=x(beatNow());if(cursor>=G&&cursor<=W){ctx.fillStyle='#eef5ee';ctx.fillRect(cursor,0,1.5,H);}
+  const cursor=x(playhead);if(cursor>=G&&cursor<=W){ctx.fillStyle='#eef5ee';ctx.fillRect(cursor,0,1.5,H);}
 }

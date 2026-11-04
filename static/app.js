@@ -310,7 +310,19 @@ document.querySelectorAll('[data-title-y-step]').forEach(button=>button.onclick=
 document.querySelectorAll('[data-title-x-step]').forEach(button=>button.onclick=()=>{const x=$('titleX');x.value=Math.max(+x.min,Math.min(+x.max,+x.value+Number(button.dataset.titleXStep)));x.dispatchEvent(new Event('input',{bubbles:true}));});
 $('listenTrack').onchange=()=>{const position=beatNow();setAudio($('listenTrack').value,position);};$('playBtn').onclick=wrap(togglePlay);$('seek').oninput=()=>{audio.currentTime=+$('seek').value;previewFrame();drawTimeline();};$('playbackRate').onchange=()=>audio.playbackRate=+$('playbackRate').value;
 audio.addEventListener('play',()=>{state.titlePreviewAt=null;$('playBtn').textContent='Ⅱ';document.body.classList.add('playing');});audio.addEventListener('pause',()=>{$('playBtn').textContent='▶';document.body.classList.remove('playing');});audio.addEventListener('error',()=>{if(audio.getAttribute('src'))toast('Không đọc được track. Hãy kiểm tra file hoặc chạy bước tách vocal trước.',true);});audio.addEventListener('timeupdate',()=>{previewFrame();drawTimeline();});
-function frame(){if(!audio.paused||state.titlePreviewAt!=null){previewFrame();drawTimeline();}requestAnimationFrame(frame);}requestAnimationFrame(frame);
+// Keep the lyric sweep on the display refresh rate. Redraw the editor canvases separately.
+let lastPlaybackTimelineFrame = -Infinity;
+function frame(now){
+  if(!audio.paused||state.titlePreviewAt!=null){
+    previewFrame();
+    if(now-lastPlaybackTimelineFrame>=50){
+      drawTimeline();
+      lastPlaybackTimelineFrame=now;
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 $('zoom').oninput=()=>{state.zoom=+$('zoom').value;drawTimeline();};$('pan').oninput=()=>{state.pan=+$('pan').value;drawTimeline();};new ResizeObserver(drawTimeline).observe($('timeline'));new ResizeObserver(()=>{if(state.project)renderStyle();}).observe($('preview'));
 $('fullscreenBtn').onclick=wrap(()=>document.fullscreenElement?document.exitFullscreen():$('preview').requestFullscreen());
 $('cancelJobBtn').onclick=wrap(async()=>{const job=state.job||state.renderJob;if(!job)return;await api(`/api/jobs/${job.id}/cancel`,{method:'POST',body:{}});$('jobTitle').textContent='Đang dừng tiến trình…';});
