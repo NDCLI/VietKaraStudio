@@ -54,7 +54,7 @@ function studioStyle(){
   $('wordRole').querySelector('[value=male]').textContent=s.role_a_name;
   $('wordRole').querySelector('[value=female]').textContent=s.role_b_name;
   for(const [role,key] of [['voice_c','role_c_name'],['voice_d','role_d_name'],['voice_e','role_e_name'],['voice_f','role_f_name'],['unknown','role_unknown_name']])$('wordRole').querySelector(`[value=${role}]`).textContent=s[key];
-  const trackNames=[s.role_a_name,s.role_b_name,s.role_c_name,s.role_d_name,s.role_e_name,s.role_f_name];
+  const trackNames=['Dòng trên','Dòng dưới',s.role_c_name,s.role_d_name,s.role_e_name,s.role_f_name];
   $('lineRow').querySelectorAll('option[value]').forEach(option=>{if(option.value!=='auto')option.textContent=`Track ${+option.value+1} · ${trackNames[+option.value]||''}`;});
   $('logoInfo').textContent=p.logo_name||'PNG nền trong suốt sẽ giữ nguyên độ trong suốt.';
   $('sourceVideoInfo').textContent=p.background_video?.name||p.background_name||'';
@@ -404,7 +404,7 @@ function studioTimeline(){
   for(const anchor of state.project.anchors){const at=x(anchor.beat);ctx.strokeStyle='#dda85588';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(at,22);ctx.lineTo(at,H);ctx.stroke();ctx.setLineDash([]);}
   const cursor=x(beatNow());if(cursor>=G&&cursor<=W){ctx.fillStyle='#ef8c76';ctx.fillRect(cursor,20,1,H);ctx.beginPath();ctx.moveTo(cursor,24);ctx.lineTo(cursor-4,17);ctx.lineTo(cursor+4,17);ctx.fill();}
   ctx.restore();ctx.fillStyle='#101c29';ctx.fillRect(0,0,G,H);
-  const settings=state.project.settings||{},trackNames=[settings.role_a_name||'Nam',settings.role_b_name||'Nữ',settings.role_c_name||'Giọng 3',settings.role_d_name||'Giọng 4',settings.role_e_name||'Giọng 5',settings.role_f_name||'Giọng 6'];
+  const settings=state.project.settings||{},trackNames=['Dòng trên','Dòng dưới',settings.role_c_name||'Giọng 3',settings.role_d_name||'Giọng 4',settings.role_e_name||'Giọng 5',settings.role_f_name||'Giọng 6'];
   ctx.font='bold 8px Segoe UI';
   for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=['#6cddcb','#b1d56f','#87b7d9','#ad9be0','#e294a9','#8dcc9e'][lane];ctx.fillText(trackNames[lane].toLocaleUpperCase(),5,laneTop+lane*laneHeight+laneHeight/2+3,Math.max(10,G-10));if(lane){ctx.strokeStyle='#455264';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(G,laneTop+lane*laneHeight-1);ctx.lineTo(W,laneTop+lane*laneHeight-1);ctx.stroke();ctx.setLineDash([]);}}
 }
