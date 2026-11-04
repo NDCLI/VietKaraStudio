@@ -1081,6 +1081,9 @@ def create_render_batch():
     include_guide = data.get("include_guide", False)
     if type(include_guide) is not bool:
         raise ValueError("Lựa chọn vocal hướng dẫn không hợp lệ.")
+    require_review = data.get("require_review", False)
+    if type(require_review) is not bool:
+        raise ValueError("Lựa chọn kiểm duyệt không hợp lệ.")
     selected = []
     for pid in project_ids:
         idle(pid)
@@ -1089,6 +1092,8 @@ def create_render_batch():
             raise ValueError(f"Project {project['name']} chưa có beat gốc.")
         if not project.get("words"):
             raise ValueError(f"Project {project['name']} chưa có lời để xuất.")
+        if require_review and any(not word.get("locked") for word in project["words"]):
+            raise ValueError(f"Project {project['name']} còn câu chưa khóa. Hãy rà lời trước khi dựng.")
         selected.append((project, directory(pid)))
     record = batch_render.create(engine.DATA, selected, project_ids[0], aspects, include_guide)
     job = start_batch_job(record)
