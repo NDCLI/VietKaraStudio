@@ -209,7 +209,19 @@ function rebuildLineText(){
   const ids=new Map();for(const w of state.project.words){if(!ids.has(w.line))ids.set(w.line,ids.size);w.line=ids.get(w.line);}
   state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();renderSelected();drawTimeline();dirty();
 }
-function setStyleValue(key,value){if(!state.project||state.job)return;state.project.settings[key]=value;renderStyle();if(key==='singing_mode')renderWords();dirty();}
+function setStyleValue(key,value){
+  if(!state.project||state.job)return;
+  const settings=state.project.settings;
+  const modeChanged=key==='singing_mode'&&settings[key]!==value;
+  settings[key]=value;
+  if(modeChanged)state.layout=null;
+  renderStyle();
+  if(modeChanged){
+    renderWords();
+    drawTimeline();
+  }
+  dirty();
+}
 function initWorkspaceChrome(){
   const root=$('karaokePage'),saved=(()=>{try{return JSON.parse(localStorage.getItem('obs_studio_panels_v1')||'{}');}catch{return {};}})();
   root.classList.toggle('left-collapsed',!!saved.left);root.classList.toggle('right-collapsed',!!saved.right);
@@ -393,7 +405,7 @@ function studioTimeline(){
   state.rectangles=[];
   state.project.words.forEach((word,i)=>{
     const a=x(mapTime(word.start)),b=x(mapTime(word.end));if(b<G||a>W)return;
-    const slot=Math.max(0,Math.min(laneCount-1,(duet ? (slots.get(i) ?? word.row) : (slots.get(i) % 2 || 0)) ?? word.line%2)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
+    const slot=Math.max(0,Math.min(laneCount-1,slots.get(i) ?? (duet ? word.row : undefined) ?? word.line%2)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
     const common=selectedWord()&&word.line===selectedWord().line;
     ctx.fillStyle=selected?'#48bfa6':word.estimated?'#34404a':['#176a63','#506d30','#42627e','#69568b','#8b5265','#47745a'][slot];
     if(word.label_color)ctx.fillStyle=word.label_color;
