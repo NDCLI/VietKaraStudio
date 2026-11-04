@@ -972,8 +972,6 @@ def align_region(pid):
             source = selected[line_id][0]
             word['line'] = line_id
             word['role'] = source.get('role', 'all')
-            if source.get('role_sample') is True:
-                word['role_sample'] = True
             if type(source.get('row')) is int and source['row'] in range(6):
                 word['row'] = source['row']
             aligned[index].append(word)
