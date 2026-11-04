@@ -37,8 +37,50 @@ from timing import (beat_words, estimate_words, finite, validate_anchors,
 app = Flask(__name__, static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 ** 3
 LOCK = threading.RLock()
+JOB_STORE_LOCK = threading.RLock()
 POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="original-beat")
 JOBS = {}
+
+
+def persist_job(job):
+    payload = job.public()
+    payload["updated_at"] = time.time()
+    path = engine.DATA / "jobs" / (job.id + ".json")
+    temporary = path.with_suffix(".tmp")
+    with JOB_STORE_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+        job.updated_at = payload["updated_at"]
+
+
+def recover_jobs():
+    root = engine.DATA / "jobs"
+    if not root.is_dir():
+        return
+    for path in root.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            jid = payload.get("id")
+            if not isinstance(jid, str) or not re.fullmatch(r"[0-9a-f]{32}", jid):
+                continue
+            job = engine.Job(jid, str(payload.get("project_id", "")),
+                             str(payload.get("kind", "unknown")), on_change=persist_job)
+            with job._lock:
+                job.state = str(payload.get("state", "error"))
+                job.message = str(payload.get("message", ""))[:4500]
+                job.progress = max(0, min(100, float(payload.get("progress", 0))))
+                job.result = payload.get("result")
+                job.devices = payload.get("devices", {}) if isinstance(payload.get("devices"), dict) else {}
+                job.fallbacks = payload.get("fallbacks", []) if isinstance(payload.get("fallbacks"), list) else []
+            job.updated_at = float(payload.get("updated_at", path.stat().st_mtime))
+            if job.state in ("queued", "running"):
+                job.state = "interrupted"
+                job.message = "Ứng dụng đã đóng giữa tác vụ. Bước này cần chạy lại; project vẫn được giữ nguyên."
+                persist_job(job)
+            JOBS[jid] = job
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            app.logger.exception("Unable to recover job record %s", path)
 
 
 @app.get('/api/models')
@@ -206,19 +248,23 @@ def idle(pid):
 def task(pid, kind, fn):
     with LOCK:
         idle(pid)
-        job = engine.Job(uuid.uuid4().hex, pid, kind)
+        job = engine.Job(uuid.uuid4().hex, pid, kind, on_change=persist_job)
         JOBS[job.id] = job
+        persist_job(job)
     def work():
         try:
             job.check()
             job.state = "running"
+            persist_job(job)
             result = fn(job)
             job.check()
             with job._lock:
                 job.result = result
                 job.state, job.progress, job.message = "done", 100, "Hoàn tất"
+            persist_job(job)
         except engine.Cancelled:
             job.state, job.message = "cancelled", "Đã hủy tác vụ."
+            persist_job(job)
         except Exception as exc:
             import traceback
             traceback.print_exc()
@@ -226,31 +272,37 @@ def task(pid, kind, fn):
                 job.state, job.message = "cancelled", "Đã hủy tác vụ."
             else:
                 job.state, job.message = "error", str(exc)[-4500:]
+            persist_job(job)
     POOL.submit(work)
     return jsonify(job.public()), 202
 
 
 def start_batch_job(record):
     owner = record["owner"]
-    job = engine.Job(record["job_id"], owner, "batch-render")
+    job = engine.Job(record["job_id"], owner, "batch-render", on_change=persist_job)
     with LOCK:
         existing = JOBS.get(job.id)
         if existing and existing.state in ("queued", "running"):
             return existing
         JOBS[job.id] = job
+        persist_job(job)
     def work():
         try:
             job.state = "running"
+            persist_job(job)
             result = batch_render.run(engine.DATA, record["id"], job)
             with job._lock:
                 job.result = result
                 job.state, job.progress, job.message = "done", 100, "Hoàn tất hàng đợi dựng video"
+            persist_job(job)
         except engine.Cancelled:
             batch_render.set_status(engine.DATA, record["id"], "cancelled")
             job.state, job.message = "cancelled", "Đã dừng hàng đợi. Có thể tiếp tục từ project chưa xong."
+            persist_job(job)
         except Exception as error:
             batch_render.set_status(engine.DATA, record["id"], "error")
             job.state, job.message = "error", str(error)[-3000:]
+            persist_job(job)
     POOL.submit(work)
     return job
 
@@ -432,7 +484,19 @@ def get_project(pid):
     project = public(load(pid))
     project["job"] = next((j.public() for j in JOBS.values() if j.project_id == pid and
                            j.state in ("queued", "running")), None)
+    project["interrupted_job"] = next((j.public() for j in sorted(
+        (item for item in JOBS.values() if item.project_id == pid),
+        key=lambda item: getattr(item, "updated_at", 0), reverse=True)
+        if j.state == "interrupted"), None)
     return jsonify(project)
+
+
+@app.get("/api/projects/<pid>/jobs")
+def project_jobs(pid):
+    directory(pid)
+    jobs = sorted((j for j in JOBS.values() if j.project_id == pid),
+                  key=lambda item: getattr(item, "updated_at", 0), reverse=True)
+    return jsonify([j.public() for j in jobs[:50]])
 
 
 @app.patch("/api/projects/<pid>")
@@ -939,8 +1003,10 @@ def job_status(jid):
 def job_cancel(jid):
     if jid not in JOBS:
         raise FileNotFoundError("Không tìm thấy tác vụ.")
-    JOBS[jid].stop()
-    return jsonify(JOBS[jid].public())
+    job = JOBS[jid]
+    if job.state in ("queued", "running"):
+        job.stop()
+    return jsonify(job.public())
 
 
 @app.post("/api/batches/render")
@@ -1172,4 +1238,5 @@ def recover_render_batches():
             app.logger.exception("Unable to recover a batch render queue")
 
 
+recover_jobs()
 recover_render_batches()

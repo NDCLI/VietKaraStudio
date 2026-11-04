@@ -55,7 +55,7 @@ class Cancelled(Exception):
 
 
 class Job:
-    def __init__(self, jid, project_id, kind):
+    def __init__(self, jid, project_id, kind, on_change=None):
         self.id, self.project_id, self.kind = jid, project_id, kind
         self.state = "queued"
         self.message = "Đang đợi xử lý…"
@@ -66,17 +66,24 @@ class Job:
         self._lock = threading.Lock()
         self.devices = {}
         self.fallbacks = []
+        self.on_change = on_change
+
+    def _changed(self):
+        if self.on_change:
+            self.on_change(self)
 
     def record_device(self, stage, device, reason=""):
         with self._lock:
             self.devices[stage] = dict(device)
             if reason:
                 self.fallbacks.append({"stage": stage, "reason": reason[:1000]})
+        self._changed()
 
     def update(self, progress, message):
         self.check()
         with self._lock:
             self.progress, self.message = progress, message
+        self._changed()
 
     def check(self):
         if self.cancelled.is_set():
@@ -91,6 +98,7 @@ class Job:
                 process.terminate()
             except OSError:
                 pass
+        self._changed()
 
     def public(self):
         with self._lock:
@@ -98,7 +106,8 @@ class Job:
                     "state": self.state, "message": self.message,
                     "progress": self.progress, "result": self.result,
                     "devices": dict(self.devices), "fallbacks": list(self.fallbacks),
-                    "cancel_requested": self.cancelled.is_set()}
+                    "cancel_requested": self.cancelled.is_set(),
+                    "updated_at": getattr(self, "updated_at", None)}
 
 
 def command(args, job=None, cwd=None, progress=None, environment=None):
