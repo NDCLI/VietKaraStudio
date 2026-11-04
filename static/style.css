@@ -460,7 +460,7 @@ body:has(#karaokePage[hidden]) .topbar{position:sticky;top:0}
 .word-line-toolbar{display:flex;align-items:center;gap:5px;min-width:0}
 .word-line-toolbar .word-line-head{flex:1;min-width:0}
 .line-lock{flex:none;padding:2px 6px;border:1px solid #35474b;border-radius:4px;background:#202a2c;color:#93aaa2;font-size:8px;line-height:1.4;cursor:pointer}
-.line-parallel{flex:none;padding:5px 7px;font-size:8px;background:#24364a;border-color:#3d5c78;color:#b9d9ef}
+.line-parallel,.line-sample{flex:none;width:24px;padding:4px 2px;font-size:8px;background:#24364a;border-color:#3d5c78;color:#b9d9ef}.line-sample{background:#302b22;border-color:#65593a;color:#d8c594}.line-sample.active{background:#38301b;border-color:#a78b43;color:#f2d475}
 .line-lock[aria-pressed="true"]{border-color:#517e68;background:#263e34;color:#b4efd1}
 .word-line.locked{border-top-color:#365444}
 .word-line.locked .word-chips{opacity:.9}
@@ -476,6 +476,7 @@ body:has(#karaokePage[hidden]) .topbar{position:sticky;top:0}
 .export-check-item small{flex:none;color:#d1b969;font:9px Consolas,monospace}
 .align-preview-dialog{width:min(760px,94vw);max-height:88vh;overflow:auto}
 .align-preview-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0;padding:10px;border:1px solid #36434b;border-radius:7px}
+.role-preview-dialog{width:min(760px,95vw);max-height:90vh;overflow:auto}.role-suggestion-list{max-height:56vh;overflow:auto;margin:10px 0}.role-suggestion-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid #303a43}.role-suggestion-row>span{min-width:0}.role-suggestion-row strong,.role-suggestion-row small{display:block}.role-suggestion-row strong{font-size:11px}.role-suggestion-row small{margin-top:4px;color:#93a1ad;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.role-suggestion-row select{flex:none;min-width:130px}
 .align-preview-row h3{grid-column:1/-1;margin:0;font-size:11px;color:#9db5c5}
 .align-preview-side{min-width:0;padding:8px;border-radius:5px;background:#17212a}
 .align-preview-side strong{display:block;margin-bottom:5px;font-size:9px;color:#9aafbd}

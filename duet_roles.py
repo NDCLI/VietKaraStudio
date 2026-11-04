@@ -92,7 +92,63 @@ def suggest(times, pitches, segments):
     return result
 
 
-def analyze(vocal,segments,progress=lambda *_:None):
+def _sample_features(vocal,segments,times,pitches,progress):
+    import librosa
+    audio,sr=librosa.load(vocal,sr=16000,mono=True)
+    features=[]
+    for index,segment in enumerate(segments):
+        start=max(0,int(segment['start']*sr));end=min(len(audio),int(segment['end']*sr))
+        clip=audio[start:end]
+        if len(clip)<int(sr*.35) or float(np.sqrt(np.mean(clip**2)))<.001:
+            features.append(None);continue
+        coefficients=librosa.feature.mfcc(y=clip,sr=sr,n_mfcc=16,n_fft=1024,hop_length=320)[1:]
+        mask=(times>=segment['start'])&(times<=segment['end'])&np.isfinite(pitches)
+        pitch=np.log2(pitches[mask]) if mask.any() else np.array([])
+        vector=np.r_[coefficients.mean(axis=1),coefficients.std(axis=1),
+                     np.median(pitch) if len(pitch) else 0.,
+                     np.percentile(pitch,75)-np.percentile(pitch,25) if len(pitch)>1 else 0.,
+                     len(pitch)/max(1,np.count_nonzero((times>=segment['start'])&(times<=segment['end'])))]
+        features.append(vector)
+        progress(95+4*(index+1)/max(1,len(segments)),'Đang so khớp các câu mẫu giọng…')
+    available=[item for item in features if item is not None]
+    if not available:return features
+    matrix=np.vstack(available);center=np.median(matrix,axis=0);scale=np.std(matrix,axis=0)
+    scale=np.maximum(scale,.35)
+    return [None if item is None else np.clip((item-center)/scale,-4,4) for item in features]
+
+
+def suggest_from_samples(times,pitches,segments,sample_roles,features):
+    roles=[None]*len(segments);confidence=['uncertain']*len(segments);training={}
+    for index,segment in enumerate(segments):
+        role=sample_roles.get(str(segment['line']),sample_roles.get(segment['line']))
+        if role and role not in ('all','unknown') and features[index] is not None:
+            training.setdefault(role,[]).append((index,features[index]))
+            roles[index]=role;confidence[index]='sample'
+    counts={role:len(items) for role,items in training.items()}
+    usable={role:items for role,items in training.items() if len(items)>=2}
+    if not usable:
+        return {'roles':roles,'confidences':confidence,'two_registers':False,'method':'sample-mfcc-pitch-v1',
+                'reason':'need_more_samples' if training else 'sample_audio_unusable','sample_guided':True,
+                'male':0,'female':0,'shared':0,'uncertain':roles.count(None),'confidence':'unconfirmed',
+                'sample_lines':[segments[index]['line'] for items in training.values() for index,_ in items],
+                'sample_roles':counts}
+    centers={role:np.mean(np.vstack([value for _,value in items]),axis=0) for role,items in usable.items()}
+    for index,feature in enumerate(features):
+        if feature is None or confidence[index]=='sample':continue
+        distances=sorted((float(np.sqrt(np.mean((feature-center)**2))),role) for role,center in centers.items())
+        best_distance,best_role=distances[0]
+        margin=distances[1][0]-best_distance if len(distances)>1 else float('inf')
+        if best_distance<=1.05 and margin>=.08:
+            roles[index]=best_role;confidence[index]='high' if best_distance<=.65 and margin>=.2 else 'medium'
+    return {'roles':roles,'confidences':confidence,'two_registers':False,'method':'sample-mfcc-pitch-v1',
+            'reason':'sample_guided','sample_guided':True,'sample_lines':[segments[index]['line'] for items in training.values() for index,_ in items],
+            'sample_roles':counts,'used_sample_roles':{role:len(items) for role,items in usable.items()},
+            'insufficient_sample_roles':[role for role,items in training.items() if len(items)<2],
+            'male':roles.count('male'),'female':roles.count('female'),'shared':roles.count('all'),
+            'uncertain':roles.count(None),'confidence':'cautious_prototype'}
+
+
+def analyze(vocal,segments,progress=lambda *_:None,sample_roles=None):
     source=Path(vocal)
     stat=source.stat()
     signature=f'pyin-v1:{stat.st_size}:{stat.st_mtime_ns}'
@@ -124,6 +180,10 @@ def analyze(vocal,segments,progress=lambda *_:None):
         temporary=cache.with_name('duet_pitch_next.npz')
         np.savez_compressed(temporary,times=times,pitches=pitches,signature=np.array(signature))
         temporary.replace(cache)
+    sample_roles=sample_roles or {}
+    if sample_roles:
+        features=_sample_features(source,segments,times,pitches,progress)
+        return suggest_from_samples(times,pitches,segments,sample_roles,features)
     return suggest(times,pitches,segments)
 
 
@@ -131,5 +191,5 @@ if __name__=='__main__':
     request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
     def progress(percent,message):
         print('OBS_PROGRESS '+json.dumps({'progress':percent,'message':message},ensure_ascii=False),flush=True)
-    result=analyze(request['vocal'],request['segments'],progress)
+    result=analyze(request['vocal'],request['segments'],progress,request.get('sample_roles'))
     Path(request['output']).write_text(json.dumps(result,ensure_ascii=False),encoding='utf-8')

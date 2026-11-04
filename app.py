@@ -923,6 +923,8 @@ def align_region(pid):
             source = selected[line_id][0]
             word['line'] = line_id
             word['role'] = source.get('role', 'all')
+            if source.get('role_sample') is True:
+                word['role_sample'] = True
             if type(source.get('row')) is int and source['row'] in range(6):
                 word['row'] = source['row']
             aligned[index].append(word)
@@ -977,12 +979,6 @@ def suggest_roles(pid):
         job.check()
         with LOCK:
             current=load(pid)
-            roles=dict(zip(result['lines'],result['roles']))
-            if result['two_registers']:
-                for word in current['words']:
-                    role=roles.get(word['line'])
-                    if role is not None:word['role']=role
-                current['settings']=validate_settings({'singing_mode':'duet'},current['settings'])
             current['role_analysis']={key:value for key,value in result.items() if key not in ('roles','lines')}
             save(current)
         return result

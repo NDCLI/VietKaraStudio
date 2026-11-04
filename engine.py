@@ -297,15 +297,18 @@ def suggest_duet(project,directory,job,preference='auto'):
         vocal=separate(directory/'reference.wav',directory,job,device)
     job.record_device('roles',{'device':'cpu','name':'Phân tích cao độ vocal · CPU'})
     groups={}
+    sample_roles={}
     for word in project['words']:
         line=word['line']
         # Words are stored in reference time; anchors must NOT be applied to vocal audio.
         item=groups.setdefault(line,{'line':line,'start':word['start'],'end':word['end']})
         item['start']=min(item['start'],word['start']);item['end']=max(item['end'],word['end'])
+        if word.get('role_sample') and word.get('role') not in ('all','unknown'):
+            sample_roles[line]=word['role']
     segments=list(groups.values())
     output=directory/f'roles_{job.id}.json'
     request=directory/f'roles_request_{job.id}.json'
-    request.write_text(json.dumps({'vocal':str(vocal),'segments':segments,'output':str(output)}),encoding='utf-8')
+    request.write_text(json.dumps({'vocal':str(vocal),'segments':segments,'sample_roles':sample_roles,'output':str(output)}),encoding='utf-8')
     def progress(line):
         if line.startswith('OBS_PROGRESS '):
             item=json.loads(line[len('OBS_PROGRESS '):]);job.update(item['progress'],item['message'])

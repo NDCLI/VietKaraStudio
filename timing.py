@@ -81,6 +81,8 @@ def validate_words(words):
                     "line": line, "role": role, "estimated": bool(word.get("estimated", False))})
         if word.get("locked"):
             out[-1]["locked"] = True
+        if word.get("role_sample") is True:
+            out[-1]["role_sample"] = True
         if word.get("section"):
             out[-1]["section"] = True
         if word.get('section_name'):

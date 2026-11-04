@@ -298,8 +298,7 @@ function initStudio(){
     if(state.job||state.manualTiming)return;
     if(!state.project.reference)throw Error('Cần bản hát có giọng để tự phân vai.');
     if(!state.project.words.length)throw Error('Nhận lời hoặc đồng bộ lời trước khi phân vai.');
-    if(state.project.words.some(w=>w.role!=='all')&&!confirm('Tự phân vai sẽ thay vai đã gán ở các câu nhận được giọng. Giữ nguyên lời và thời gian. Tiếp tục?'))return;
-    await saveNow();remember();await followJob(await api(endpoint('/suggest-roles'),{method:'POST',body:{device:'auto'}}));
+    await saveNow();await followJob(await api(endpoint('/suggest-roles'),{method:'POST',body:{device:'auto'}}));
   });
   $('swapRolesBtn').onclick=()=>{if(state.job||state.manualTiming)return;remember();for(const w of state.project.words)w.role=w.role==='male'?'female':w.role==='female'?'male':w.role;renderWords();renderSelected();renderStyle();drawTimeline();dirty();};
   $('alternateRolesBtn').onclick=()=>{if(state.job)return;remember();const ids=[...new Set(state.project.words.map(w=>w.line))];for(const w of state.project.words)w.role=ids.indexOf(w.line)%2?'female':'male';renderWords();drawTimeline();dirty();};
@@ -411,6 +410,7 @@ $('timelineManualBtn').onclick=wrap(openTappingDialog);
 }
 
 function roleAnalysisMessage(result){
+  if(result.sample_guided){const s=state.project?.settings||{},names={male:s.role_a_name||'Nam',female:s.role_b_name||'Nữ',voice_c:s.role_c_name||'Giọng 3',voice_d:s.role_d_name||'Giọng 4',voice_e:s.role_e_name||'Giọng 5',voice_f:s.role_f_name||'Giọng 6'},samples=Object.entries(result.sample_roles||{}).map(([role,count])=>`${count} mẫu ${names[role]||role}`).join(' · ');if(result.reason==='sample_audio_unusable')return 'Không đọc được âm thanh ở các câu mẫu. Hãy chọn câu có vocal rõ.';if(result.reason==='need_more_samples')return `Mỗi vai cần ít nhất hai câu mẫu rõ. Hiện có: ${samples}. Các câu vẫn được giữ nguyên.`;const caution=result.insufficient_sample_roles?.length?' Một số vai chưa đủ hai mẫu nên không được dùng để phân loại.':'';return `Đã so khớp đặc trưng giọng với mẫu (${samples}). ${result.uncertain||0} câu chưa đủ gần mẫu nên giữ nguyên.${caution} Đây là gợi ý thử nghiệm; hãy nghe lại trước khi dùng.`;}
   if(result.two_registers)return `Gợi ý theo dải giọng: Nam ${result.male} · Nữ ${result.female} · Cùng hát ${result.shared} câu. ${result.uncertain?'Giữ nguyên '+result.uncertain+' câu chưa rõ giọng. ':''}Nghe lại và chỉnh vai nếu cần; cao độ không xác định chắc giới tính người hát.`;
   return (result.reason==='insufficient_voiced_audio'?'Chưa đủ đoạn vocal rõ để phân vai.':'Hai dải giọng còn chồng lấn, chưa đủ chắc để gán vai.')+' Giữ nguyên phân vai hiện tại; bạn có thể gán Nam / Nữ cho từng câu.';
 }
