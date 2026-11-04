@@ -129,6 +129,15 @@ function friendlyJobMessage(job){
   return 'Đang xử lý…';
 }
 function busy(job,finishedKind=null){if(job?.kind==='render')state.renderJob=job;else if(job)state.job=job;else if(finishedKind==='render')state.renderJob=null;else if(finishedKind)state.job=null;else{state.job=null;state.renderJob=null;}const blocking=!!state.job,visible=state.job||state.renderJob;$('timelineLinked').disabled=blocking;document.querySelectorAll('.style-panel input,.style-panel select,.style-panel button,.source-panel select').forEach(el=>el.disabled=blocking);document.body.classList.toggle('is-busy',blocking);$('jobBar').hidden=!visible;for(const id of ['referenceInput','beatInput','backgroundInput','videoSeparateBtn','videoReferenceBtn','newBtn','projectsBtn','exportBtn','aiModelBtn','projectName','lyricsText','analyzeBtn','alignLyricsBtn','timelineAutoBtn','estimateBtn','renderBtn','previewRenderBtn','splitLineBtn','mergeLineBtn','alternateRolesBtn','autoRolesBtn','swapRolesBtn','applyWordBtn','addAnchorBtn','realignLineBtn','toggleSelectedLineLockBtn','applyLyricsEditsBtn','deleteWordBtn'])$(id).disabled=blocking;for(const id of ['newBtn','projectsBtn','renderBtn','previewRenderBtn'])$(id).disabled=blocking||!!state.renderJob;if(visible){$('jobTitle').textContent=friendlyJobMessage(visible);$('jobPercent').textContent=Math.round(visible.progress||0)+'%';$('jobProgress').style.width=(visible.progress||0)+'%';}}
+function syncAudition(slot, label, seconds){
+  if(!Number.isFinite(seconds))return '';
+  const start=Math.max(0,seconds-2).toFixed(2);
+  const end=(seconds+3).toFixed(2);
+  return `<label>${label}<audio controls preload="none" src="${endpoint('/audio/'+slot)}#t=${start},${end}"></audio></label>`;
+}
+$('syncPreviewDialog').addEventListener('close',()=>{
+  $('syncPreviewDialog').querySelectorAll('audio').forEach(player=>player.pause());
+});
 function renderSyncPreview(candidate){
   state.pendingSync=candidate;
   const current=state.project.anchors||[],regions=candidate.regions||[];
@@ -143,7 +152,7 @@ function renderSyncPreview(candidate){
     const beat=region.beat_start==null?'chưa rõ':`${time(region.beat_start,true)}–${time(region.beat_end,true)}`;
     const alternate=region.alternate_beat_start==null?'':` · vùng tương tự khác ở ${time(region.alternate_beat_start,true)}`;
     const status=labels[region.status]||'Cần kiểm tra';
-    return `<article class="sync-region ${esc(region.status)}"><div><strong>${esc(status)}</strong><span>Bản hát ${start}–${end} · Beat ${beat}${alternate}</span></div><small>${esc(region.note||'')} · tương đồng ${Math.round((region.similarity||0)*100)}%${region.offset_seconds==null?'':` · lệch ${Number(region.offset_seconds).toFixed(1)} giây`}</small></article>`
+    return `<article class="sync-region ${esc(region.status)}"><div><strong>${esc(status)}</strong><span>Bản hát ${start}–${end} · Beat ${beat}${alternate}</span></div><small>${esc(region.note||'')} · tương đồng ${Math.round((region.similarity||0)*100)}%${region.offset_seconds==null?'':` · lệch ${Number(region.offset_seconds).toFixed(1)} giây`}</small><div class="sync-audition">${syncAudition('reference','Bản hát',region.reference_start)}${syncAudition('beat','Beat đề xuất',region.beat_start)}${syncAudition('beat','Beat ở vị trí lặp',region.alternate_beat_start)}</div></article>`
   }).join('')}</div><p class="hint">Các dấu hiệu này là gợi ý để nghe kiểm tra; không tự thêm hoặc sửa mốc.</p></details>`:'';
   $('syncAnchorComparison').innerHTML=`<div class="sync-anchor-columns"><div><strong>Mốc hiện tại</strong>${current.length?current.map((anchor,index)=>`<p>${index+1}. ${time(anchor.ref,true)} → ${time(anchor.beat,true)}</p>`).join(''):'<p class="hint">Chưa có</p>'}</div><div><strong>Mốc đề xuất</strong>${candidate.anchors.map((anchor,index)=>`<p>${index+1}. ${time(anchor.ref,true)} → ${time(anchor.beat,true)}</p>`).join('')}</div></div>`;
   $('syncPreviewDialog').showModal();
