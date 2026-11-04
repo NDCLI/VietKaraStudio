@@ -135,6 +135,13 @@ function syncAudition(slot, label, seconds){
   const end=(seconds+3).toFixed(2);
   return `<label>${label}<audio controls preload="none" src="${endpoint('/audio/'+slot)}#t=${start},${end}"></audio></label>`;
 }
+$('syncPreviewDialog').addEventListener('play',event=>{
+  if(!(event.target instanceof HTMLAudioElement))return;
+  audio.pause();
+  for(const player of $('syncPreviewDialog').querySelectorAll('audio')){
+    if(player!==event.target)player.pause();
+  }
+},true);
 $('syncPreviewDialog').addEventListener('close',()=>{
   $('syncPreviewDialog').querySelectorAll('audio').forEach(player=>player.pause());
 });
