@@ -184,6 +184,17 @@ def describe(project,directory):
     def check(message,word_index,word,severity='warning'):
         checks.append({'severity':severity,'message':message,'word_index':word_index,
                        'line':word.get('line',0),'time':float(word.get('start',0))})
+    first_word_by_line = {}
+    unlocked_lines = set()
+    for index, word in enumerate(words):
+        line_id = word.get('line', 0)
+        first_word_by_line.setdefault(line_id, (index, word))
+        if not word.get('locked'):
+            unlocked_lines.add(line_id)
+    if unlocked_lines:
+        index, word = next(entry for line_id, entry in first_word_by_line.items()
+                           if line_id in unlocked_lines)
+        check(f'{len(unlocked_lines)} câu chưa được khóa sau khi rà. Nhảy tới câu đầu để kiểm tra.', index, word)
     estimated_by_line={}
     previous_by_line={}
     from timing import map_time, lyric_lines
@@ -262,17 +273,6 @@ def describe(project,directory):
             check('Hai câu lời chưa gán vai chồng thời gian; kiểm tra bè hoặc mốc bị lệch.',later,line[0])
     for line_id,(count,index,word) in estimated_by_line.items():
         check(f'{count} từ trong câu đang có mốc ước lượng.',index,word)
-    first_word_by_line = {}
-    unlocked_lines = set()
-    for index, word in enumerate(words):
-        line_id = word.get('line', 0)
-        first_word_by_line.setdefault(line_id, (index, word))
-        if not word.get('locked'):
-            unlocked_lines.add(line_id)
-    if unlocked_lines:
-        index, word = next(entry for line_id, entry in first_word_by_line.items()
-                           if line_id in unlocked_lines)
-        check(f'{len(unlocked_lines)} câu chưa được khóa sau khi rà. Nhảy tới câu đầu để kiểm tra.', index, word)
     plan=layout.display_plan(project)
     for row in plan['rows']:
         if row['font_size']<s['font_size']*.8:
