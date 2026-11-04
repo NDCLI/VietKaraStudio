@@ -95,8 +95,8 @@ def validate_words(words):
                 raise ValueError('Màu nhãn từ phải có dạng #RRGGBB.')
             out[-1]['label_color']=color.lower()
         if "row" in word:
-            if type(word["row"]) is not int or word["row"] not in (0, 1):
-                raise ValueError("Hàng lời phải là 0 (trên) hoặc 1 (dưới).")
+            if type(word["row"]) is not int or word["row"] not in range(6):
+                raise ValueError("Track lời phải nằm trong khoảng 1 đến 6.")
             out[-1]["row"] = word["row"]
     return out
 

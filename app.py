@@ -923,7 +923,7 @@ def align_region(pid):
             source = selected[line_id][0]
             word['line'] = line_id
             word['role'] = source.get('role', 'all')
-            if source.get('row') in (0, 1):
+            if type(source.get('row')) is int and source['row'] in range(6):
                 word['row'] = source['row']
             aligned[index].append(word)
         if any(not words for words in aligned):

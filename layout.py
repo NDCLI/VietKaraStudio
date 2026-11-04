@@ -274,12 +274,15 @@ def display_plan(project):
     rows.sort(key=lambda row: row[0]['start'])
     plan, countdowns, block_row = [], [], 0
     slots=[]
+    role_slots={'male':0, 'female':1, 'voice_c':2, 'voice_d':3, 'voice_e':4, 'voice_f':5}
     previous_role = None
     for i, words in enumerate(rows):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
-        slots.append(words[0].get('row',block_row%2))
+        role = words[0].get('role', 'all') if opts['singing_mode']=='duet' else 'all'
+        slots.append(words[0].get('row', role_slots.get(role, block_row%2)))
         block_row+=1
+    lane_count = min(6, max(2, max(slots, default=1)+1)) if opts['display_mode'] == 'karaoke' else 1
     block_row=0
     block_start=0
     for i, words in enumerate(rows):
@@ -304,6 +307,9 @@ def display_plan(project):
         role = words[0].get('role', 'all') if opts['singing_mode'] == 'duet' and opts['display_mode']=='karaoke' else 'all'
         role_changed = role != previous_role
         size = opts['font_size']
+        if lane_count > 2:
+            stack_height = size * (1.2 + (lane_count-1)*(1.15+opts['line_height']))
+            size *= min(1, height*.47/max(1,stack_height))
         text = ' '.join(w['text'] for w in words)
         icon_space = role_icon_space(opts) if role_changed and role in ('male', 'female', 'all') else 0
         row_width = measure.width(text) + icon_space
@@ -319,7 +325,8 @@ def display_plan(project):
                     'top':size*(opts['line_height']+2)}[opts['position']]
         if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
         bottom = baseline - height * opts['vertical_offset']/100
-        y = max(0, bottom - size*(1.15 + (opts['line_height'] if slot == 0 and opts['display_mode']=='karaoke' else 0)))
+        lane_offset = (lane_count-1-slot)*(1.15+opts['line_height']) if opts['display_mode']=='karaoke' else 0
+        y = max(0, bottom - size*(1.15+lane_offset))
         role_colors={'male':opts['role_a_color'],'female':opts['role_b_color'],'all':opts['role_all_color'],
                      'voice_c':opts['role_c_color'],'voice_d':opts['role_d_color'],
                      'voice_e':opts['role_e_color'],'voice_f':opts['role_f_color'],
