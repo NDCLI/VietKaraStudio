@@ -183,7 +183,6 @@ def run(data_root: Path, batch_id: str, job) -> dict:
             record["next_index"] = index + 1
             continue
         frozen = Path(item["directory"])
-        project = json.loads((frozen / "snapshot.json").read_text(encoding="utf-8"))
         job.update(5 + int(90 * index / max(1, total)), f"Đang dựng bài {index + 1}/{total}: {item['name']}…")
         if item.get("status") == "error":
             record["failed"] = max(0, int(record.get("failed", 0)) - 1)
@@ -191,6 +190,7 @@ def run(data_root: Path, batch_id: str, job) -> dict:
         item["error"] = None
         save_record(data_root, record)
         try:
+            project = json.loads((frozen / "snapshot.json").read_text(encoding="utf-8"))
             render_id = item.get("render_id") or job.id
             result = engine.render(project, frozen, job, render_id=render_id)
             job.check()
