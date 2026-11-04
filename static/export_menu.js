@@ -25,15 +25,17 @@ async function refreshExportMenu(){
   box.innerHTML=checks.length?'<h3>Rà soát lời · bấm để tới vị trí</h3><div class="export-check-list">'+checks.slice(0,200).map(item=>`<button type="button" class="export-check-item" data-qa-word="${Number(item.word_index)}"><small>${time(mapTime(item.time),true)} · C${Number(item.line)+1}</small><span>${esc(item.message)}</span></button>`).join('')+'</div>'+(checks.length>200?`<p class="hint">Còn ${checks.length-200} điểm khác; danh sách đang hiển thị 200 điểm đầu.</p>`:''):'';
   const reviewLines = new Map();
   p.words.forEach((word, index) => {
-    if (!reviewLines.has(word.line)) reviewLines.set(word.line, {index, unlocked:false});
-    if (!word.locked) reviewLines.get(word.line).unlocked = true;
+    if (!reviewLines.has(word.line)) reviewLines.set(word.line, {index, unlocked:false, tokens:[]});
+    const line = reviewLines.get(word.line);
+    line.tokens.push(word.text);
+    if (!word.locked) line.unlocked = true;
   });
   const pending = [...reviewLines.values()].filter(line => line.unlocked);
   if (pending.length) {
     box.hidden = false;
-    box.insertAdjacentHTML('beforeend', `<details><summary>Câu chưa khóa (${pending.length})</summary><div class="export-check-list">${pending.map(({index}) => {
+    box.insertAdjacentHTML('beforeend', `<details><summary>Câu chưa khóa (${pending.length})</summary><div class="export-check-list">${pending.map(({index,tokens}) => {
       const word = p.words[index];
-      return `<button type="button" class="export-check-item" data-qa-word="${index}"><small>${time(mapTime(word.start),true)} · C${word.line+1}</small><span>${esc(word.text)}</span></button>`;
+      return `<button type="button" class="export-check-item" data-qa-word="${index}"><small>${time(mapTime(word.start),true)} · C${word.line+1}</small><span>${esc(tokens.join(" "))}</span></button>`;
     }).join('')}</div></details>`);
   }
   $('renderBtn').disabled=info.errors.length>0||!!state.job;
