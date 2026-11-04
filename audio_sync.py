@@ -116,7 +116,7 @@ def _local_regions(reference, beat, scale, lag, frame_rate, job=None):
             item["alternate_beat_start"] = alternate_beat_start
         if best_score < .38:
             item.update(status="unmatched", note="Không tìm thấy vùng beat khớp rõ; có thể là nhạc dạo hoặc khác cấu trúc.")
-        elif margin < .012 and best_score >= .55:
+        elif margin < .035 and best_score >= .55:
             item.update(status="repeated", note="Có nhiều vùng beat tương tự; có thể là điệp khúc lặp. Hãy nghe xác nhận.")
         elif margin < .012:
             item.update(status="uncertain", note="Có nhiều vùng âm thanh tương tự; cần nghe xác nhận.")
