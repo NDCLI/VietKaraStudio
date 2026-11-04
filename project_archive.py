@@ -99,7 +99,7 @@ def restore_version(path: Path, identifier: str) -> dict:
             continue
         source_file = source / "media" / name
         if not source_file.is_file():
-            continue
+            raise ValueError(f"Phiên bản thiếu file media: {name}.")
         if source_file.stat().st_size != entry.get("size"):
             raise ValueError("File trong phiên bản bị thiếu hoặc đã thay đổi.")
         digest = sha256(source_file)
