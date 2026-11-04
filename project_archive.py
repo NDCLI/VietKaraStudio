@@ -19,7 +19,7 @@ FIXED_MEDIA = {
 MEDIA_PATTERN = re.compile(
     r"^(?:reference|beat|background)_source\.[a-z0-9]{1,8}$|"
     r"^(?:reference|beat|background)_preview\.mp4$|"
-    r"^scene_[0-9a-f]{32}\.png$"
+    r"^scene_(?:decoration_)?[0-9a-f]{32}\.png$"
 )
 MAX_ARCHIVE_SIZE = 3 * 1024 ** 3
 

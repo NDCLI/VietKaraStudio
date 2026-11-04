@@ -414,9 +414,13 @@ def get_layout():
     if project_id:
         path=directory(project_id)
         scene_overlays=scene_tools.apply_readability(result,project,path)
-        result['scene_overlays']=[{key:value for key,value in scene.items() if key!='image_path'} |
-                                  {'url':f"/api/projects/{project_id}/scenes/{scene['id']}/image?v="+
-                                         str((path/'project.json').stat().st_mtime_ns)}
+        version=(path/'project.json').stat().st_mtime_ns
+        result['scene_overlays']=[{key:value for key,value in scene.items()
+                                   if key not in ('image_path','decoration_path')} |
+                                  {'url':(f"/api/projects/{project_id}/scenes/{scene['id']}/image?v={version}"
+                                          if scene['image_ready'] else ''),
+                                   'decoration_url':(f"/api/projects/{project_id}/scenes/{scene['id']}/decoration?v={version}"
+                                                     if scene['decoration_ready'] else '')}
                                   for scene in scene_overlays]
     else:
         result['scene_overlays']=[]
@@ -747,14 +751,13 @@ def video_reference(pid):
     return task(pid,'upload',work)
 
 
-@app.post("/api/projects/<pid>/scenes/<scene_id>/image")
-def upload_scene_image(pid, scene_id):
-    idle(pid)
+def _save_scene_artwork(pid, scene_id, decoration=False):
     path = directory(pid)
-    target_name = scene_tools.media_name(scene_id)
+    target_name = (scene_tools.decoration_media_name(scene_id) if decoration
+                   else scene_tools.media_name(scene_id))
     uploaded = request.files.get("file")
     if not uploaded or not uploaded.filename:
-        raise ValueError("Hãy chọn ảnh nền cho cảnh.")
+        raise ValueError("Hãy chọn ảnh trang trí cho cảnh." if decoration else "Hãy chọn ảnh nền cho cảnh.")
     extension = Path(uploaded.filename).suffix.lower()
     if extension not in (".png", ".jpg", ".jpeg", ".webp"):
         raise ValueError("Ảnh cảnh chỉ nhận PNG, JPG hoặc WebP.")
@@ -782,12 +785,26 @@ def upload_scene_image(pid, scene_id):
         raise ValueError("Không đọc được ảnh cảnh. Hãy chọn một file ảnh hợp lệ.") from exc
     try:
         if destination.is_file():
-            project_archive.create_version(path, project, "Trước khi thay ảnh cảnh")
+            project_archive.create_version(path, project,
+                                           "Trước khi thay ảnh trang trí" if decoration else "Trước khi thay ảnh cảnh")
         temporary.replace(destination)
         project["scenes"] = scene_tools.validate(project.get("scenes", []))
         save(project)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+@app.post("/api/projects/<pid>/scenes/<scene_id>/image")
+def upload_scene_image(pid, scene_id):
+    idle(pid)
+    _save_scene_artwork(pid, scene_id)
+    return jsonify(public(load(pid)))
+
+
+@app.post("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def upload_scene_decoration(pid, scene_id):
+    idle(pid)
+    _save_scene_artwork(pid, scene_id, decoration=True)
     return jsonify(public(load(pid)))
 
 
@@ -815,6 +832,32 @@ def get_scene_image(pid, scene_id):
     if not image.is_file():
         raise FileNotFoundError("Cảnh chưa có ảnh nền.")
     return send_file(image, mimetype="image/png", conditional=True)
+
+
+@app.delete("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def delete_scene_decoration(pid, scene_id):
+    idle(pid)
+    path=directory(pid)
+    project=load(pid)
+    if not any(item.get("id")==scene_id for item in project.get("scenes",[])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image=path/scene_tools.decoration_media_name(scene_id)
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh trang trí.")
+    project_archive.create_version(path,project,"Trước khi bỏ ảnh trang trí")
+    image.unlink()
+    return jsonify(public(load(pid)))
+
+
+@app.get("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def get_scene_decoration(pid, scene_id):
+    path=directory(pid)
+    if not any(item.get("id")==scene_id for item in load(pid).get("scenes",[])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image=path/scene_tools.decoration_media_name(scene_id)
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh trang trí.")
+    return send_file(image,mimetype="image/png",conditional=True)
 
 
 def recognize_cached(path, job, model, language, lyrics, preference, region=None):
@@ -1127,6 +1170,18 @@ def render(pid):
                j.state in ("queued", "running") for j in JOBS.values()):
             raise ValueError("Video của project này đang được dựng.")
         snapshot = load(pid)
+        data=request.get_json(silent=True) or {}
+        preview=data.get("preview") if isinstance(data.get("preview"),dict) else None
+        if preview is not None:
+            try:
+                duration=float((snapshot.get("beat") or {}).get("duration",0))
+                start=max(0,min(max(0,duration-.5),finite(preview.get("start",0))))
+                length=max(.5,min(12,finite(preview.get("duration",8)),duration-start))
+            except (TypeError,ValueError):
+                raise ValueError("Thời lượng render thử không hợp lệ.") from None
+            if duration<.5:
+                raise ValueError("Beat quá ngắn để render thử.")
+            snapshot["render_preview"]={"start":start,"duration":length}
         audio_output = validate_settings(snapshot.get("settings", {}))["audio_output"]
         record = batch_render.create(engine.DATA, [(snapshot, directory(pid))], pid,
                                      aspects=["current"], audio_outputs=[audio_output],

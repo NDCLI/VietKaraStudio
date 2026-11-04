@@ -379,10 +379,18 @@ def render(project, directory, job, render_id=None):
     bg = opts.get("background", "#101d2b")
     ass_color(bg)
     duration = project["beat"]["duration"]
+    preview = project.get("render_preview") if isinstance(project.get("render_preview"), dict) else None
+    render_start = 0.
+    render_duration = duration
+    if preview is not None:
+        render_start=max(0.,min(max(0.,duration-.5),float(preview.get("start",0))))
+        render_duration=max(.5,min(12.,float(preview.get("duration",8)),duration-render_start))
     import render_info
     manifest=render_info.describe(project,directory)
     if manifest['errors']:raise ValueError(' '.join(manifest['errors']))
-    if project.get('export_directory'):
+    if preview is not None:
+        manifest['render_preview']={'start':round(render_start,3),'duration':round(render_duration,3)}
+    if project.get('export_directory') and preview is None:
         import tempfile
         try:
             with tempfile.TemporaryFile(dir=project['export_directory']):pass
@@ -415,8 +423,17 @@ def render(project, directory, job, render_id=None):
     next_input = 3 if guide_audio else 2
     scene_inputs = []
     for scene in scene_items:
+        if not scene.get('image_path'):
+            continue
         args += ['-loop', '1', '-framerate', str(fps), '-i', str(scene['image_path'])]
         scene_inputs.append({**scene, 'input_index': next_input})
+        next_input += 1
+    decoration_inputs = []
+    for scene in scene_items:
+        if not scene.get('decoration_path'):
+            continue
+        args += ['-loop', '1', '-framerate', str(fps), '-i', str(scene['decoration_path'])]
+        decoration_inputs.append({**scene, 'input_index': next_input})
         next_input += 1
     from bundled_assets import FONT_ROOT
     # A relative fontsdir avoids Windows drive-colon escaping in FFmpeg filters.
@@ -473,7 +490,36 @@ def render(project, directory, job, render_id=None):
         graph += (f";[{last_background}][scene_image{index}]overlay=x=0:y=0:eof_action=pass:shortest=0:"
                   f"enable='between(t,{start:.3f},{end:.3f})'[scene_bg{index}]")
         last_background = f'scene_bg{index}'
-    if scene_inputs:
+    for index, scene in enumerate(decoration_inputs):
+        start, end = scene['start'], scene['end']
+        clip_duration = max(.05, end - start)
+        fade = min(scene['fade_seconds'], clip_duration / 2)
+        frames=scene.get('decoration_keyframes') or [{'x':50,'y':50,'scale':100,'opacity':100}]*2
+        first,last=frames[0],frames[1]
+        local_progress=f"min(max(t/{clip_duration:.6f},0),1)"
+        alpha_progress=f"min(max(T/{clip_duration:.6f},0),1)"
+        def decoration_lerp(key, progress):
+            a=float(first.get(key,50 if key in ('x','y') else 100))
+            b=float(last.get(key,a))
+            return f"({a:.4f}+({b-a:.4f})*{progress})"
+        width_expr=f"max(1,{width}*{scene['decoration_size']:.4f}/100*{decoration_lerp('scale',local_progress)}/100)"
+        opacity_expr=decoration_lerp('opacity',alpha_progress)
+        position_progress=f"min(max((t-{start:.6f})/{clip_duration:.6f},0),1)"
+        x_expr=decoration_lerp('x',position_progress)
+        y_expr=decoration_lerp('y',position_progress)
+        decoration_filter=(f"[{scene['input_index']}:v]setpts=PTS-STARTPTS,format=rgba,"
+                           f"scale=w='{width_expr}':h=-1:eval=frame,"
+                           f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity_expr})/100'")
+        if fade >= .05:
+            decoration_filter += f',fade=t=in:st=0:d={fade:.3f}:alpha=1'
+            decoration_filter += f',fade=t=out:st={max(0, clip_duration-fade):.3f}:d={fade:.3f}:alpha=1'
+        decoration_filter += f',trim=duration={clip_duration:.3f},setpts=PTS-STARTPTS+{start:.3f}/TB[scene_decoration{index}]'
+        graph += ';' + decoration_filter
+        graph += (f";[{last_background}][scene_decoration{index}]overlay="
+                  f"x='W*({x_expr})/100-w/2':y='H*({y_expr})/100-h/2':"
+                  f"eof_action=pass:shortest=0:enable='between(t,{start:.3f},{end:.3f})'[scene_decor{index}]")
+        last_background=f'scene_decor{index}'
+    if scene_inputs or decoration_inputs:
         graph += f';[{last_background}]ass=lyrics.ass:fontsdir=fonts[base]'
     else:
         graph = f'[0:v]{visual_filter}[base]'
@@ -491,13 +537,15 @@ def render(project, directory, job, render_id=None):
         graph+=';'+logo_graph
     if guide_audio:
         graph+=';[1:a:0][2:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]'
-    if scene_inputs or overlay or logo or guide_audio:
+    if scene_inputs or decoration_inputs or overlay or logo or guide_audio:
         args+=['-filter_complex',graph,'-map',f'[{last}]','-map','[audio]' if guide_audio else '1:a:0']
     else:
         args+=['-vf',visual_filter,'-map','0:v:0','-map','1:a:0']
     video_options = render_info.encoding_options(opts['render_quality'],video_device['encoder'])
     video_name='karaoke.'+opts['render_format']
-    trailer = ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-t", str(duration)]
+    trailer = ["-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k"]
+    if render_start>0:trailer += ["-ss",str(render_start)]
+    trailer += ["-t",str(render_duration)]
     if opts.get('audio_normalize'):
         trailer += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
     if opts['render_format'] in ('mp4','mov'):trailer += ['-movflags','+faststart']
@@ -508,7 +556,7 @@ def render(project, directory, job, render_id=None):
             try:
                 seconds = int(line.split("=", 1)[1]) / 1e6
                 soundtrack='beat gốc + vocal hướng dẫn' if guide_audio else 'beat gốc'
-                job.update(min(98, 5 + seconds / duration * 93), f"Đang ghép chữ và {soundtrack} · {video_device['name']}…")
+                job.update(min(98, 5 + seconds / render_duration * 93), f"Đang ghép chữ và {soundtrack} · {video_device['name']}…")
             except ValueError:
                 pass
     try:
@@ -524,16 +572,16 @@ def render(project, directory, job, render_id=None):
                 render_info.encoding_options(opts['render_quality'],'libx264') + trailer,
                 job, cwd=export, progress=progress)
     job.check()
-    manifest['postflight'] = render_info.verify_output(export / video_name, duration, width, height)
+    manifest['postflight'] = render_info.verify_output(export / video_name, render_duration, width, height)
     try:
         manifest['postflight']['sample_sheet'] = render_info.sample_frames(
-            export / video_name, export / 'qa-contact.jpg', duration)
+            export / video_name, export / 'qa-contact.jpg', render_duration)
     except Exception as exc:
         manifest['postflight']['sample_sheet'] = {'ok': False, 'error': str(exc)[-500:]}
     manifest['encoder']=video_device['encoder']
     (export/'render-info.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     output_path=str(export/video_name)
-    if project.get('export_directory'):
+    if project.get('export_directory') and preview is None:
         target=Path(project['export_directory'])
         stem=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',project.get('name','karaoke')).strip(' .')[:65] or 'karaoke'
         stem=stem+'_'+render_id
@@ -553,4 +601,6 @@ def render(project, directory, job, render_id=None):
     return {"video": f"/api/projects/{project['id']}/exports/{render_id}/{video_name}",
             "qa_contact": f"/api/projects/{project['id']}/exports/{render_id}/qa-contact.jpg" if (export/'qa-contact.jpg').is_file() else None,
             "format":opts['render_format'],
-            "encoder": video_device["encoder"], "output_path": output_path}
+            "encoder": video_device["encoder"], "output_path": output_path,
+            **({"preview":True,"preview_start":round(render_start,3),
+                "preview_duration":round(render_duration,3)} if preview is not None else {})}

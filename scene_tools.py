@@ -22,6 +22,12 @@ def media_name(identifier: str) -> str:
     return f"scene_{identifier}.png"
 
 
+def decoration_media_name(identifier: str) -> str:
+    if not isinstance(identifier, str) or not SCENE_ID.fullmatch(identifier):
+        raise ValueError("Mã cảnh không hợp lệ.")
+    return f"scene_decoration_{identifier}.png"
+
+
 def _keyframe(value, fallback=None):
     value = value if isinstance(value, dict) else {}
     fallback = fallback or {}
@@ -36,6 +42,14 @@ def _keyframe(value, fallback=None):
         if not math.isfinite(number):
             number = default
         result[key] = round(max(low, min(high, number)), 2)
+    return result
+
+
+def _decoration_keyframe(value, fallback=None):
+    center = {"x": 50, "y": 50, "scale": 100, "opacity": 100}
+    result = _keyframe(value, fallback or center)
+    result["x"] = round(max(0, min(100, result["x"])), 2)
+    result["y"] = round(max(0, min(100, result["y"])), 2)
     return result
 
 
@@ -61,9 +75,10 @@ def validate(scenes) -> list[dict]:
         try:
             opacity = float(scene.get("opacity", 100))
             transition_seconds = float(scene.get("transition_seconds", .6))
+            decoration_size = float(scene.get("decoration_size", 28))
         except (TypeError, ValueError):
             raise ValueError("Độ rõ hoặc thời gian chuyển cảnh không hợp lệ.") from None
-        if not math.isfinite(opacity) or not math.isfinite(transition_seconds):
+        if not all(math.isfinite(number) for number in (opacity, transition_seconds, decoration_size)):
             raise ValueError("Độ rõ hoặc thời gian chuyển cảnh không hợp lệ.")
         transition = scene.get("transition", "fade")
         if transition not in ("cut", "fade"):
@@ -76,12 +91,22 @@ def validate(scenes) -> list[dict]:
             keyframes = []
         start = _keyframe(keyframes[0] if keyframes else None)
         end = _keyframe(keyframes[1] if len(keyframes) > 1 else None, start)
+        decoration_frames = scene.get("decoration_keyframes", [])
+        if not isinstance(decoration_frames, list):
+            decoration_frames = []
+        decoration_start = _decoration_keyframe(decoration_frames[0] if decoration_frames else None)
+        decoration_end = _decoration_keyframe(decoration_frames[1] if len(decoration_frames) > 1 else None,
+                                               decoration_start)
         output.append({"id": identifier, "section_name": section,
                        "media_name": media_name(identifier),
+                       "decoration_media_name": decoration_media_name(identifier),
                        "opacity": round(max(0, min(100, opacity))),
+                       "decoration_size": round(max(5, min(80, decoration_size)), 2),
                        "transition": transition,
                        "transition_seconds": round(max(0, min(3, transition_seconds)), 2),
-                       "keyframes": [start, end], "contrast_mode": contrast_mode})
+                       "keyframes": [start, end],
+                       "decoration_keyframes": [decoration_start, decoration_end],
+                       "contrast_mode": contrast_mode})
     return output
 
 
@@ -89,13 +114,20 @@ def public(scenes, directory: Path) -> list[dict]:
     output = validate(scenes)
     for scene in output:
         scene["image_ready"] = (directory / scene["media_name"]).is_file()
+        scene["decoration_ready"] = (directory / scene["decoration_media_name"]).is_file()
     return output
 
 
 def timeline(project: dict, duration: float, directory: Path) -> list[dict]:
-    """Resolve each consecutive labeled section to an image interval on the beat clock."""
-    scenes = {scene["section_name"]: scene for scene in validate(project.get("scenes", []))
-              if (directory / scene["media_name"]).is_file()}
+    """Resolve scene and decoration layers to intervals on the beat clock."""
+    scenes = {}
+    for scene in validate(project.get("scenes", [])):
+        image_path = directory / scene["media_name"]
+        decoration_path = directory / scene["decoration_media_name"]
+        if image_path.is_file() or decoration_path.is_file():
+            scenes[scene["section_name"]] = {**scene,
+                                             "image_path": image_path if image_path.is_file() else None,
+                                             "decoration_path": decoration_path if decoration_path.is_file() else None}
     if not scenes or not project.get("words"):
         return []
     mapped = beat_words(project)
@@ -123,7 +155,6 @@ def timeline(project: dict, duration: float, directory: Path) -> list[dict]:
         scene = scenes.get(run["section_name"])
         if not scene:
             continue
-        image = directory / scene["media_name"]
         previous = scenes.get(runs[index - 1]["section_name"]) if index else None
         next_run = runs[index + 1] if index + 1 < len(runs) else None
         following = scenes.get(next_run["section_name"]) if next_run else None
@@ -140,7 +171,8 @@ def timeline(project: dict, duration: float, directory: Path) -> list[dict]:
             continue
         output.append({**scene, "start": round(start, 3), "end": round(end, 3),
                        "fade_seconds": min(transition, max(.05, (end - start) / 2)),
-                       "image_path": image})
+                       "image_ready": scene["image_path"] is not None,
+                       "decoration_ready": scene["decoration_path"] is not None})
     return output
 
 
@@ -174,7 +206,9 @@ def apply_readability(plan: dict, project: dict, directory: Path) -> list[dict]:
     scenes = timeline(project, duration, directory)
     for scene in scenes:
         mode = scene.get("contrast_mode", "auto")
-        if mode == "always":
+        if not scene.get("image_path"):
+            opacity = 0
+        elif mode == "always":
             opacity = 48
         elif mode == "auto":
             try:

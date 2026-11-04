@@ -10,6 +10,7 @@ from pathlib import Path
 
 import engine
 import project_archive
+import scene_tools
 from styles import validate_settings
 
 
@@ -70,9 +71,14 @@ def required_media(project: dict, source: Path) -> list[Path]:
     if settings.get("countdown") == "image" and settings.get("display_mode") == "karaoke":
         needed.append("countdown.png")
     for scene in project.get("scenes", []):
-        name = scene.get("media_name")
-        if isinstance(name, str) and name in available:
-            needed.append(name)
+        try:
+            names=(scene_tools.media_name(scene.get("id")),
+                   scene_tools.decoration_media_name(scene.get("id")))
+        except ValueError:
+            continue
+        for name in names:
+            if isinstance(name, str) and name in available:
+                needed.append(name)
     if settings.get("audio_output", "beat") == "guide":
         if "vocals.wav" in available:
             needed.append("vocals.wav")
