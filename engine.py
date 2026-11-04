@@ -340,15 +340,15 @@ def ass_text(text):
     return str(text).replace("\\", "＼").replace("{", "｛").replace("}", "｝").replace("\n", " ")
 
 
-def build_ass(project):
+def build_ass(project, directory=None):
     from subtitles import build_ass as compose
-    return compose(project)
+    return compose(project, directory)
 
 
-def export_text(project, kind):
+def export_text(project, kind, directory=None):
     lines = lyric_lines(beat_words(project))
     if kind == "ass":
-        return build_ass(project)
+        return build_ass(project, directory)
     if kind == "srt":
         return "\n\n".join(f"{i + 1}\n{srt_time(line[0]['start'])} --> {srt_time(line[-1]['end'])}\n" +
                               " ".join(w["text"] for w in line) for i, line in enumerate(lines)) + "\n"
@@ -373,7 +373,7 @@ def render(project, directory, job, render_id=None):
     render_id = render_id if isinstance(render_id, str) and re.fullmatch(r"[0-9a-f]{32}", render_id) else job.id
     export = directory / "exports" / render_id
     export.mkdir(parents=True, exist_ok=True)
-    (export / "lyrics.ass").write_text(build_ass(project), encoding="utf-8-sig")
+    (export / "lyrics.ass").write_text(build_ass(project, directory), encoding="utf-8-sig")
     width, height = (1080, 1920) if opts.get("aspect") == "portrait" else (1920, 1080)
     if opts['resolution']=='4k':width,height=width*2,height*2
     bg = opts.get("background", "#101d2b")

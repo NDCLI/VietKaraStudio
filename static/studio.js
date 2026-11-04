@@ -123,12 +123,14 @@ function studioFrame(){
     const motion=state.manualTiming?{opacity:1,dx:0,dy:0,scale:1,rx:0}:rowMotion(row,s,t),px=v=>(v*scale).toFixed(3)+'px';
     const fontSize=row.font_size*plan.font_factor*scale;
     const shadow=s.shadow?`${s.shadow*scale}px ${s.shadow*scale}px ${s.shadow*scale}px ${s.shadow_color}`:'none';
-    const rowStyle=`left:${px(row.x)};top:${px(row.y)};font-size:${fontSize}px;line-height:1.2;opacity:${motion.opacity*row.opacity};transform:translate(${px(motion.dx)},${px(motion.dy)}) scale(${motion.scale}) rotateX(${motion.rx}deg);transform-origin:${row.align==='right'?'right':row.align==='center'?'center':'left'} bottom;--outline-width:${px(s.outline_width*2)};--outline-u:${colorAlpha(s.outline_unsung,s.outline_unsung_opacity)};--outline-s:${colorAlpha(s.outline_sung,s.outline_sung_opacity)};--text-shadow:${shadow};`;
+    const backing=Number(row.readability_backing||0),backingStyle=backing&&!row.ghost?`--lyric-backing:rgba(0,0,0,${backing/100});--lyric-backing-pad:${px(row.font_size*.22)};`:'';
+    const rowStyle=`left:${px(row.x)};top:${px(row.y)};${backing&&!row.ghost?`width:${px(row.width)};height:${px(row.height)};`:''}font-size:${fontSize}px;line-height:1.2;opacity:${motion.opacity*row.opacity};transform:translate(${px(motion.dx)},${px(motion.dy)}) scale(${motion.scale}) rotateX(${motion.rx}deg);transform-origin:${row.align==='right'?'right':row.align==='center'?'center':'left'} bottom;--outline-width:${px(s.outline_width*2)};--outline-u:${colorAlpha(s.outline_unsung,s.outline_unsung_opacity)};--outline-s:${colorAlpha(s.outline_sung,s.outline_sung_opacity)};--text-shadow:${shadow};${backingStyle}`;
+    const backingClass=backing&&!row.ghost?' has-readability-backing':'';
     if(s.display_mode!=='karaoke'){
       const box=s.display_mode==='subtitle'&&s.subtitle_box?`background:${colorAlpha(s.subtitle_box_color,s.subtitle_box_opacity)};border-radius:${px(s.subtitle_box_radius)};padding:${px(row.font_size*.18)};margin:-${px(row.font_size*.18)};`:'';
       const color=s.display_mode==='subtitle'||row.ghost?s.unsung:row.color;
       const gradient=s.sung_gradient&&!row.ghost?`background-image:linear-gradient(to top,${s.gradient_bottom} ${s.gradient_start}%,${s.gradient_top} ${s.gradient_end}%);background-clip:text;-webkit-background-clip:text;color:transparent;`:'';
-      return `<div class="studio-line plain-line" style="${rowStyle}${box}"><span style="color:${color};${gradient}display:inline-block;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${esc(row.display_text??row.text)}</span></div>`;
+      return `<div class="studio-line plain-line${backingClass}" style="${rowStyle}${box}"><span style="color:${color};${gradient}display:inline-block;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${esc(row.display_text??row.text)}</span></div>`;
     }
     const words=row.words.map(w=>{
       const source=p.words[w.source_index],word=source?wordOnBeat(source):w;
@@ -145,7 +147,7 @@ function studioFrame(){
       const shadowLayer=s.shadow?`<span class="studio-shadow" style="color:${s.shadow_color};-webkit-text-stroke:var(--outline-width) ${s.shadow_color};transform:translate(${px(s.shadow)},${px(s.shadow)})">${esc(w.display_text??w.text)}</span>`:'';
       return `<span class="studio-word" style="--mask-pad:${pad}px;left:${px(w.x-row.x)};width:${size.toFixed(3)}px;transform:scaleX(${s.horizontal_scale/100});transform-origin:left top">${shadowLayer}<span class="studio-base" style="color:${s.unsung};visibility:${progress>=1?'hidden':'visible'};mask-image:${baseMask};-webkit-mask-image:${baseMask}">${esc(w.display_text??w.text)}</span><span class="studio-fill" style="${grad}visibility:${progress<=0?'hidden':'visible'};mask-image:${fillMask};-webkit-mask-image:${fillMask}">${esc(w.display_text??w.text)}</span>${glow}</span>`;
     }).join('');
-    return `<div class="studio-line karaoke-line" data-row="${row.slot}" style="${rowStyle}width:${px(row.width)};height:${px(row.height)}">${roleIconMarkup(row,s,scale)}${words}</div>`;
+    return `<div class="studio-line karaoke-line${backingClass}" data-row="${row.slot}" style="${rowStyle}width:${px(row.width)};height:${px(row.height)}">${roleIconMarkup(row,s,scale)}${words}</div>`;
   }).join('');
   patchLyricPreview(lyrics,markup);
   const countdown=$('previewCountdown'),window=plan.countdowns.find(w=>t>=w.start&&t<w.end);
@@ -233,7 +235,8 @@ function renderSceneControls(){
     const transition=scene.transition==='cut'?'cut':`fade-${Number(scene.transition_seconds||.6)}`;
     const keyframes=scene.keyframes||[{},{x:0,y:0,scale:100,opacity:100}];
     const motion=keyframes.map((frame,index)=>`<fieldset><legend>${index?'Cuối':'Đầu'}</legend>${[['x','Dời ngang',-100,100],['y','Dời dọc',-100,100],['scale','Tỉ lệ',100,200],['opacity','Độ rõ',0,100]].map(([property,title,min,max])=>`<label>${title} · ${Number(frame[property]??(property==='scale'||property==='opacity'?100:0))}%<input type="range" min="${min}" max="${max}" step="1" value="${Number(frame[property]??(property==='scale'||property==='opacity'?100:0))}" data-scene-motion="${esc(scene.id)}" data-keyframe="${index}" data-motion-property="${property}"></label>`).join('')}</fieldset>`).join('');
-    return `<div class="scene-card" data-scene-card="${esc(scene.id)}"><strong>${esc(label)}</strong>${scene.image_ready?'<p class="hint">Ảnh cảnh đã nạp · PNG nội bộ</p>':'<p class="hint">Chưa có ảnh. Đang dùng nền chung cho phân đoạn này.</p>'}<label class="background-upload"><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-scene-file="${esc(scene.id)}">${scene.image_ready?'Đổi ảnh cảnh':'Chọn ảnh cảnh'}</label><div class="scene-card-actions"><label>Chuyển cảnh<select data-scene-transition="${esc(scene.id)}"><option value="cut"${transition==='cut'?' selected':''}>Cắt thẳng</option><option value="fade-0.6"${transition==='fade-0.6'?' selected':''}>Mờ · 0,6 giây</option><option value="fade-1.2"${transition==='fade-1.2'?' selected':''}>Mờ · 1,2 giây</option><option value="fade-2"${transition==='fade-2'?' selected':''}>Mờ · 2 giây</option></select></label><button type="button" class="ghost scene-remove" data-remove-scene="${esc(scene.id)}">Bỏ cảnh</button></div><label>Độ rõ ảnh · ${scene.opacity}%<input type="range" min="0" max="100" step="1" value="${scene.opacity}" data-scene-opacity="${esc(scene.id)}"></label><details class="scene-motion"><summary>Keyframe · vị trí, tỉ lệ, độ rõ</summary><div>${motion}</div><p class="hint">Thông số chuyển đều từ đầu đến cuối phân đoạn.</p></details></div>`;
+    const contrastMode=scene.contrast_mode||'auto';
+    return `<div class="scene-card" data-scene-card="${esc(scene.id)}"><strong>${esc(label)}</strong>${scene.image_ready?'<p class="hint">Ảnh cảnh đã nạp · PNG nội bộ</p>':'<p class="hint">Chưa có ảnh. Đang dùng nền chung cho phân đoạn này.</p>'}<label class="background-upload"><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-scene-file="${esc(scene.id)}">${scene.image_ready?'Đổi ảnh cảnh':'Chọn ảnh cảnh'}</label><div class="scene-card-actions"><label>Chuyển cảnh<select data-scene-transition="${esc(scene.id)}"><option value="cut"${transition==='cut'?' selected':''}>Cắt thẳng</option><option value="fade-0.6"${transition==='fade-0.6'?' selected':''}>Mờ · 0,6 giây</option><option value="fade-1.2"${transition==='fade-1.2'?' selected':''}>Mờ · 1,2 giây</option><option value="fade-2"${transition==='fade-2'?' selected':''}>Mờ · 2 giây</option></select></label><button type="button" class="ghost scene-remove" data-remove-scene="${esc(scene.id)}">Bỏ cảnh</button></div><label>Độ rõ ảnh · ${scene.opacity}%<input type="range" min="0" max="100" step="1" value="${scene.opacity}" data-scene-opacity="${esc(scene.id)}"></label><label>Hỗ trợ đọc lời<select data-scene-contrast="${esc(scene.id)}"><option value="auto"${contrastMode==='auto'?' selected':''}>Tự động theo độ sáng</option><option value="always"${contrastMode==='always'?' selected':''}>Luôn bật nền tối</option><option value="off"${contrastMode==='off'?' selected':''}>Tắt</option></select></label><details class="scene-motion"><summary>Keyframe · vị trí, tỉ lệ, độ rõ</summary><div>${motion}</div><p class="hint">Thông số chuyển đều từ đầu đến cuối phân đoạn.</p></details></div>`;
   }).join('');
   for(const id of openMotion)host.querySelector(`[data-scene-card="${id}"] .scene-motion`)?.setAttribute('open','');
 }
@@ -252,11 +255,12 @@ function initSceneTools(){
   $('sceneList').onchange=wrap(async event=>{
     const input=event.target.closest('[data-scene-file]');
     if(input){const file=input.files[0];await uploadSceneImage(input.dataset.sceneFile,file);input.value='';return;}
-    const id=event.target.dataset.sceneTransition||event.target.dataset.sceneOpacity||event.target.dataset.sceneMotion;if(!id)return;
+    const id=event.target.dataset.sceneTransition||event.target.dataset.sceneOpacity||event.target.dataset.sceneMotion||event.target.dataset.sceneContrast;if(!id)return;
     const scene=(state.project.scenes||[]).find(item=>item.id===id);if(!scene)return;
     remember();
     if(event.target.matches('[data-scene-transition]')){const value=event.target.value;if(value==='cut'){scene.transition='cut';scene.transition_seconds=0;}else{scene.transition='fade';scene.transition_seconds=Number(value.slice(5));}}
     else if(event.target.matches('[data-scene-opacity]'))scene.opacity=Number(event.target.value);
+    else if(event.target.matches('[data-scene-contrast]'))scene.contrast_mode=event.target.value;
     else{const index=Number(event.target.dataset.keyframe),property=event.target.dataset.motionProperty;scene.keyframes=scene.keyframes||[{x:0,y:0,scale:100,opacity:100},{x:0,y:0,scale:100,opacity:100}];scene.keyframes[index][property]=Number(event.target.value);}
     await saveNow();renderSceneControls();scheduleLayout();syncSceneImages(beatNow(),state.layout);updateHistoryButtons();
   });

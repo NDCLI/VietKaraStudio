@@ -69,9 +69,12 @@ ICONS = {
 }
 
 
-def build_ass(project):
+def build_ass(project, directory=None):
     opts = validate_settings(project.get('settings', {}))
     plan = display_plan(project)
+    if directory is not None:
+        import scene_tools
+        scene_tools.apply_readability(plan, project, directory)
     width,height = plan['width'],plan['height']
     font = plan['font'].replace(',','')
     s = opts
@@ -111,6 +114,13 @@ def build_ass(project):
     rows=plan['rows']
     for i,row in enumerate(rows):
         ds,de=row['show_start'],row['show_end']
+        if row.get('readability_backing'):
+            pad=row['font_size']*.22
+            shape=rounded_box(0,0,row['width']+2*pad,row['height']+2*pad,12)
+            box_row={**row,'x':row['x']-pad,'y':row['y']-pad}
+            opacity=row['readability_backing']
+            event(0,ds,de,'\\fscx100\\fscy100'+animation(box_row,s)+
+                  f"\\p1\\bord0\\shad0\\1c{color('#000000')}\\1a&H{round(255*(1-opacity/100)):02X}&",shape)
         if s['display_mode']=='subtitle':
             if s['subtitle_box']:
                 pad=row['font_size']*.18

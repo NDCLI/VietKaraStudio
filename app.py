@@ -413,10 +413,11 @@ def get_layout():
     project_id=data.get('project_id')
     if project_id:
         path=directory(project_id)
+        scene_overlays=scene_tools.apply_readability(result,project,path)
         result['scene_overlays']=[{key:value for key,value in scene.items() if key!='image_path'} |
                                   {'url':f"/api/projects/{project_id}/scenes/{scene['id']}/image?v="+
                                          str((path/'project.json').stat().st_mtime_ns)}
-                                  for scene in scene_tools.timeline(project,project.get('beat',{}).get('duration',0),path)]
+                                  for scene in scene_overlays]
     else:
         result['scene_overlays']=[]
     return jsonify(result)
@@ -1155,7 +1156,7 @@ def download(pid, kind):
         content = json.dumps({k:v for k,v in project.items() if k not in ("reference", "beat")},
                              ensure_ascii=False, indent=2)
     else:
-        content = engine.export_text(project, kind)
+        content = engine.export_text(project, kind, directory(pid))
     safe_name = re.sub(r'[^\w\- ]', '', project["name"])[:70] or "karaoke"
     return send_file(io.BytesIO(content.encode("utf-8-sig")), as_attachment=True,
                      download_name=safe_name + (".obs.json" if kind == "json" else "." + kind),

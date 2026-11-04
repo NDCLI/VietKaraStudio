@@ -4,7 +4,10 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from functools import lru_cache
 from pathlib import Path
+
+from PIL import Image
 
 from timing import beat_words
 
@@ -65,6 +68,9 @@ def validate(scenes) -> list[dict]:
         transition = scene.get("transition", "fade")
         if transition not in ("cut", "fade"):
             raise ValueError("Kiểu chuyển cảnh không hợp lệ.")
+        contrast_mode = scene.get("contrast_mode", "auto")
+        if contrast_mode not in ("auto", "always", "off"):
+            contrast_mode = "auto"
         keyframes = scene.get("keyframes", [])
         if not isinstance(keyframes, list):
             keyframes = []
@@ -75,7 +81,7 @@ def validate(scenes) -> list[dict]:
                        "opacity": round(max(0, min(100, opacity))),
                        "transition": transition,
                        "transition_seconds": round(max(0, min(3, transition_seconds)), 2),
-                       "keyframes": [start, end]})
+                       "keyframes": [start, end], "contrast_mode": contrast_mode})
     return output
 
 
@@ -136,3 +142,56 @@ def timeline(project: dict, duration: float, directory: Path) -> list[dict]:
                        "fade_seconds": min(transition, max(.05, (end - start) / 2)),
                        "image_path": image})
     return output
+
+
+@lru_cache(maxsize=128)
+def _bright_pixel_ratio(image_path: str, modified_ns: int) -> float:
+    """Estimate whether the scene's brighter areas need a backing behind lyrics."""
+    del modified_ns  # The timestamp is part of the cache key so image replacements invalidate it.
+    try:
+        with Image.open(image_path) as image:
+            image.thumbnail((96, 54))
+            gray = image.convert("RGB").resize((48, 27)).convert("L")
+            histogram = gray.histogram()
+        total = sum(histogram)
+        if not total:
+            return 0.
+        # The 80th percentile responds to broad bright areas without reacting to tiny highlights.
+        target = total * .8
+        count = 0
+        for level, amount in enumerate(histogram):
+            count += amount
+            if count >= target:
+                return level / 255
+    except (OSError, ValueError):
+        pass
+    return 0.
+
+
+def apply_readability(plan: dict, project: dict, directory: Path) -> list[dict]:
+    """Attach one scene-aware lyric backing decision shared by preview and ASS output."""
+    duration = (project.get("beat") or {}).get("duration", 0)
+    scenes = timeline(project, duration, directory)
+    for scene in scenes:
+        mode = scene.get("contrast_mode", "auto")
+        if mode == "always":
+            opacity = 48
+        elif mode == "auto":
+            try:
+                modified_ns = scene["image_path"].stat().st_mtime_ns
+            except OSError:
+                modified_ns = 0
+            brightness = _bright_pixel_ratio(str(scene["image_path"]), modified_ns)
+            opacity = 44 if brightness >= .64 else 0
+        else:
+            opacity = 0
+        scene["backing_opacity"] = opacity
+
+    settings = project.get("settings", {})
+    for row in plan.get("rows", []):
+        if settings.get("display_mode") == "subtitle" and settings.get("subtitle_box"):
+            row["readability_backing"] = 0
+            continue
+        active = [scene for scene in scenes if scene["start"] <= row["start"] <= scene["end"]]
+        row["readability_backing"] = max((scene["backing_opacity"] for scene in active), default=0)
+    return scenes
