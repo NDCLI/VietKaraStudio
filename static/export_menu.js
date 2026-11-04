@@ -23,6 +23,19 @@ async function refreshExportMenu(){
   $('exportNotice').textContent=[...info.errors,...info.warnings].join('\n');$('exportNotice').classList.toggle('export-error',info.errors.length>0);
   const checks=info.checks||[],box=$('exportChecks');box.hidden=!checks.length;
   box.innerHTML=checks.length?'<h3>Rà soát lời · bấm để tới vị trí</h3><div class="export-check-list">'+checks.slice(0,200).map(item=>`<button type="button" class="export-check-item" data-qa-word="${Number(item.word_index)}"><small>${time(mapTime(item.time),true)} · C${Number(item.line)+1}</small><span>${esc(item.message)}</span></button>`).join('')+'</div>'+(checks.length>200?`<p class="hint">Còn ${checks.length-200} điểm khác; danh sách đang hiển thị 200 điểm đầu.</p>`:''):'';
+  const reviewLines = new Map();
+  p.words.forEach((word, index) => {
+    if (!reviewLines.has(word.line)) reviewLines.set(word.line, {index, unlocked:false});
+    if (!word.locked) reviewLines.get(word.line).unlocked = true;
+  });
+  const pending = [...reviewLines.values()].filter(line => line.unlocked);
+  if (pending.length) {
+    box.hidden = false;
+    box.insertAdjacentHTML('beforeend', `<details><summary>Câu chưa khóa (${pending.length})</summary><div class="export-check-list">${pending.map(({index}) => {
+      const word = p.words[index];
+      return `<button type="button" class="export-check-item" data-qa-word="${index}"><small>${time(mapTime(word.start),true)} · C${word.line+1}</small><span>${esc(word.text)}</span></button>`;
+    }).join('')}</div></details>`);
+  }
   $('renderBtn').disabled=info.errors.length>0||!!state.job;
   $('previewRenderBtn').disabled=info.errors.length>0||!!state.job;
   $('renderBtn').textContent='Dựng '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p')+' · '+({standard:'Tiêu chuẩn',high:'Chất lượng cao',maximum:'Rất cao'}[s.render_quality]||'Chất lượng cao');
