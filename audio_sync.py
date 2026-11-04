@@ -229,6 +229,7 @@ def suggest(reference_path: Path, beat_path: Path, job=None) -> dict:
     repeated_regions = sum(item["status"] == "repeated" for item in regions)
     unmatched_regions = sum(item["status"] == "unmatched" for item in regions)
     if added_or_cut:
+        confidence = "Thấp · có vùng bị thêm hoặc cắt; cần căn mốc theo đoạn"
         structure += " · có vùng có thể bị thêm hoặc cắt"
     elif repeated_regions:
         structure += " · có vùng có thể lặp cần xác nhận"

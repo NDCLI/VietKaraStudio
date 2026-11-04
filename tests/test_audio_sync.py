@@ -61,6 +61,7 @@ def test_sync_suggest_marks_cut_and_repeated_regions(tmp_path, reference_track):
                           reference[:cut_start], reference[cut_end:]))
     cut_result = suggest(reference_path, save_audio(tmp_path / "cut.wav", cut, sample_rate))
     assert {region["status"] for region in cut_result["regions"]} & {"cut", "added"}
+    assert cut_result["confidence"].startswith("Thấp")
     assert cut_result["requires_confirmation"] is True
 
     repeat_start, repeat_end = 30 * sample_rate, 42 * sample_rate
