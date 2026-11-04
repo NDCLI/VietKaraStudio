@@ -59,7 +59,7 @@ def test_two_rows_fit_frame_and_never_lose_long_lines():
 def test_manual_rows_sections_and_overlap_warning():
     a=words('Xin chào',2)
     b=[{**w,'line':1,'row':0} for w in words('Hát cùng',2.1)]
-    plan=layout.display_plan({'words':a+b})
+    plan=layout.display_plan({'words':a+b,'settings':{'singing_mode':'duet'}})
     assert plan['rows'][1]['slot']==0
     assert any(w['type']=='overlap' for w in plan['warnings'])
     grouped=layout.regroup_words(words('Một hai ba bốn'),'Một hai\n\nba bốn')
@@ -131,7 +131,7 @@ def test_render_modes_video_background_and_original_beat(client,tmp_path,mode):
     project=client.patch(f'/api/projects/{pid}',json={'words':words('Hát cùng',.8),'settings':setting}).get_json()
     assert project['background_video']['name']=='visual.mp4'
     result=wait(client,client.post(f'/api/projects/{pid}/render',json={}))
-    output=path/'exports'/result['id']/'karaoke.mp4'
+    output=Path(result['result']['output_path'])
     audio=tmp_path/'rendered.wav'
     engine.command([engine.binary('ffmpeg'),'-y','-v','error','-i',output,'-vn',audio])
     y,sr=sf.read(audio);y=y.mean(axis=1) if y.ndim>1 else y

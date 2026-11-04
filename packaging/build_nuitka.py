@@ -14,7 +14,7 @@ import sys
 import build_release as legacy
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='1.1.4'
+VERSION='1.1.5'
 BUILD=ROOT/'build-tools/nuitka-1.1.0'
 DIST=BUILD/'desktop_entry.dist'
 STAGE=BUILD/'payload'
@@ -40,7 +40,7 @@ def compile_app():
           # handlers and can abort MKL/NumPy with forrtl error 200.
           '--windows-console-mode=disable','--deployment','--python-flag=isolated','--python-flag=no_site',
           '--python-flag=dont_write_bytecode','--assume-yes-for-downloads','--output-dir='+str(BUILD),
-          '--output-filename=VietKaraStudio.exe','--windows-icon-from-ico='+str(ROOT/'resources/VietKaraStudio.ico'),
+          '--output-filename=VietKaraStudio.exe','--windows-icon-from-ico='+str(ROOT/'resources/VietKaraStudio-Nuitka.ico'),
           '--product-name=VietKara Studio','--file-description=VietKara Studio Nuitka',
           '--product-version='+VERSION,'--file-version='+VERSION+'.0',
           '--report='+str(BUILD/'compilation-report.xml')]

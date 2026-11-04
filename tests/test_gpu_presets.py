@@ -1,3 +1,4 @@
+import render_info
 from pathlib import Path
 import json
 import sys
@@ -118,6 +119,8 @@ def test_video_gpu_failure_retries_cpu_and_keeps_original_beat(tmp_path, monkeyp
         calls.append(args)
         if len(calls) == 1: raise RuntimeError('NVENC CUDA error')
     monkeypatch.setattr(engine, 'command', run)
+    monkeypatch.setattr(render_info, 'verify_output', lambda *_: {'ok': True})
+    monkeypatch.setattr(render_info, 'sample_frames', lambda *_: {'ok': True})
     job = engine.Job('j', 'p', 'render')
     result = engine.render({'id':'p','beat':{'duration':2},'anchors':[],
                             'words':[{'text':'Xin','start':.2,'end':1,'line':0}]}, tmp_path, job)

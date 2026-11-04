@@ -93,7 +93,7 @@ def test_export_uses_only_original_beat_and_mapped_lyrics(client,tmp_path):
     assert '｛chào｝＼' in ass
     result=wait(client,client.post(f'/api/projects/{pid}/render',json={}))
     assert result['result']['encoder'] in ('h264_nvenc','libx264')
-    video=engine.DATA/'projects'/pid/'exports'/result['id']/'karaoke.mp4'
+    video=Path(result['result']['output_path'])
     assert video.is_file() and video.stat().st_size>1000
     soundtrack=tmp_path/'soundtrack.wav'
     engine.command([engine.binary('ffmpeg'),'-y','-v','error','-i',video,'-vn',soundtrack])

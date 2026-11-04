@@ -1,4 +1,4 @@
-#define AppVersion "1.1.4"
+#define AppVersion "1.1.5"
 #ifndef SourceDir
   #error SourceDir must be supplied
 #endif
@@ -15,7 +15,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\releases
 OutputBaseFilename=VietKaraStudio-{#AppVersion}-Nuitka-Setup-x64
-SetupIconFile=VietKaraStudio.ico
+SetupIconFile=..\resources\VietKaraStudio-Nuitka.ico
 UninstallDisplayIcon={app}\VietKaraStudio.exe
 Compression=zip/3
 SolidCompression=no
