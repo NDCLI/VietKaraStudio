@@ -5,7 +5,7 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1">
-  <link rel="stylesheet" href="/static/style.css?v=1.1.15-local-sync">
+  <link rel="stylesheet" href="/static/style.css?v=1.1.17-scene-motion">
 </head>
 <body>
 <nav class="app-rail" aria-label="Chức năng app"><div class="rail-brand" aria-hidden="true">OB</div><button type="button" data-page="karaoke" class="on" aria-current="page" title="Karaoke" aria-label="Karaoke">▤</button><button id="separationPageBtn" type="button" data-page="separation" title="Tách nhạc lấy beat" aria-label="Tách nhạc lấy beat">♫</button><button type="button" data-page="settings" class="rail-settings" title="Cài đặt model" aria-label="Cài đặt model">⚙</button></nav>
@@ -159,7 +159,7 @@
         <div class="form-row"><label>Vị trí<select id="lyricPosition"><option value="bottom">Phía dưới</option><option value="center">Chính giữa</option><option value="top">Phía trên</option></select></label><label>Giãn dòng<input id="lineHeight" type="number" min="1" max="2.5" step=".05"></label></div>
         <label>Đáy lên <output data-value-for="verticalOffset"></output>%<input id="verticalOffset" type="range" min="0" max="75"></label><label>Dời ngang <output data-value-for="horizontalOffset"></output>%<input id="horizontalOffset" type="range" min="-40" max="40"></label><label>Độ rộng chữ <output data-value-for="horizontalScale"></output>%<input id="horizontalScale" type="range" min="50" max="150"></label>
       </details>
-      <details class="tool-group scene-tools" data-tone="blue" data-property-section="scenes"><summary>Cảnh nền theo phân đoạn</summary><p class="hint">Gán ảnh nền cho Intro, Verse, Chorus và các phần đã đặt tên. Ảnh sẽ tự hiện đúng mốc trong preview và video xuất.</p><div id="sceneList" class="scene-list"></div></details>
+      <details class="tool-group scene-tools" data-tone="blue" data-property-section="scenes"><summary>Cảnh nền theo phân đoạn</summary><p class="hint">Gán ảnh cho Intro, Verse, Chorus và các phần đã đặt tên. Chuyển cảnh, keyframe chuyển động và độ rõ được dùng chung trong preview và video xuất.</p><div id="sceneList" class="scene-list"></div></details>
       <label class="check" hidden><input id="useBackground" type="checkbox" checked>Dùng ảnh nền đã nạp</label>
     </section></div><div id="wordTools" class="word-tools"><div data-inspector-pane="timing">    <section id="selectedPanel" class="panel selected-panel">
       <div class="label-row"><h2>Từ đang chọn</h2><button id="deleteWordBtn" class="text-button danger" disabled>Xóa</button></div>
@@ -240,7 +240,7 @@
 <script src="/static/layout_resize.js?v=1.1.4-workspace"></script>
 <script src="/static/timeline_edit.js"></script>
 <script src="/static/bundled_assets.js?v=source-1"></script>
-<script src="/static/studio.js?v=1.1.7-scenes"></script>
+<script src="/static/studio.js?v=1.1.9-scene-motion"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
 <script src="/static/song_title.js?v=source-1"></script>

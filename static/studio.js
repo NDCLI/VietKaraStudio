@@ -171,7 +171,12 @@ function syncSceneImages(t,plan){
     if(!scene){image.hidden=true;continue;}
     if(image.getAttribute('data-source')!==scene.url){image.setAttribute('data-source',scene.url);image.src=scene.url;}
     image.hidden=false;
-    let opacity=scene.opacity/100,fade=Math.max(0,scene.fade_seconds||0);
+    let progress=Math.max(0,Math.min(1,(t-scene.start)/Math.max(.01,scene.end-scene.start)));
+    const frames=scene.keyframes||[{},{x:0,y:0,scale:100,opacity:100}],from=frames[0]||{},to=frames[1]||from;
+    const value=key=>Number(from[key]??(key==='scale'||key==='opacity'?100:0))+(Number(to[key]??(key==='scale'||key==='opacity'?100:0))-Number(from[key]??(key==='scale'||key==='opacity'?100:0)))*progress;
+    const stage=$('preview'),scale=value('scale'),zoom=Math.max(1,scale/100),x=value('x')*stage.clientWidth/100*(zoom-1),y=value('y')*stage.clientHeight/100*(zoom-1);
+    image.style.transformOrigin='center center';image.style.transform=`translate(${x}px,${y}px) scale(${scale/100})`;
+    let opacity=scene.opacity/100*value('opacity')/100,fade=Math.max(0,scene.fade_seconds||0);
     if(fade&&t<scene.start+fade)opacity*=Math.max(0,Math.min(1,(t-scene.start)/fade));
     if(fade&&t>scene.end-fade)opacity*=Math.max(0,Math.min(1,(scene.end-t)/fade));
     image.style.opacity=String(opacity);
@@ -216,6 +221,7 @@ function initWorkspaceChrome(){
 const SCENE_SECTION_LABELS={intro:'Mở đầu',verse:'Verse','pre-chorus':'Pre-chorus',chorus:'Chorus',bridge:'Bridge',outro:'Outro',instrumental:'Nhạc dạo'};
 function renderSceneControls(){
   const host=$('sceneList');if(!host||!state.project)return;
+  const openMotion=new Set([...host.querySelectorAll('.scene-motion[open]')].map(details=>details.closest('[data-scene-card]')?.dataset.sceneCard).filter(Boolean));
   const sections=[...new Set(state.project.words.map(word=>word.section_name).filter(name=>SCENE_SECTION_LABELS[name]))];
   for(const scene of state.project.scenes||[])if(!sections.includes(scene.section_name))sections.push(scene.section_name);
   if(!sections.length){host.innerHTML='<p class="hint">Gán câu vào một phân đoạn trong danh sách lời để tạo cảnh riêng.</p>';return;}
@@ -223,8 +229,11 @@ function renderSceneControls(){
     const scene=(state.project.scenes||[]).find(item=>item.section_name===section),label=SCENE_SECTION_LABELS[section]||section;
     if(!scene)return `<div class="scene-card"><strong>${esc(label)}</strong><button type="button" class="secondary full small" data-create-scene="${esc(section)}">＋ Tạo cảnh nền</button></div>`;
     const transition=scene.transition==='cut'?'cut':`fade-${Number(scene.transition_seconds||.6)}`;
-    return `<div class="scene-card" data-scene-card="${esc(scene.id)}"><strong>${esc(label)}</strong>${scene.image_ready?'<p class="hint">Ảnh cảnh đã nạp · PNG nội bộ</p>':'<p class="hint">Chưa có ảnh. Đang dùng nền chung cho phân đoạn này.</p>'}<label class="background-upload"><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-scene-file="${esc(scene.id)}">${scene.image_ready?'Đổi ảnh cảnh':'Chọn ảnh cảnh'}</label><div class="scene-card-actions"><label>Chuyển cảnh<select data-scene-transition="${esc(scene.id)}"><option value="cut"${transition==='cut'?' selected':''}>Cắt thẳng</option><option value="fade-0.6"${transition==='fade-0.6'?' selected':''}>Mờ · 0,6 giây</option><option value="fade-1.2"${transition==='fade-1.2'?' selected':''}>Mờ · 1,2 giây</option><option value="fade-2"${transition==='fade-2'?' selected':''}>Mờ · 2 giây</option></select></label><button type="button" class="ghost scene-remove" data-remove-scene="${esc(scene.id)}">Bỏ cảnh</button></div><label>Độ rõ ảnh · ${scene.opacity}%<input type="range" min="0" max="100" step="1" value="${scene.opacity}" data-scene-opacity="${esc(scene.id)}"></label></div>`;
+    const keyframes=scene.keyframes||[{},{x:0,y:0,scale:100,opacity:100}];
+    const motion=keyframes.map((frame,index)=>`<fieldset><legend>${index?'Cuối':'Đầu'}</legend>${[['x','Dời ngang',-100,100],['y','Dời dọc',-100,100],['scale','Tỉ lệ',100,200],['opacity','Độ rõ',0,100]].map(([property,title,min,max])=>`<label>${title} · ${Number(frame[property]??(property==='scale'||property==='opacity'?100:0))}%<input type="range" min="${min}" max="${max}" step="1" value="${Number(frame[property]??(property==='scale'||property==='opacity'?100:0))}" data-scene-motion="${esc(scene.id)}" data-keyframe="${index}" data-motion-property="${property}"></label>`).join('')}</fieldset>`).join('');
+    return `<div class="scene-card" data-scene-card="${esc(scene.id)}"><strong>${esc(label)}</strong>${scene.image_ready?'<p class="hint">Ảnh cảnh đã nạp · PNG nội bộ</p>':'<p class="hint">Chưa có ảnh. Đang dùng nền chung cho phân đoạn này.</p>'}<label class="background-upload"><input type="file" accept="image/png,image/jpeg,image/webp" hidden data-scene-file="${esc(scene.id)}">${scene.image_ready?'Đổi ảnh cảnh':'Chọn ảnh cảnh'}</label><div class="scene-card-actions"><label>Chuyển cảnh<select data-scene-transition="${esc(scene.id)}"><option value="cut"${transition==='cut'?' selected':''}>Cắt thẳng</option><option value="fade-0.6"${transition==='fade-0.6'?' selected':''}>Mờ · 0,6 giây</option><option value="fade-1.2"${transition==='fade-1.2'?' selected':''}>Mờ · 1,2 giây</option><option value="fade-2"${transition==='fade-2'?' selected':''}>Mờ · 2 giây</option></select></label><button type="button" class="ghost scene-remove" data-remove-scene="${esc(scene.id)}">Bỏ cảnh</button></div><label>Độ rõ ảnh · ${scene.opacity}%<input type="range" min="0" max="100" step="1" value="${scene.opacity}" data-scene-opacity="${esc(scene.id)}"></label><details class="scene-motion"><summary>Keyframe · vị trí, tỉ lệ, độ rõ</summary><div>${motion}</div><p class="hint">Thông số chuyển đều từ đầu đến cuối phân đoạn.</p></details></div>`;
   }).join('');
+  for(const id of openMotion)host.querySelector(`[data-scene-card="${id}"] .scene-motion`)?.setAttribute('open','');
 }
 async function uploadSceneImage(id,file){
   if(!file)return;await saveNow();const body=new FormData();body.append('file',file);
@@ -241,12 +250,13 @@ function initSceneTools(){
   $('sceneList').onchange=wrap(async event=>{
     const input=event.target.closest('[data-scene-file]');
     if(input){const file=input.files[0];await uploadSceneImage(input.dataset.sceneFile,file);input.value='';return;}
-    const id=event.target.dataset.sceneTransition||event.target.dataset.sceneOpacity;if(!id)return;
+    const id=event.target.dataset.sceneTransition||event.target.dataset.sceneOpacity||event.target.dataset.sceneMotion;if(!id)return;
     const scene=(state.project.scenes||[]).find(item=>item.id===id);if(!scene)return;
     remember();
     if(event.target.matches('[data-scene-transition]')){const value=event.target.value;if(value==='cut'){scene.transition='cut';scene.transition_seconds=0;}else{scene.transition='fade';scene.transition_seconds=Number(value.slice(5));}}
-    else scene.opacity=Number(event.target.value);
-    await saveNow();renderSceneControls();scheduleLayout();updateHistoryButtons();
+    else if(event.target.matches('[data-scene-opacity]'))scene.opacity=Number(event.target.value);
+    else{const index=Number(event.target.dataset.keyframe),property=event.target.dataset.motionProperty;scene.keyframes=scene.keyframes||[{x:0,y:0,scale:100,opacity:100},{x:0,y:0,scale:100,opacity:100}];scene.keyframes[index][property]=Number(event.target.value);}
+    await saveNow();renderSceneControls();scheduleLayout();syncSceneImages(beatNow(),state.layout);updateHistoryButtons();
   });
 }
 function initStudio(){

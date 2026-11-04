@@ -428,8 +428,31 @@ def render(project, directory, job, render_id=None):
         start, end = scene['start'], scene['end']
         clip_duration = max(.05, end - start)
         fade = min(scene['fade_seconds'], clip_duration / 2)
-        scene_filter=(f"[{scene['input_index']}:v]scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-                      f"crop={width}:{height},setsar=1,format=rgba,colorchannelmixer=aa={scene['opacity']/100:.4f}")
+        frames=scene.get('keyframes') or [{'x':0,'y':0,'scale':100,'opacity':100}]*2
+        first,last=frames[0],frames[1]
+        local_progress=f"min(max(on/{clip_duration*fps:.6f},0),1)"
+        alpha_progress=f"min(max(T/{clip_duration:.6f},0),1)"
+        def lerp(key, progress):
+            a=float(first.get(key,100 if key in ('scale','opacity') else 0))
+            b=float(last.get(key,a))
+            return f"({a:.4f}+({b-a:.4f})*{progress})"
+        scale_expr=f"max(1,{lerp('scale',local_progress)}/100)"
+        opacity_expr=f"({scene['opacity']:.4f}*{lerp('opacity',alpha_progress)}/100)"
+        opacity_start=float(first.get('opacity',100))
+        opacity_end=float(last.get('opacity',opacity_start))
+        x_expr=lerp('x',local_progress)
+        y_expr=lerp('y',local_progress)
+        scene_filter=(f"[{scene['input_index']}:v]setpts=PTS-STARTPTS,"
+                      f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                      f"crop={width}:{height},setsar=1,"
+                      f"zoompan=z='{scale_expr}':"
+                      f"x='iw/2-iw/zoom/2-({x_expr})*(iw-iw/zoom)/100':"
+                      f"y='ih/2-ih/zoom/2-({y_expr})*(ih-ih/zoom)/100':"
+                      f"d=1:s={width}x{height}:fps={fps},format=rgba")
+        if abs(opacity_end-opacity_start)<.001:
+            scene_filter+=f",colorchannelmixer=aa={scene['opacity']*opacity_start/10000:.4f}"
+        else:
+            scene_filter+=f",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity_expr})/100'"
         if fade >= .05:
             scene_filter += f',fade=t=in:st=0:d={fade:.3f}:alpha=1'
             scene_filter += f',fade=t=out:st={max(0, clip_duration-fade):.3f}:d={fade:.3f}:alpha=1'

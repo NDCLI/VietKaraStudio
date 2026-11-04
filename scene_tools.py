@@ -1,4 +1,4 @@
-"""Section-based still-image scenes shared by preview, batch snapshots and export."""
+"""Section-based image scenes shared by preview, batch snapshots and export."""
 from __future__ import annotations
 
 import math
@@ -17,6 +17,23 @@ def media_name(identifier: str) -> str:
     if not isinstance(identifier, str) or not SCENE_ID.fullmatch(identifier):
         raise ValueError("Mã cảnh không hợp lệ.")
     return f"scene_{identifier}.png"
+
+
+def _keyframe(value, fallback=None):
+    value = value if isinstance(value, dict) else {}
+    fallback = fallback or {}
+    result = {}
+    for key, default, low, high in (
+            ("x", 0, -100, 100), ("y", 0, -100, 100),
+            ("scale", 100, 100, 200), ("opacity", 100, 0, 100)):
+        try:
+            number = float(value.get(key, fallback.get(key, default)))
+        except (TypeError, ValueError):
+            number = default
+        if not math.isfinite(number):
+            number = default
+        result[key] = round(max(low, min(high, number)), 2)
+    return result
 
 
 def validate(scenes) -> list[dict]:
@@ -48,11 +65,17 @@ def validate(scenes) -> list[dict]:
         transition = scene.get("transition", "fade")
         if transition not in ("cut", "fade"):
             raise ValueError("Kiểu chuyển cảnh không hợp lệ.")
+        keyframes = scene.get("keyframes", [])
+        if not isinstance(keyframes, list):
+            keyframes = []
+        start = _keyframe(keyframes[0] if keyframes else None)
+        end = _keyframe(keyframes[1] if len(keyframes) > 1 else None, start)
         output.append({"id": identifier, "section_name": section,
                        "media_name": media_name(identifier),
                        "opacity": round(max(0, min(100, opacity))),
                        "transition": transition,
-                       "transition_seconds": round(max(0, min(3, transition_seconds)), 2)})
+                       "transition_seconds": round(max(0, min(3, transition_seconds)), 2),
+                       "keyframes": [start, end]})
     return output
 
 
