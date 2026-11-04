@@ -905,22 +905,24 @@ def analyze(pid):
     lyrics = str(options.get("lyrics", ""))[:300000]
     model, language, preference = (options.get("model", "medium"),
                                    options.get("language", "vi"), options.get("device", "auto"))
-    def work(job):
-        result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference)
-        job.check()
-        with LOCK:
-            current = load(pid)
-            current["words"] = validate_words(result["words"])
-            current["text"] = result["text"]
-            current['vocals']={'name':'Vocal · '+current['reference']['name'],**engine.waveform(directory(pid)/'vocals.wav')}
-            current["processing"] = {"devices": job.public()["devices"], "fallbacks": job.public()["fallbacks"],
-                                      "device": result["device"], "compute_type": result["compute_type"],
-                                      'alignment_diagnostics':result.get('alignment_diagnostics',{})}
-            save(current)
-        return {"project_id": pid, "words": len(current["words"]), "device": result.get("device", "cache"),
-                "device_name": result.get("device_name", "cache"),
-                "compute_type": result.get("compute_type", "cache"), "cache_hit": cache_hit}
-    return task(pid, "analyze", work)
+    return task(pid, "analyze", lambda job: analyze_project(pid, job, model, language, lyrics, preference))
+
+
+def analyze_project(pid, job, model, language, lyrics, preference):
+    result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference)
+    job.check()
+    with LOCK:
+        current = load(pid)
+        current["words"] = validate_words(result["words"])
+        current["text"] = result["text"]
+        current['vocals']={'name':'Vocal · '+current['reference']['name'],**engine.waveform(directory(pid)/'vocals.wav')}
+        current["processing"] = {"devices": job.public()["devices"], "fallbacks": job.public()["fallbacks"],
+                                  "device": result["device"], "compute_type": result["compute_type"],
+                                  'alignment_diagnostics':result.get('alignment_diagnostics',{})}
+        save(current)
+    return {"project_id": pid, "words": len(current["words"]), "device": result.get("device", "cache"),
+            "device_name": result.get("device_name", "cache"),
+            "compute_type": result.get("compute_type", "cache"), "cache_hit": cache_hit}
 
 
 @app.post('/api/projects/<pid>/align-region')
