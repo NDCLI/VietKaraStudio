@@ -149,7 +149,14 @@ function renderSyncPreview(candidate){
   $('syncPreviewDialog').showModal();
 }
 function renderBatchSummary(result){const items=result?.items||[];$('batchResultSummary').innerHTML=`<p class="hint">Hoàn tất ${Number(result?.completed)||0}/${items.length} video · lỗi ${Number(result?.failed)||0}. Mỗi video dùng snapshot riêng đã chụp khi vào hàng đợi.</p>${result?.failed?`<button class="secondary" data-retry-batch="${esc(result.batch_id)}">Thử dựng lại video lỗi</button>`:''}`;$('batchResultItems').innerHTML=items.map(item=>`<div class="version-item"><div><strong>${esc(item.name)}</strong><small>${item.status==='done'?'Đã dựng xong':esc(item.error||'Chưa hoàn tất')}</small></div>${item.result?.video?`<div class="batch-downloads">${item.result.qa_contact?`<a class="ghost" href="${esc(item.result.qa_contact)}" target="_blank" rel="noopener">Ảnh mẫu</a>`:''}<a class="secondary batch-download" href="${esc(item.result.video)}" download>Tải video</a></div>`:''}</div>`).join('')||'<p class="hint">Hàng đợi chưa có project.</p>';$('batchResultDialog').showModal();}
-async function followJob(job,context={}){job={...job,...context};busy(job);const pid=job.project_id;try{while(true){await new Promise(resolve=>setTimeout(resolve,700));job={...await api(`/api/jobs/${job.id}`),...context};busy(job);if(['done','error','cancelled'].includes(job.state))break;}busy(null,job.kind);if(job.state==='error')throw Error(job.message);if(job.state==='cancelled'){toast('Đã hủy tác vụ.');return;}if(job.kind==='align-region'){state.pendingAlignment=job.result;renderAlignmentPreview(job.result);toast(job.result?.cache_hit?'Đã dùng kết quả căn lời đã lưu. Xem lại từng câu rồi chọn áp dụng hoặc bỏ đề xuất.':'Đã căn xong. Xem lại từng câu rồi chọn áp dụng hoặc bỏ đề xuất.');return job;}if(job.kind==='sync-suggest'){renderSyncPreview(job.result);return job;}if(job.kind==='batch-render'){renderBatchSummary(job.result);return job;}if(job.kind==='render')await saveNow();state.project=await api(`/api/projects/${pid}`);state.layout=null;state.selected=-1;state.timelineSelection.clear();renderAll();if(job.kind==='analyze'&&state.track==='vocals')setAudio('vocals',beatNow());if(job.kind==='upload'){setAudio(state.project.beat?'beat':'reference',0);if(job.result?.relinked){const slot=job.result.slot;const name={reference:'bản hát',beat:'beat',background:'nền',logo:'logo',countdown:'ảnh đếm ngược'}[slot]||'media';toast(['reference','beat'].includes(slot)?'Đã nhận đúng file nguồn theo dấu vân tay; giữ nguyên lời và mốc đồng bộ.':'Đã khôi phục '+name+' đúng dấu vân tay.');}}if(job.kind==='analyze')toast(`Đã căn ${job.result.words} từ${job.result.cache_hit?' · dùng kết quả đã lưu':''}. Nghe và chỉnh lại những chỗ AI lệch.`);if(job.kind==='roles')renderRolePreview(job.result);if(job.kind==='render'){const url=job.result.video;$('downloadVideo').textContent='Tải video '+(job.result.format||'mp4').toUpperCase()+' ↓';$('exportSavedPath').textContent=job.result.output_path?'Đã lưu: '+job.result.output_path:'';$('downloadVideo').href=url;$('renderPreview').src=url;$('renderQaContact').hidden=!job.result.qa_contact;if(job.result.qa_contact)$('renderQaContact').src=job.result.qa_contact;$('renderResult').hidden=false;$('exportDialog').showModal();toast('Đã dựng video từ Beat của bạn.');}return job;}catch(error){busy(null,job.kind);handleError(error);return null;}}
+async function followJob(job,context={}){job={...job,...context};busy(job);const pid=job.project_id;try{while(true){await new Promise(resolve=>setTimeout(resolve,700));job={...await api(`/api/jobs/${job.id}`),...context};busy(job);if(['done','error','cancelled'].includes(job.state))break;}busy(null,job.kind);if(job.state==='error')throw Error(job.message);if(job.state==='cancelled'){toast('Đã hủy tác vụ.');return;}if(job.kind==='align-region'){state.pendingAlignment=job.result;renderAlignmentPreview(job.result);toast(job.result?.cache_hit?'Đã dùng kết quả căn lời đã lưu. Xem lại từng câu rồi chọn áp dụng hoặc bỏ đề xuất.':'Đã căn xong. Xem lại từng câu rồi chọn áp dụng hoặc bỏ đề xuất.');return job;}if(job.kind==='sync-suggest'){renderSyncPreview(job.result);return job;}if(job.kind==='batch-render'){renderBatchSummary(job.result);return job;}if(job.kind==='render')await saveNow();state.project=await api(`/api/projects/${pid}`);state.layout=null;state.selected=-1;state.timelineSelection.clear();renderAll();if(job.kind==='analyze'&&state.track==='vocals')setAudio('vocals',beatNow());if(job.kind==='upload'){
+  if(job.result?.previous_version_id){
+    state.undo.push({versionId:job.result.previous_version_id});
+    if(state.undo.length>60)state.undo.shift();
+    state.redo=[];
+    updateHistoryButtons();
+  }
+  setAudio(state.project.beat?'beat':'reference',0);if(job.result?.relinked){const slot=job.result.slot;const name={reference:'bản hát',beat:'beat',background:'nền',logo:'logo',countdown:'ảnh đếm ngược'}[slot]||'media';toast(['reference','beat'].includes(slot)?'Đã nhận đúng file nguồn theo dấu vân tay; giữ nguyên lời và mốc đồng bộ.':'Đã khôi phục '+name+' đúng dấu vân tay.');}}if(job.kind==='analyze')toast(`Đã căn ${job.result.words} từ${job.result.cache_hit?' · dùng kết quả đã lưu':''}. Nghe và chỉnh lại những chỗ AI lệch.`);if(job.kind==='roles')renderRolePreview(job.result);if(job.kind==='render'){const url=job.result.video;$('downloadVideo').textContent='Tải video '+(job.result.format||'mp4').toUpperCase()+' ↓';$('exportSavedPath').textContent=job.result.output_path?'Đã lưu: '+job.result.output_path:'';$('downloadVideo').href=url;$('renderPreview').src=url;$('renderQaContact').hidden=!job.result.qa_contact;if(job.result.qa_contact)$('renderQaContact').src=job.result.qa_contact;$('renderResult').hidden=false;$('exportDialog').showModal();toast('Đã dựng video từ Beat của bạn.');}return job;}catch(error){busy(null,job.kind);handleError(error);return null;}}
 async function upload(slot,file){if(!file||state.job||state.manualTiming)return;if(slot==='reference'&&state.project.reference&&state.project.words.length&&!confirm('Đổi bản hát tham chiếu sẽ xóa các mốc từ đã nhận dạng. Tiếp tục?'))return;await saveNow();const body=new FormData();body.append('file',file);busy({kind:'upload',uploadSlot:slot,message:'Đang nạp file…',progress:0});try{const job=await api(endpoint(`/media/${slot}`),{method:'POST',body});followJob(job,{uploadSlot:slot});}catch(error){busy(null,'upload');throw error;}}
 for(const slot of ['reference','beat']){const input=$(`${slot}Input`),drop=$(`${slot}Drop`);input.onchange=wrap(async()=>{await upload(slot,input.files[0]);input.value='';});drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('dragging');});drop.addEventListener('dragleave',()=>drop.classList.remove('dragging'));drop.addEventListener('drop',wrap(async e=>{e.preventDefault();drop.classList.remove('dragging');await upload(slot,e.dataTransfer.files[0]);}));drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();input.click();}});}
 $('logoInput').onchange=wrap(async()=>{await upload('logo',$('logoInput').files[0]);$('logoInput').value='';});
@@ -171,8 +178,35 @@ $('applyLyricsEditsBtn').onclick=wrap(applyLyricsEditsPreservingTiming);
 $('discardAlignmentBtn').onclick=discardAlignment;$('applyAlignmentBtn').onclick=wrap(applyAlignment);$('alignPreviewDialog').addEventListener('close',()=>{state.pendingAlignment=null;});
 $('applyWordBtn').onclick=wrap(async()=>{const word=selectedWord();if(!word)return;if(lineLocked(word.line))throw Error('Mở khóa câu trước khi chỉnh thời gian.');const a=+$('wordStart').value,b=+$('wordEnd').value,start=mapTime(a,true),end=mapTime(b,true),text=$('wordText').value.trim();if(!text||!Number.isFinite(a+b)||a<0||b<=a||start<0||end<=start)throw Error('Kiểm tra nội dung và thời gian. Mốc kết thúc phải sau bắt đầu; nếu ra ngoài bản hát hãy sửa mốc đồng bộ.');remember();word.text=text;word.start=start;word.end=end;word.estimated=false;for(const item of state.project.words)if(item.line===word.line){item.role=$('wordRole').value;if($('lineRow').value==='auto')delete item.row;else item.row=+$('lineRow').value;}state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();drawTimeline();await saveNow();toast('Đã sửa từ và thời gian theo beat.');});
 $('deleteWordBtn').onclick=()=>{if(!selectedWord()||lineLocked(selectedWord().line))return;remember();state.project.words.splice(state.selected,1);state.project.text=textFromWords();$('lyricsText').value=state.project.text;state.selected=-1;state.timelineSelection.clear();renderWords();renderSelected();drawTimeline();dirty();};
-function undo(){if(state.job||!state.undo.length)return;state.redo.push(historySnapshot());restoreHistorySnapshot(state.undo.pop());}
-function redo(){if(state.job||!state.redo.length)return;state.undo.push(historySnapshot());restoreHistorySnapshot(state.redo.pop());}
+async function moveHistory(from,to){
+  if(state.job||!from.length)return;
+  const entry=from.at(-1);
+  if(!entry.versionId){
+    to.push(historySnapshot());
+    restoreHistorySnapshot(from.pop());
+    return;
+  }
+  clearTimeout(state.saveTimer);
+  const saved=saveNow();
+  busy({kind:'history',progress:0});
+  try{
+    await saved;
+    const {previous_version_id,...project}=await api(endpoint('/versions/'+entry.versionId+'/restore'),{method:'POST',body:{}});
+    from.pop();
+    to.push({versionId:previous_version_id});
+    state.project=project;
+    state.layout=null;
+    state.selected=-1;
+    state.timelineSelection.clear();
+    renderAll();
+    setAudio(project.beat?'beat':'reference',0);
+  }finally{
+    busy(null,'history');
+    updateHistoryButtons();
+  }
+}
+const undo=wrap(()=>moveHistory(state.undo,state.redo));
+const redo=wrap(()=>moveHistory(state.redo,state.undo));
 $('undoBtn').onclick=undo;
 $('redoBtn').onclick=redo;
 $('stretchSelectionBtn').onclick=wrap(async()=>{

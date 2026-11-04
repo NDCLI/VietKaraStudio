@@ -561,11 +561,11 @@ def restore_project_version(pid, identifier):
     idle(pid)
     path = directory(pid)
     current = load(pid)
-    project_archive.create_version(path, current, "Tự lưu trước khi khôi phục phiên bản")
+    previous = project_archive.create_version(path, current, "Tự lưu trước khi khôi phục phiên bản")
     restored = project_archive.restore_version(path, identifier)
     restored["id"] = pid
     save(restored)
-    return jsonify(public(load(pid)))
+    return jsonify({**public(load(pid)), "previous_version_id": previous["id"]})
 
 
 @app.post("/api/projects/<pid>/media/<slot>")
@@ -587,7 +587,7 @@ def media_upload(pid, slot):
         raise ValueError("Định dạng file chưa được hỗ trợ.")
     incoming = path / ("incoming_" + uuid.uuid4().hex + ext)
     file.save(incoming)
-    project_archive.create_version(path, load(pid), f"Trước khi thay nguồn {slot}")
+    previous = project_archive.create_version(path, load(pid), f"Trước khi thay nguồn {slot}")
     def work(job):
         relinked = False
         try:
@@ -670,7 +670,7 @@ def media_upload(pid, slot):
             if isinstance(project.get("missing_media"), dict):
                 project["missing_media"].pop(slot, None)
             save(project)
-            return {"project_id": pid, "relinked": relinked, "slot": slot}
+            return {"project_id": pid, "relinked": relinked, "slot": slot, "previous_version_id": previous["id"]}
         finally:
             incoming.unlink(missing_ok=True)
     try:
