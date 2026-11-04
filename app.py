@@ -1302,7 +1302,9 @@ def recover_render_batches():
             record = json.loads(file.read_text(encoding="utf-8"))
             if record.get("status") not in ("queued", "running") or not record.get("items"):
                 continue
-            record["next_index"] = batch_render.first_pending(record)
+            # Resume from the saved checkpoint. Explicit retry can revisit errors.
+            if "next_index" not in record:
+                record["next_index"] = batch_render.first_pending(record)
             for item in record["items"]:
                 if item.get("status") == "running":
                     item["status"] = "queued"
