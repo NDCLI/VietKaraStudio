@@ -59,6 +59,7 @@ function initWorkspaceTools(){
   $('quickDeletePreset').onclick=()=>$('deletePresetBtn').click();
 }
 async function waitUtilityJob(job,statusId){
+  const kind=job.kind;
   busy(job);
   try{
     while(['running','queued'].includes(job.state)){
@@ -69,7 +70,7 @@ async function waitUtilityJob(job,statusId){
     if(job.state==='error')throw Error(job.message);
     if(statusId)$(statusId).textContent=job.state==='done'?'Hoàn tất.':'Đã hủy tác vụ.';
     return job.state==='done'?job.result:null;
-  }finally{busy(null);}
+  }finally{busy(null,kind);}
 }
 async function refreshModels(){
   $('modelList').textContent='Đang kiểm tra model trên máy…';

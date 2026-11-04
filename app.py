@@ -241,7 +241,8 @@ def public(project):
 
 def idle(pid):
     with LOCK:
-        if any(j.project_id == pid and j.state in ("queued", "running") for j in JOBS.values()):
+        if any(j.project_id == pid and j.state in ("queued", "running") and
+               j.kind not in ("render", "batch-render") for j in JOBS.values()):
             raise ValueError("Project đang xử lý. Hãy chờ xong hoặc hủy tác vụ trước.")
 
 
@@ -491,12 +492,14 @@ def new_project():
 @app.get("/api/projects/<pid>")
 def get_project(pid):
     project = public(load(pid))
-    project["job"] = next((j.public() for j in JOBS.values() if j.project_id == pid and
-                           j.state in ("queued", "running")), None)
-    project["interrupted_job"] = next((j.public() for j in sorted(
-        (item for item in JOBS.values() if item.project_id == pid),
-        key=lambda item: getattr(item, "updated_at", 0), reverse=True)
-        if j.state == "interrupted"), None)
+    active_jobs = [j for j in JOBS.values() if j.project_id == pid and
+                   j.state in ("queued", "running")]
+    project["job"] = next((j.public() for j in active_jobs if j.kind != "render"),
+                          next((j.public() for j in active_jobs), None))
+    latest_job = next(iter(sorted((item for item in JOBS.values() if item.project_id == pid),
+                                  key=lambda item: getattr(item, "updated_at", 0), reverse=True)), None)
+    project["interrupted_job"] = (latest_job.public() if latest_job and
+                                  latest_job.state == "interrupted" else None)
     return jsonify(project)
 
 
@@ -1123,6 +1126,9 @@ def choose_export_folder(pid):
 def render(pid):
     with LOCK:
         idle(pid)
+        if any(j.project_id == pid and j.kind == "render" and
+               j.state in ("queued", "running") for j in JOBS.values()):
+            raise ValueError("Video của project này đang được dựng.")
         snapshot = load(pid)
         audio_output = validate_settings(snapshot.get("settings", {}))["audio_output"]
         record = batch_render.create(engine.DATA, [(snapshot, directory(pid))], pid,
