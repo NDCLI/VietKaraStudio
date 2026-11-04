@@ -360,7 +360,12 @@ def health():
             deps[name] = bool(engine.binary(name))
         except RuntimeError:
             deps[name] = False
-    return jsonify(ok=all(deps.values()), dependencies=deps, version="0.3.0")
+    # FFmpeg verifies render output when ffprobe is unavailable; yt-dlp only
+    # enables the optional YouTube URL import path.
+    core = ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "ffmpeg")
+    optional_missing = [name for name in ("ffprobe", "yt_dlp") if not deps[name]]
+    return jsonify(ok=all(deps[name] for name in core), dependencies=deps,
+                   optional_missing=optional_missing, version="0.3.0")
 
 
 @app.get("/api/hardware")
