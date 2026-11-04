@@ -279,7 +279,9 @@ def task(pid, kind, fn):
 
 def start_batch_job(record):
     owner = record["owner"]
-    job = engine.Job(record["job_id"], owner, "batch-render", on_change=persist_job)
+    single_render = record.get("mode") == "single-render"
+    job = engine.Job(record["job_id"], owner,
+                     "render" if single_render else "batch-render", on_change=persist_job)
     with LOCK:
         existing = JOBS.get(job.id)
         if existing and existing.state in ("queued", "running"):
@@ -291,9 +293,16 @@ def start_batch_job(record):
             job.state = "running"
             persist_job(job)
             result = batch_render.run(engine.DATA, record["id"], job)
+            if single_render:
+                saved = batch_render.load_record(engine.DATA, record["id"])
+                item = saved["items"][0]
+                if item.get("status") != "done":
+                    raise RuntimeError(item.get("error") or "Không dựng được video.")
+                result = item["result"]
             with job._lock:
                 job.result = result
-                job.state, job.progress, job.message = "done", 100, "Hoàn tất hàng đợi dựng video"
+                job.state, job.progress = "done", 100
+                job.message = "Dựng video hoàn tất" if single_render else "Hoàn tất hàng đợi dựng video"
             persist_job(job)
         except engine.Cancelled:
             batch_render.set_status(engine.DATA, record["id"], "cancelled")
@@ -1055,6 +1064,8 @@ def list_render_batches():
         for file in root.glob("*/batch.json"):
             try:
                 record = json.loads(file.read_text(encoding="utf-8"))
+                if record.get("mode") == "single-render":
+                    continue
                 records.append({"id": record["id"], "status": record["status"],
                                "created_at": record["created_at"], "next_index": record.get("next_index", 0),
                                "count": len(record.get("items", [])), "completed": record.get("completed", 0),
@@ -1110,8 +1121,15 @@ def choose_export_folder(pid):
 
 @app.post("/api/projects/<pid>/render")
 def render(pid):
-    snapshot = load(pid)
-    return task(pid, "render", lambda job: engine.render(snapshot, directory(pid), job))
+    with LOCK:
+        idle(pid)
+        snapshot = load(pid)
+        audio_output = validate_settings(snapshot.get("settings", {}))["audio_output"]
+        record = batch_render.create(engine.DATA, [(snapshot, directory(pid))], pid,
+                                     aspects=["current"], audio_outputs=[audio_output],
+                                     mode="single-render")
+        job = start_batch_job(record)
+    return jsonify(job.public()), 202
 
 
 @app.get("/api/projects/<pid>/exports/<jid>/<filename>")

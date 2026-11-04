@@ -84,12 +84,18 @@ def required_media(project: dict, source: Path) -> list[Path]:
 
 
 def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
-           aspects: list[str] | None = None, include_guide: bool = False) -> dict:
+           aspects: list[str] | None = None, include_guide: bool = False,
+           audio_outputs: list[str] | None = None, mode: str = "batch") -> dict:
     batch_id, job_id = uuid.uuid4().hex, uuid.uuid4().hex
     root = data_root / "batch-renders" / batch_id
     requested_aspects = list(dict.fromkeys(aspects or ["current"]))
     if not requested_aspects or any(value not in ("current", "landscape", "portrait") for value in requested_aspects):
         raise ValueError("Tỉ lệ đầu ra theo lô không hợp lệ.")
+    requested_audio = list(dict.fromkeys(audio_outputs or (("beat", "guide") if include_guide else ("beat",))))
+    if not requested_audio or any(value not in ("beat", "guide") for value in requested_audio):
+        raise ValueError("Loại âm thanh đầu ra không hợp lệ.")
+    if mode not in ("batch", "single-render"):
+        raise ValueError("Loại hàng đợi không hợp lệ.")
     snapshots = []
     media_by_project = {}
     for project, source in projects:
@@ -97,7 +103,7 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
         seen_outputs = set()
         for requested in requested_aspects:
             target_aspect = current_aspect if requested == "current" else requested
-            for audio_output in (("beat", "guide") if include_guide else ("beat",)):
+            for audio_output in requested_audio:
                 output_key = (target_aspect, audio_output)
                 if output_key in seen_outputs:
                     continue
@@ -148,7 +154,8 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
                           "name": f"{project['name']} · {aspect_label} · {audio_label}",
                           "variant": {"aspect": snapshot["settings"]["aspect"], "audio": audio_output},
                           "directory": str(frozen), "assets": assets, "status": "queued", "result": None})
-        record = {"id": batch_id, "job_id": job_id, "owner": owner, "created_at": time.time(),
+        record = {"id": batch_id, "job_id": job_id, "owner": owner, "mode": mode,
+                  "created_at": time.time(),
                   "updated_at": time.time(), "status": "queued", "next_index": 0,
                   "items": items, "completed": 0, "failed": 0}
         save_record(data_root, record)
