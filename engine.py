@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -503,12 +504,21 @@ def render(project, directory, job, render_id=None):
             b=float(last.get(key,a))
             return f"({a:.4f}+({b-a:.4f})*{progress})"
         width_expr=f"max(1,{width}*{scene['decoration_size']:.4f}/100*{decoration_lerp('scale',local_progress)}/100)"
+        try:
+            from PIL import Image
+            with Image.open(scene['decoration_path']) as artwork:
+                aspect=artwork.height/max(1,artwork.width)
+        except (OSError, ValueError):
+            aspect=1.
+        canvas_width=math.ceil(width*scene['decoration_size']*.02)+2
+        canvas_height=math.ceil(canvas_width*aspect)+2
         opacity_expr=decoration_lerp('opacity',alpha_progress)
         position_progress=f"min(max((t-{start:.6f})/{clip_duration:.6f},0),1)"
         x_expr=decoration_lerp('x',position_progress)
         y_expr=decoration_lerp('y',position_progress)
         decoration_filter=(f"[{scene['input_index']}:v]setpts=PTS-STARTPTS,format=rgba,"
                            f"scale=w='{width_expr}':h=-1:eval=frame,"
+                           f"pad=w={canvas_width}:h={canvas_height}:x='(ow-iw)/2':y='(oh-ih)/2':color=black@0,"
                            f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity_expr})/100'")
         if fade >= .05:
             decoration_filter += f',fade=t=in:st=0:d={fade:.3f}:alpha=1'

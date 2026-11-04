@@ -208,7 +208,8 @@ def describe(project,directory):
     for scene in scene_tools.validate(project.get('scenes',[])):
         if scene['section_name'] in scene_sections and not (directory/scene['media_name']).is_file():
             warnings.append(f"Cảnh {scene['section_name']} chưa có ảnh; sẽ dùng nền chung.")
-    scene_manifest=[{key:value for key,value in scene.items() if key!='image_path'}
+    scene_manifest=[{key:value for key,value in scene.items()
+                     if key not in ('image_path','decoration_path')}
                     for scene in scene_tools.timeline(project,beat_duration,directory)]
     for index,word in enumerate(words):
         start=float(word.get('start',0));end=float(word.get('end',start));duration=end-start
