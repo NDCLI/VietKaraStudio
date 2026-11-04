@@ -51,6 +51,8 @@ def first_pending(record: dict) -> int:
 def required_media(project: dict, source: Path) -> list[Path]:
     available = {item.name: item for item in project_archive.managed_media(source)}
     needed = ["beat.wav"]
+    if project.get("batch_recognition"):
+        needed.append("reference.wav")
     settings = project.get("settings", {})
     background_type = settings.get("background_type", "auto")
     if background_type == "original":
@@ -171,7 +173,7 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
         raise
 
 
-def run(data_root: Path, batch_id: str, job) -> dict:
+def run(data_root: Path, batch_id: str, job, recognize=None) -> dict:
     record = load_record(data_root, batch_id)
     record["status"] = "running"
     save_record(data_root, record)
@@ -191,6 +193,14 @@ def run(data_root: Path, batch_id: str, job) -> dict:
         save_record(data_root, record)
         try:
             project = json.loads((frozen / "snapshot.json").read_text(encoding="utf-8"))
+            if project.get("batch_recognition") and not project.get("words"):
+                if recognize is None:
+                    raise RuntimeError("Hàng đợi chưa có bộ nhận lời.")
+                words = recognize(project, frozen, job)
+                if not words:
+                    raise ValueError("Không nhận được lời từ bản hát.")
+                project["words"] = words
+                _write(frozen / "snapshot.json", project)
             render_id = item.get("render_id") or job.id
             result = engine.render(project, frozen, job, render_id=render_id)
             job.check()

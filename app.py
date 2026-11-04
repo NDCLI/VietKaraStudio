@@ -293,7 +293,7 @@ def start_batch_job(record):
         try:
             job.state = "running"
             persist_job(job)
-            result = batch_render.run(engine.DATA, record["id"], job)
+            result = batch_render.run(engine.DATA, record["id"], job, recognize_batch_snapshot)
             if single_render:
                 saved = batch_render.load_record(engine.DATA, record["id"])
                 item = saved["items"][0]
@@ -908,6 +908,13 @@ def analyze(pid):
     return task(pid, "analyze", lambda job: analyze_project(pid, job, model, language, lyrics, preference))
 
 
+def recognize_batch_snapshot(project, path, job):
+    options = project["batch_recognition"]
+    result, _ = recognize_cached(path, job, options["model"], options["language"],
+                                 project.get("text", ""), "auto")
+    return validate_words(result["words"])
+
+
 def analyze_project(pid, job, model, language, lyrics, preference):
     result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference)
     job.check()
@@ -1083,6 +1090,9 @@ def create_render_batch():
     include_guide = data.get("include_guide", False)
     if type(include_guide) is not bool:
         raise ValueError("Lựa chọn vocal hướng dẫn không hợp lệ.")
+    recognize_missing = data.get("recognize_missing", False)
+    if type(recognize_missing) is not bool:
+        raise ValueError("Lựa chọn nhận lời không hợp lệ.")
     require_review = data.get("require_review", False)
     if type(require_review) is not bool:
         raise ValueError("Lựa chọn kiểm duyệt không hợp lệ.")
@@ -1093,7 +1103,11 @@ def create_render_batch():
         if not project.get("beat") or not (directory(pid) / "beat.wav").is_file():
             raise ValueError(f"Project {project['name']} chưa có beat gốc.")
         if not project.get("words"):
-            raise ValueError(f"Project {project['name']} chưa có lời để xuất.")
+            if not recognize_missing or require_review:
+                raise ValueError(f"Project {project['name']} chưa có lời để duyệt và xuất.")
+            if not project.get("reference") or not (directory(pid) / "reference.wav").is_file():
+                raise ValueError(f"Project {project['name']} cần bản hát để nhận lời.")
+            project["batch_recognition"] = {"model": "medium", "language": "vi"}
         if require_review and any(not word.get("locked") for word in project["words"]):
             raise ValueError(f"Project {project['name']} còn câu chưa khóa. Hãy rà lời trước khi dựng.")
         selected.append((project, directory(pid)))
