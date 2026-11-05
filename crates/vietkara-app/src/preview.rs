@@ -336,6 +336,7 @@ mod tests {
                 font_size: 20.0,
                 align: "center".into(),
                 role: "all".into(),
+                role_marker: None,
                 text: "line".into(),
                 section_start: false,
                 section_end: false,

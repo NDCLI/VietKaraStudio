@@ -210,6 +210,13 @@
 >   active tại `row.start`; preview dùng cùng estimator theo section scene.
 >   `vietkara-render` không chạy 37 tests không cần FFmpeg (2 integration bị
 >   loại do binary chưa có), clippy workspace và app build pass.
+> - Port fallback vector role marker cho male/female/all: planner dành chỗ
+>   trước khi wrap, gắn marker ở lần role xuất hiện/đổi role, lấy màu từ role
+>   settings, ASS vẽ silhouette bằng drawing path và GPUI preview dùng marker
+>   cùng vị trí/màu. Tất cả voice role vẫn gập vào hai lane 0/1. Render tests
+>   37/37 pass khi bỏ 2 FFmpeg integration; app tests 7/8 (test export thực
+>   cần `ffmpeg.exe`), workspace clippy và app build pass. PNG palette gốc chưa
+>   được đóng gói; Rust đang dùng vector fallback tương thích baseline.
 
 ## 1. Mục tiêu và phạm vi
 

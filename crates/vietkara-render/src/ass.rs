@@ -126,6 +126,115 @@ fn dialogue(layer: u8, start: f64, end: f64, tags: &str, text: &str) -> Option<S
     })
 }
 
+fn role_marker_path(role: &str, size: f64) -> String {
+    let scale = size / 32.0;
+    let path = std::cell::RefCell::new(String::new());
+    let circle = |cx: f64, cy: f64, radius: f64| {
+        let k = radius * 0.55228475;
+        let (cx, cy, r, k) = (cx * scale, cy * scale, radius * scale, k * scale);
+        path.borrow_mut().push_str(&format!("m {:.3} {:.3} b {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} b {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} b {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} b {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} ",cx+r,cy,cx+r,cy+k,cx+k,cy+r,cx,cy+r,cx-k,cy+r,cx-r,cy+k,cx-r,cy,cx-r,cy-k,cx-k,cy-r,cx,cy-r,cx+k,cy-r,cx+r,cy-k,cx+r,cy));
+    };
+    let poly = |points: &[(f64, f64)]| {
+        for (index, (x, y)) in points.iter().enumerate() {
+            path.borrow_mut().push_str(&format!(
+                "{} {:.3} {:.3} ",
+                if index == 0 { "m" } else { "l" },
+                x * scale,
+                y * scale
+            ));
+        }
+        path.borrow_mut().push_str("l ");
+        let (x, y) = points[0];
+        path.borrow_mut()
+            .push_str(&format!("{:.3} {:.3} ", x * scale, y * scale));
+    };
+    match role {
+        "male" => {
+            circle(16., 5., 3.5);
+            poly(&[
+                (12., 10.),
+                (20., 10.),
+                (23., 12.),
+                (26., 20.),
+                (22., 22.),
+                (19., 16.),
+                (19., 23.),
+                (13., 23.),
+                (13., 16.),
+                (10., 22.),
+                (6., 20.),
+                (9., 12.),
+            ]);
+            poly(&[
+                (13., 22.),
+                (19., 22.),
+                (20., 31.),
+                (16.7, 31.),
+                (16., 25.),
+                (15.3, 31.),
+                (12., 31.),
+            ]);
+        }
+        "female" => {
+            circle(16., 5., 3.5);
+            poly(&[
+                (13., 10.),
+                (19., 10.),
+                (23., 12.),
+                (26., 20.),
+                (22., 22.),
+                (19., 16.),
+                (13., 16.),
+                (10., 22.),
+                (6., 20.),
+                (9., 12.),
+            ]);
+            poly(&[(13., 16.), (19., 16.), (24., 28.), (8., 28.)]);
+            poly(&[(11., 28.), (15., 28.), (15., 32.), (11., 32.)]);
+            poly(&[(17., 28.), (21., 28.), (21., 32.), (17., 32.)]);
+        }
+        _ => {
+            circle(10., 7., 2.6);
+            circle(22., 7., 2.6);
+            poly(&[
+                (7., 11.),
+                (13., 11.),
+                (15., 14.),
+                (15., 21.),
+                (5., 21.),
+                (5., 14.),
+            ]);
+            poly(&[
+                (19., 11.),
+                (25., 11.),
+                (27., 14.),
+                (27., 21.),
+                (17., 21.),
+                (17., 14.),
+            ]);
+            poly(&[
+                (7., 20.),
+                (13., 20.),
+                (14., 31.),
+                (11., 31.),
+                (10., 24.),
+                (9., 31.),
+                (6., 31.),
+            ]);
+            poly(&[
+                (19., 20.),
+                (25., 20.),
+                (26., 31.),
+                (23., 31.),
+                (22., 24.),
+                (21., 31.),
+                (18., 31.),
+            ]);
+        }
+    }
+    path.into_inner()
+}
+
 fn readability_events(
     plan: &DisplayPlan,
     settings: &serde_json::Map<String, Value>,
@@ -484,6 +593,23 @@ pub fn build_lyrics_ass_with_scenes(
     ];
     lines.extend(readability_events(plan, settings, scenes));
     for row in &plan.rows {
+        if let Some(marker) = &row.role_marker {
+            let tags = format!(
+                "\\an7\\pos({:.2},{:.2})\\p1\\bord0\\shad0\\1c{}",
+                marker.x,
+                marker.y,
+                ass_color(&marker.color, 100)
+            );
+            if let Some(event) = dialogue(
+                4,
+                row.show_start,
+                row.show_end,
+                &tags,
+                &role_marker_path(&marker.role, marker.size),
+            ) {
+                lines.push(event);
+            }
+        }
         let anim = animation(&row_anim(row), &options);
         let sung_color = if duet && mode == "karaoke" {
             role_color(row, settings, sung)
@@ -802,6 +928,11 @@ mod tests {
         let plan = crate::layout::display_plan(&project, &FixedWidth);
         let ass = build_lyrics_ass(&project, &plan);
         assert!(ass.contains("\\1c&H00b787ff"));
+        assert_eq!(plan.rows[0].role_marker.as_ref().unwrap().role, "female");
+        assert!(
+            ass.lines()
+                .any(|line| line.starts_with("Dialogue: 4,") && line.contains("\\p1"))
+        );
     }
 
     #[test]

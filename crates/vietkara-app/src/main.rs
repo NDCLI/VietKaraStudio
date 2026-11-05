@@ -2224,6 +2224,24 @@ impl Render for Studio {
                 );
             }
         }
+        for row in &layout.rows {
+            if let Some(marker) = &row.role_marker {
+                let symbol = match marker.role.as_str() {
+                    "male" => "♂",
+                    "female" => "♀",
+                    _ => "♫",
+                };
+                current_preview.push(
+                    div()
+                        .absolute()
+                        .left(px(marker.x as f32 * preview_scale))
+                        .top(px(marker.y as f32 * preview_scale))
+                        .text_size(px(marker.size as f32 * preview_scale))
+                        .text_color(rgb(preview_hex_color(&marker.color)))
+                        .child(symbol),
+                );
+            }
+        }
         if let Some(title) = layout.title.as_ref().filter(|_| title_visible) {
             for row in &title.rows {
                 current_preview.push(
@@ -2709,6 +2727,10 @@ fn preview_alignment(
             .unwrap_or("left"),
         _ => "center",
     }
+}
+
+fn preview_hex_color(value: &str) -> u32 {
+    u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
 }
 
 fn role_label(role: &str) -> &'static str {

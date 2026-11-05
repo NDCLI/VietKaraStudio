@@ -43,10 +43,20 @@ pub struct DisplayRow {
     pub font_size: f64,
     pub align: String,
     pub role: String,
+    pub role_marker: Option<RoleMarker>,
     pub text: String,
     pub section_start: bool,
     pub section_end: bool,
     pub words: Vec<PlannedWord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoleMarker {
+    pub role: String,
+    pub x: f64,
+    pub y: f64,
+    pub size: f64,
+    pub color: String,
 }
 
 #[derive(Debug, Clone)]
@@ -398,6 +408,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
     let horizontal_scale = number(settings, "horizontal_scale", 100.0).clamp(50.0, 150.0);
     let display_mode = string(settings, "display_mode", "karaoke");
     let duet = string(settings, "singing_mode", "solo") == "duet";
+    let role_icons = boolean(settings, "role_icons", true) && duet && display_mode == "karaoke";
     let alignment = string(settings, "align", "center");
     let position = string(settings, "position", "bottom");
     let vertical_offset = number(settings, "vertical_offset", 0.0).clamp(0.0, 75.0);
@@ -436,7 +447,8 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             .collect::<Vec<_>>()
             .join(" ");
         let extra = 2.0 * outline + shadow + if italic { font_size * 0.15 } else { 0.0 };
-        text_width(measure, &text, font, font_size, italic, horizontal_scale) + extra
+        let marker_space = if role_icons { font_size * 0.94 } else { 0.0 };
+        text_width(measure, &text, font, font_size, italic, horizontal_scale) + extra + marker_space
             <= f64::from(width) * 0.9
     };
 
@@ -512,6 +524,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
     }
 
     let mut rows: Vec<DisplayRow> = Vec::with_capacity(drafts.len());
+    let mut previous_role: Option<String> = None;
     for index in 0..drafts.len() {
         let draft = &drafts[index];
         let first = &draft.words[0];
@@ -547,6 +560,15 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
         } else {
             "all".into()
         };
+        let marker_space = if role_icons
+            && matches!(role.as_str(), "male" | "female" | "all")
+            && previous_role.as_deref() != Some(role.as_str())
+        {
+            font_size * 0.94
+        } else {
+            0.0
+        };
+        previous_role = Some(role.clone());
         let text = draft
             .words
             .iter()
@@ -555,9 +577,10 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             .join(" ");
         let mut size = font_size;
         let width_at_size = text_width(measure, &text, font, size, italic, horizontal_scale);
-        let shrink = (f64::from(width) * 0.9 / width_at_size.max(1.0)).min(1.0);
+        let shrink = (f64::from(width) * 0.9 / (width_at_size + marker_space).max(1.0)).min(1.0);
         size *= shrink;
-        let row_width = width_at_size * shrink;
+        let marker_width = marker_space * shrink;
+        let row_width = width_at_size * shrink + marker_width;
         let align = if alignment == "justify" {
             if draft.slot == 0 { "left" } else { "right" }
         } else {
@@ -584,6 +607,23 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             0.0
         };
         let y = (baseline - size * (1.15 + lane_offset)).max(0.0);
+        let role_color = match role.as_str() {
+            "male" => setting_color(settings, "role_a_color", "#52efb9"),
+            "female" => setting_color(settings, "role_b_color", "#ff7ab6"),
+            "all" => setting_color(settings, "role_all_color", "#52efb9"),
+            "voice_c" => setting_color(settings, "role_c_color", "#ffd166"),
+            "voice_d" => setting_color(settings, "role_d_color", "#8ecbff"),
+            "voice_e" => setting_color(settings, "role_e_color", "#c7a0ff"),
+            "voice_f" => setting_color(settings, "role_f_color", "#ff9a76"),
+            _ => setting_color(settings, "role_unknown_color", "#ffffff"),
+        };
+        let role_marker = (marker_width > 0.0).then(|| RoleMarker {
+            role: role.clone(),
+            x,
+            y: y + size * 0.08,
+            size: size * 0.72,
+            color: role_color,
+        });
         let mut positioned = Vec::with_capacity(draft.words.len());
         for (word_index, item) in draft.words.iter().enumerate() {
             let prefix = draft.words[..word_index]
@@ -616,7 +656,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
                 word: item.word.clone(),
                 start: item.start,
                 end: item.end,
-                x: x + prefix_width * shrink,
+                x: x + marker_width + prefix_width * shrink,
                 width: word_width,
             });
         }
@@ -638,6 +678,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             font_size: size,
             align: align.to_owned(),
             role,
+            role_marker,
             text,
             section_start: index == draft.block_start,
             section_end,
@@ -747,6 +788,14 @@ mod tests {
             plan.rows.iter().map(|row| row.slot).collect::<Vec<_>>(),
             [0, 1, 0, 1, 0, 1]
         );
+        assert_eq!(
+            plan.rows
+                .iter()
+                .filter(|row| row.role_marker.is_some())
+                .count(),
+            2
+        );
+        assert!(plan.rows.iter().all(|row| row.slot <= 1));
         assert_eq!(plan.rows[0].start, 4.0);
     }
 }
