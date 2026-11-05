@@ -311,7 +311,10 @@
 >   kiểm tra clamp và giá trị không hữu hạn; app check và test mục tiêu pass.
 > - Playback transport cho phép chọn nghe beat hoặc bản hát; đổi nguồn sẽ khởi
 >   tạo worker với `beat.wav` / `reference.wav` tương ứng, và nhập audio mới sẽ
->   chuyển sang track vừa nhập. Có regression test ánh xạ track sang tên media.
+>   chuyển sang track vừa nhập. Beat vẫn là clock chuẩn của preview; vị trí và
+>   duration từ reference được đổi qua anchors, chiều ngược lại dùng khi seek
+>   timeline/chọn từ/lùi tap. Regression test kiểm tra ánh xạ track và round-trip
+>   với anchors có drift.
 
 ## 1. Mục tiêu và phạm vi
 

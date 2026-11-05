@@ -1581,7 +1581,13 @@ impl Studio {
         self.autosave_pending = true;
         #[cfg(windows)]
         if let Some(worker) = &self.playback {
-            let _ = worker.send(PlaybackCommand::Seek((tap.start - 1.).max(0.)));
+            let timeline_position = (tap.start - 1.).max(0.);
+            let track_position = timeline::timeline_to_track_time(
+                self.listen_track,
+                timeline_position,
+                &self.editor.project().anchors,
+            );
+            let _ = worker.send(PlaybackCommand::Seek(track_position.max(0.)));
         }
         cx.notify();
     }
@@ -1743,10 +1749,6 @@ impl Studio {
         cx.stop_propagation();
     }
     fn playback_position(&self) -> f64 {
-        #[cfg(windows)]
-        if let Some(worker) = &self.playback {
-            return worker.snapshot().position;
-        }
         self.play_position
     }
 
@@ -1769,14 +1771,19 @@ impl Studio {
                 false,
             )
             .max(0.);
+            let playback_time = timeline::timeline_to_track_time(
+                self.listen_track,
+                beat,
+                &self.editor.project().anchors,
+            );
             #[cfg(windows)]
             if let Some(worker) = &self.playback
-                && let Err(error) = worker.send(PlaybackCommand::Seek(beat))
+                && let Err(error) = worker.send(PlaybackCommand::Seek(playback_time))
             {
                 self.playback_error = Some(error);
             }
             #[cfg(not(windows))]
-            let _ = beat;
+            let _ = playback_time;
             self.selected_word = Some(id);
             self.set_word_input(&text, cx);
             self.section_name_input.update(cx, |input, cx| {
@@ -1935,18 +1942,29 @@ impl Studio {
         if let Some(worker) = &self.playback {
             let state = worker.snapshot();
             let playing = state.state == vietkara_media::PlayerState::Playing;
+            let timeline_position = timeline::track_to_timeline_time(
+                self.listen_track,
+                state.position,
+                &self.editor.project().anchors,
+            );
+            let timeline_duration = timeline::track_to_timeline_time(
+                self.listen_track,
+                state.duration,
+                &self.editor.project().anchors,
+            )
+            .max(0.0);
             let ended = self.playing
                 && state.state == vietkara_media::PlayerState::Stopped
                 && state.loaded
                 && state.position >= state.duration;
             if self.playing != playing
-                || (self.play_position - state.position).abs() > 0.005
-                || self.play_duration != state.duration
+                || (self.play_position - timeline_position).abs() > 0.005
+                || self.play_duration != timeline_duration
                 || self.playback_error != state.error
             {
                 self.playing = playing;
-                self.play_position = state.position;
-                self.play_duration = state.duration;
+                self.play_position = timeline_position;
+                self.play_duration = timeline_duration;
                 self.playback_error = state.error;
                 cx.notify();
             }

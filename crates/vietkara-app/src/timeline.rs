@@ -8,6 +8,28 @@ fn clamp_seek_position(position: f64, duration: f64) -> f64 {
     position.clamp(0.0, duration.max(0.0))
 }
 
+pub(super) fn track_to_timeline_time(
+    slot: AudioSlot,
+    position: f64,
+    anchors: &[vietkara_domain::Anchor],
+) -> f64 {
+    match slot {
+        AudioSlot::Beat => position,
+        AudioSlot::Reference => vietkara_domain::timing::map_time(position, anchors, false),
+    }
+}
+
+pub(super) fn timeline_to_track_time(
+    slot: AudioSlot,
+    position: f64,
+    anchors: &[vietkara_domain::Anchor],
+) -> f64 {
+    match slot {
+        AudioSlot::Beat => position,
+        AudioSlot::Reference => vietkara_domain::timing::map_time(position, anchors, true),
+    }
+}
+
 pub(super) struct TimelineDrag {
     index: usize,
     edge: vietkara_domain::timeline::Edge,
@@ -31,7 +53,11 @@ impl Studio {
         let position = clamp_seek_position(position, duration);
         #[cfg(windows)]
         if let Some(worker) = &self.playback
-            && let Err(error) = worker.send(PlaybackCommand::Seek(position))
+            && let Err(error) = worker.send(PlaybackCommand::Seek(timeline_to_track_time(
+                self.listen_track,
+                position,
+                &self.editor.project().anchors,
+            )))
         {
             self.playback_error = Some(error);
         }
@@ -300,7 +326,9 @@ impl Studio {
 
 #[cfg(test)]
 mod tests {
-    use super::clamp_seek_position;
+    use super::super::AudioSlot;
+    use super::{clamp_seek_position, timeline_to_track_time, track_to_timeline_time};
+    use vietkara_domain::Anchor;
 
     #[test]
     fn timeline_seek_is_clamped_and_rejects_non_finite_values() {
@@ -310,5 +338,31 @@ mod tests {
         assert_eq!(clamp_seek_position(8.5, -1.0), 0.0);
         assert_eq!(clamp_seek_position(f64::NAN, 20.0), 0.0);
         assert_eq!(clamp_seek_position(8.5, f64::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn reference_track_clock_maps_to_and_from_the_beat_timeline() {
+        let anchors = vec![
+            Anchor {
+                r#ref: 10.0,
+                beat: 12.0,
+            },
+            Anchor {
+                r#ref: 20.0,
+                beat: 32.0,
+            },
+        ];
+        let timeline = track_to_timeline_time(AudioSlot::Reference, 15.0, &anchors);
+        assert!((timeline - 22.0).abs() < 0.001);
+        let source = timeline_to_track_time(AudioSlot::Reference, timeline, &anchors);
+        assert!((source - 15.0).abs() < 0.001);
+        assert_eq!(
+            track_to_timeline_time(AudioSlot::Beat, 15.0, &anchors),
+            15.0
+        );
+        assert_eq!(
+            timeline_to_track_time(AudioSlot::Beat, 15.0, &anchors),
+            15.0
+        );
     }
 }
