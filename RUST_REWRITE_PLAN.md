@@ -242,6 +242,11 @@
 >   thước/opacity và fade/pulse/float. Inspector có bật/tắt, size, XY, opacity
 >   và effect. Test PNG thật + snapshot và test từ chối file không phải PNG
 >   **2/2** pass.
+> - Thêm import ảnh countdown PNG với version snapshot/rollback, điều khiển
+>   biểu tượng vector hoặc ảnh riêng trong inspector và preview count-in theo
+>   thời gian đầu bài. Test conversion PNG + metadata/snapshot và từ chối file
+>   không hợp lệ **2/2** pass; app unit tests **8/8**, workspace check/Clippy
+>   sạch.
 
 ## 1. Mục tiêu và phạm vi
 

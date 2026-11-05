@@ -805,6 +805,73 @@ impl Studio {
         })
         .detach();
     }
+    fn choose_countdown_image(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm ảnh countdown".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn ảnh countdown PNG".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang thêm ảnh countdown và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_countdown_image(
+                                    &project, &main, &source,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã thêm ảnh countdown • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn ảnh countdown".into(),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
         {
@@ -2055,6 +2122,12 @@ impl Render for Studio {
             .get("countdown_seconds")
             .and_then(Value::as_f64)
             .unwrap_or(4.0);
+        let countdown_path = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|directory| directory.join("countdown.png"))
+            .filter(|path| path.is_file());
         let background_type = settings
             .extra
             .get("background_type")
@@ -2347,6 +2420,22 @@ impl Render for Studio {
             .title
             .as_ref()
             .is_some_and(|title| preview_position >= title.start && preview_position < title.end);
+        let first_line_start = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .map(|word| {
+                vietkara_domain::timing::map_time(word.start, &self.editor.project().anchors, false)
+            })
+            .fold(f64::INFINITY, f64::min);
+        let countdown_start = (first_line_start - 0.05 - countdown_seconds).max(0.0);
+        let countdown_end = (first_line_start - 0.05).max(0.0);
+        let countdown_preview_visible = display_mode == "karaoke"
+            && countdown != "none"
+            && countdown_end - countdown_start >= 0.4
+            && preview_position >= countdown_start
+            && preview_position < countdown_end;
         let scene_backing = self
             .path
             .as_ref()
@@ -2836,6 +2925,12 @@ impl Render for Studio {
                                                             .top(px((preview_height * logo_y as f32 / 100.0 + float_offset).clamp(0.0,preview_height - side * 0.65)))
                                                             .opacity((logo_opacity / 100.0) as f32 * pulse * fade))
                                                     })
+                                                    .when(countdown_preview_visible, |rows| {
+                                                        let glyph = match countdown { "mic"=>"♫", "star"=>"★", "heart"=>"♥", "note"=>"♪", "moon"=>"☾", _=>"" };
+                                                        rows.child(div().absolute().left(px(preview_width * 0.05)).top(px(preview_height * 0.28))
+                                                            .when(countdown == "image" && countdown_path.is_some(), |box_| box_.child(img(countdown_path.clone().unwrap()).w(px(22.0)).h(px(22.0)).object_fit(ObjectFit::Contain)))
+                                                            .when(countdown != "image", |box_| box_.text_size(px(22.0)).text_color(rgb(0xf4cf72)).child(glyph)))
+                                                    })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
                                                         .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
                                     ),
@@ -2990,7 +3085,15 @@ impl Render for Studio {
                                 .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("COUNTDOWN TRƯỚC LỜI"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Biểu tượng: {countdown}"))
-                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("countdown",&["none","mic","star","heart","note","moon"],cx))))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        let current=this.editor.project().settings.extra.get("countdown").and_then(Value::as_str).unwrap_or("none");
+                                        let values=["none","mic","star","heart","note","moon","image"];
+                                        let next=values.iter().position(|value|*value==current).map(|index|(index+1)%values.len()).unwrap_or(0);
+                                        this.update_setting("countdown",Value::String(values[next].into()),cx);
+                                    })))
+                                .when(countdown == "image",|panel|panel.child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if countdown_path.is_some() {"＋  Thay ảnh countdown PNG"} else {"＋  Nạp ảnh countdown PNG"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_countdown_image(cx)))))
                                 .when(countdown != "none",|panel|panel.child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Đếm ngược: {countdown_seconds:.0} giây"))
                                     .child(div().flex().gap_3()
