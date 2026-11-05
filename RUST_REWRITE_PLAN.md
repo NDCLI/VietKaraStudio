@@ -106,6 +106,11 @@
 >   Python **167/167**, Node **17/17** pass.
 > - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
 >   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
+> - Bố cục ba cột và preview co theo logical viewport GPUI, giữ tỷ lệ 16:9/9:16;
+>   tham khảo pattern Tabs/Toolbar/Resizable của GPUI Kit nhưng chưa thêm Kit
+>   dependency vì version hiện tại yêu cầu snapshot GPUI mới hơn bản app đang ghim.
+> - Kiểm tra responsive: Rust **82/82**, fmt/clippy/check/build pass; Python
+>   **167/167**, Node **17/17** pass.
 > - Kiểm tra lát trước: Rust **78/78**, fmt/clippy/check/build pass; Python **167/167**,
 >   Node **17/17** pass. App khởi chạy với fixture schema 2. Accessibility
 >   tree của cửa sổ GPUI không đọc được trong công cụ desktop, nên thao tác gõ

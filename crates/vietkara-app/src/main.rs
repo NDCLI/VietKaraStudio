@@ -77,6 +77,35 @@ struct Studio {
     inspector_design: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct WorkspaceSize {
+    left: f32,
+    preview: f32,
+    right: f32,
+}
+
+fn workspace_size(viewport_width: f32) -> WorkspaceSize {
+    if viewport_width < 960. {
+        WorkspaceSize {
+            left: 176.,
+            preview: 320.,
+            right: 204.,
+        }
+    } else if viewport_width < 1280. {
+        WorkspaceSize {
+            left: 210.,
+            preview: 410.,
+            right: 236.,
+        }
+    } else {
+        WorkspaceSize {
+            left: 240.,
+            preview: 520.,
+            right: 270.,
+        }
+    }
+}
+
 impl Studio {
     pub(crate) fn set_word_input(&mut self, value: &str, cx: &mut Context<Self>) {
         self.word_input.update(cx, |input, cx| {
@@ -1163,6 +1192,15 @@ impl Studio {
 
 impl Render for Studio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let workspace = workspace_size(f32::from(window.viewport_size().width));
+        let portrait_width = (workspace.preview * 9. / 16.).min(210.);
+        let preview_height = if self.editor.project().settings.aspect
+            == vietkara_domain::settings::Aspect::Portrait
+        {
+            portrait_width * 16. / 9.
+        } else {
+            workspace.preview * 9. / 16.
+        };
         let status = if cfg!(debug_assertions) {
             let viewport = window.viewport_size();
             format!(
@@ -1565,7 +1603,7 @@ impl Render for Studio {
                     .p_3()
                     .child(
                         div()
-                            .w(px(240.))
+                            .w(px(workspace.left))
                             .flex()
                             .flex_col()
                             .overflow_hidden()
@@ -1626,8 +1664,8 @@ impl Render for Studio {
                                             .items_center()
                                             .child(div()
                                                 .flex().flex_col().justify_center().items_center()
-                                                .w(if is_portrait {px(210.)} else {px(520.)})
-                                                .h(if is_portrait {px(300.)} else {px(292.)})
+                                                .w(if is_portrait {px(portrait_width)} else {px(workspace.preview)})
+                                                .h(px(preview_height))
                                                 .rounded_sm().bg(rgb(0x101d2b))
                                                 .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().flex().flex_col().gap_2().mt_4()
@@ -1652,7 +1690,7 @@ impl Render for Studio {
                     )
                     .child(
                         div()
-                            .w(px(270.))
+                            .w(px(workspace.right))
                             .flex()
                             .flex_col()
                             .id("design-inspector")
@@ -1951,4 +1989,37 @@ fn main() {
         .expect("Không mở được cửa sổ VietKara Studio");
         cx.activate(true);
     });
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_columns_shrink_with_logical_viewport_width() {
+        assert_eq!(
+            workspace_size(800.),
+            WorkspaceSize {
+                left: 176.,
+                preview: 320.,
+                right: 204.,
+            }
+        );
+        assert_eq!(
+            workspace_size(1100.),
+            WorkspaceSize {
+                left: 210.,
+                preview: 410.,
+                right: 236.,
+            }
+        );
+        assert_eq!(
+            workspace_size(1440.),
+            WorkspaceSize {
+                left: 240.,
+                preview: 520.,
+                right: 270.,
+            }
+        );
+    }
 }
