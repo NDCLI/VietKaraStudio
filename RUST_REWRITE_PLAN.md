@@ -178,7 +178,18 @@
 >   FFprobe, kiểm tra tiến độ và xác nhận file đích cũ không bị ghi đè.
 >   Workspace **106/106**, fmt/clippy/check/build app đều pass. Chưa kiểm tra
 >   thao tác nút trên cửa sổ GPUI; title/marker/gradient/readability backing,
->   glyph countdown, loudness normalization và đóng gói font vẫn chưa đạt parity.
+>   glyph countdown và đóng gói font vẫn chưa đạt parity.
+> - Port audio normalization theo đúng trailer Python `-af
+>   loudnorm=I=-16:TP=-1.5:LRA=11`; mặc định vẫn tắt, khi bật áp dụng lên
+>   soundtrack sau bước mix guide vocal. Thêm test argv cho setting opt-in và
+>   chạy FFmpeg thật với filter bật trong smoke test export.
+> - Port countdown vector `mic/star/heart/note/moon` vào ASS, gồm thời điểm
+>   nghỉ, vị trí, cỡ và bốn icon thu dần theo logic Python. Test kiểm tra lịch
+>   sự kiện và render ASS có icon thật qua FFmpeg. Workspace **108/108**;
+>   fmt/clippy/check/build app đều pass. Title cards, role artwork, gradients,
+>   readability backing và bundled fonts vẫn còn thiếu để đạt parity.
+> - Đồng bộ kích thước layout ASS với aspect typed của project: portrait dùng
+>   PlayRes 1080×1920 thay vì đọc nhầm field đã được domain parser tiêu thụ.
 
 ## 1. Mục tiêu và phạm vi
 

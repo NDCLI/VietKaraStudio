@@ -32,9 +32,6 @@
 //!   image countdown overlays are supported. GPUI export runs on a worker
 //!   thread, reports FFmpeg progress and can be cancelled; NVENC fallback
 //!   remains outside this slice.
-//! * Audio normalisation (`loudnorm`) — the simple builder omits it;
-//!   the Python trailer only adds `-af loudnorm=...` when the
-//!   `audio_normalize` setting is on.
 //! * The `ffprobe`-missing fallback in `verify_output` (parsing
 //!   `ffmpeg -i` stderr). `ffprobe` is the primary path in Python
 //!   too, and it is installed wherever this crate is tested.
@@ -753,6 +750,9 @@ pub struct RenderInputs {
     /// Guide vocal file; required only when
     /// `profile.audio_output == AudioOutput::Guide`.
     pub vocals: Option<PathBuf>,
+    /// Apply the Python renderer's `loudnorm=I=-16:TP=-1.5:LRA=11` filter
+    /// to the selected soundtrack after any guide-vocal mix.
+    pub audio_normalize: bool,
     pub ass_file: PathBuf,
     pub fonts_dir: PathBuf,
     /// Beat duration in seconds; also the full-render `-t` value.
@@ -771,6 +771,7 @@ impl RenderInputs {
             logo: None,
             countdown: Vec::new(),
             vocals: None,
+            audio_normalize: false,
             ass_file: PathBuf::from("lyrics.ass"),
             fonts_dir: PathBuf::from("fonts"),
             duration,
@@ -1603,6 +1604,9 @@ pub fn ffmpeg_command(
     }
     args.push("-t".into());
     args.push(py_float(render_duration));
+    if inputs.audio_normalize {
+        args.extend(["-af".into(), "loudnorm=I=-16:TP=-1.5:LRA=11".into()]);
+    }
     if matches!(profile.format, RenderFormat::Mp4 | RenderFormat::Mov) {
         args.push("-movflags".into());
         args.push("+faststart".into());
@@ -2422,6 +2426,22 @@ mod tests {
         // MKV gets no -movflags.
         assert!(!argv.iter().any(|a| a == "-movflags"));
         assert_eq!(argv.last().unwrap(), "karaoke.mkv");
+    }
+
+    #[test]
+    fn audio_normalization_matches_python_trailer_and_is_opt_in() {
+        let profile = RenderProfile::default();
+        let plain = ffmpeg_command(&profile, &RenderInputs::new("beat.wav", 8.0)).unwrap();
+        assert!(!plain.iter().any(|argument| argument == "-af"));
+
+        let mut normalized = RenderInputs::new("beat.wav", 8.0);
+        normalized.audio_normalize = true;
+        let argv = ffmpeg_command(&profile, &normalized).unwrap();
+        let duration_index = argv.iter().position(|argument| argument == "-t").unwrap();
+        assert_eq!(
+            &argv[duration_index + 2..duration_index + 4],
+            ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+        );
     }
 
     #[test]

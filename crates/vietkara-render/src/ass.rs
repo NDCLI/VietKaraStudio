@@ -1,8 +1,7 @@
 //! ASS lyric serialization from the shared measured display plan.
 //!
-//! This first native pass covers line timing/animation and karaoke word
-//! sweeps. Artwork, gradients, title cards, role icons and countdown artwork
-//! are layered in subsequent renderer slices.
+//! This native pass covers line timing/animation, karaoke word sweeps and
+//! vector count-in icons. Gradients, title cards and role artwork remain open.
 
 use serde_json::Value;
 use vietkara_domain::Project;
@@ -269,7 +268,83 @@ pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
             lines.extend(word_event(row, word, &options, &row_style));
         }
     }
+    lines.extend(countdown_events(
+        project,
+        plan,
+        settings,
+        mode,
+        sung,
+        outline_unsung,
+    ));
     lines.join("\n") + "\n"
+}
+
+fn countdown_events(
+    project: &Project,
+    plan: &DisplayPlan,
+    settings: &serde_json::Map<String, Value>,
+    mode: &str,
+    sung: &str,
+    outline: &str,
+) -> Vec<String> {
+    let icon_name = string(settings, "countdown", "none");
+    let Some((_, drawing)) = crate::ICONS.iter().find(|(name, _)| *name == icon_name) else {
+        return Vec::new();
+    };
+    if mode != "karaoke" {
+        return Vec::new();
+    }
+
+    let duration = number(settings, "countdown_seconds", 4.0).clamp(1.0, 8.0);
+    let font_size = project.settings.font_size * plan.width as f64 / 1920.0;
+    let baseline = match string(settings, "position", "bottom") {
+        "top" => font_size * 2.0,
+        "center" => plan.height as f64 / 2.0 + font_size * 0.5,
+        _ => plan.height as f64 - font_size * 1.25,
+    };
+    let y = (baseline - font_size * 2.05).max(0.0);
+    let size = (font_size * 0.7).round().max(2.0);
+    let mut line_times: Vec<(u32, f64, f64)> = Vec::new();
+    for word in &project.words {
+        let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
+        let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
+        if let Some((_, line_start, line_end)) = line_times
+            .iter_mut()
+            .find(|(line, _, _)| *line == word.line)
+        {
+            *line_start = line_start.min(start);
+            *line_end = line_end.max(end);
+        } else {
+            line_times.push((word.line, start, end));
+        }
+    }
+
+    let mut output = Vec::new();
+    let mut previous_end: f64 = 0.0;
+    for (index, (_, start, end)) in line_times.into_iter().enumerate() {
+        let count_in = index == 0 || start - previous_end >= 8.0;
+        if count_in {
+            let end = (start - 0.05).max(0.0);
+            let begin = 0.0_f64.max(previous_end).max(end - duration);
+            if end - begin >= 0.4 {
+                for slot in 0..4 {
+                    let slot_end = end - slot as f64;
+                    let x = plan.width as f64 * 0.05 + slot as f64 * size * 1.28;
+                    let scale = size / 25.0 * 100.0;
+                    let tags = format!(
+                        "\\an7\\pos({x:.2},{y:.2})\\p1\\fscx{scale:.2}\\fscy{scale:.2}\\bord.5\\shad0\\1c{}\\3c{}\\fad(120,100)",
+                        crate::ass_color(sung, 100),
+                        crate::ass_color(outline, 100),
+                    );
+                    if let Some(event) = dialogue(6, begin, slot_end, &tags, drawing) {
+                        output.push(event);
+                    }
+                }
+            }
+        }
+        previous_end = end;
+    }
+    output
 }
 
 #[cfg(test)]
@@ -345,6 +420,40 @@ mod tests {
     }
 
     #[test]
+    fn vector_countdown_emits_four_timed_icons_before_long_gaps() {
+        let mut project = project();
+        project.settings.extra.extend(
+            serde_json::from_value::<serde_json::Map<String, Value>>(serde_json::json!({
+                "countdown":"mic", "countdown_seconds":4, "position":"bottom"
+            }))
+            .unwrap(),
+        );
+        project.words[0].start = 5.0;
+        project.words[0].end = 5.5;
+        project.words[1].start = 5.5;
+        project.words[1].end = 6.0;
+        let mut next_line = project.words[0].clone();
+        next_line.id = "00000000000000000000000000000003".into();
+        next_line.line_uid = "00000000000000000000000000000011".into();
+        next_line.text = "lại".into();
+        next_line.start = 15.0;
+        next_line.end = 15.5;
+        next_line.line = 1;
+        project.words.push(next_line);
+
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        let countdown = ass
+            .lines()
+            .filter(|line| line.starts_with("Dialogue: 6,"))
+            .collect::<Vec<_>>();
+        assert_eq!(countdown.len(), 8);
+        assert!(countdown[0].contains("0:00:00.95,0:00:04.95"));
+        assert!(countdown[0].contains("m 8 3"));
+        assert!(countdown[1].contains("0:00:00.95,0:00:03.95"));
+    }
+
+    #[test]
     fn prepare_ass_points_ffmpeg_at_export_local_file() {
         let project = project();
         let plan = crate::layout::display_plan(&project, &FixedWidth);
@@ -386,7 +495,11 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         std::fs::create_dir(root.join("fonts")).unwrap();
-        let project = project();
+        let mut project = project();
+        project
+            .settings
+            .extra
+            .insert("countdown".into(), Value::String("mic".into()));
         let plan = crate::layout::display_plan(&project, &FixedWidth);
         let mut inputs = crate::RenderInputs::new(root.join("beat.wav"), 2.0);
         inputs
@@ -394,6 +507,11 @@ mod tests {
             .unwrap();
         // Relative filter paths avoid drive-colon escaping on Windows.
         inputs.ass_file = "lyrics.ass".into();
+        assert!(
+            std::fs::read_to_string(root.join("lyrics.ass"))
+                .unwrap()
+                .contains("Dialogue: 6,")
+        );
         let sine = std::process::Command::new("ffmpeg")
             .args([
                 "-y",

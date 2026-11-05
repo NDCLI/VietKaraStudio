@@ -111,8 +111,10 @@ fn text_width<M: TextMeasurer>(
 /// row breaks and word positions cannot drift between the two surfaces.
 pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayPlan {
     let settings = &project.settings.extra;
-    let portrait = string(settings, "aspect", "landscape") == "portrait";
-    let (width, height) = if portrait { (1080, 1920) } else { (1920, 1080) };
+    let (width, height) = match project.settings.aspect {
+        vietkara_domain::settings::Aspect::Landscape => (1920, 1080),
+        vietkara_domain::settings::Aspect::Portrait => (1080, 1920),
+    };
     let font = project.settings.font.as_str();
     let font_size = project.settings.font_size.clamp(20.0, 240.0);
     let italic = boolean(settings, "italic", false);
@@ -379,7 +381,10 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vietkara_domain::{Word, settings::Settings};
+    use vietkara_domain::{
+        Word,
+        settings::{Aspect, Settings},
+    };
 
     struct FixedWidth;
     impl TextMeasurer for FixedWidth {
@@ -417,10 +422,7 @@ mod tests {
             ],
             extra: Default::default(),
         };
-        project
-            .settings
-            .extra
-            .insert("aspect".into(), Value::String("portrait".into()));
+        project.settings.aspect = Aspect::Portrait;
         project.settings.font_size = 240.0;
         let plan = display_plan(&project, &FixedWidth);
         assert_eq!((plan.width, plan.height), (1080, 1920));

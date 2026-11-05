@@ -199,6 +199,7 @@ fn render_project(
             .map_err(|error| format!("Không tạo được thư mục font tạm: {error}"))?;
         let mut inputs = vietkara_render::RenderInputs::new(beat, duration);
         inputs.ffmpeg = ffmpeg;
+        inputs.audio_normalize = project.settings.audio_normalize;
         inputs
             .configure_background_from_project(&project, project_directory)
             .map_err(|error| error.to_string())?;
@@ -2912,6 +2913,7 @@ mod workspace_tests {
 
         let mut project = Project::new("Export smoke test");
         project.beat = Some(serde_json::json!({"filename":"beat.wav","duration":1.0}));
+        project.settings.audio_normalize = true;
         project.words.push(Word {
             id: "word-1".into(),
             text: "Xin chào".into(),
