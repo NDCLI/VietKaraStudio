@@ -1979,11 +1979,18 @@ impl Studio {
             let Some(directory) = self.path.as_ref().and_then(|p| p.parent()) else {
                 return;
             };
-            let filename = audio_slot_filename(self.listen_track);
-            let path = directory.join(filename);
+            let path = project_audio_file(
+                self.editor.project(),
+                self.path.as_deref(),
+                self.listen_track,
+            )
+            .unwrap_or_else(|| directory.join(audio_slot_filename(self.listen_track)));
             if !path.is_file() {
                 self.playback_error = Some(format!(
-                    "Chưa có {filename}; hãy nhập hoặc relink track đang nghe"
+                    "Chưa có {}; hãy nhập hoặc relink track đang nghe",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("audio")
                 ));
                 return;
             }
@@ -2814,6 +2821,13 @@ impl Render for Studio {
             .and_then(|word| word.section_name.as_deref())
             .unwrap_or("")
             .to_owned();
+        let missing_audio = [AudioSlot::Beat, AudioSlot::Reference]
+            .into_iter()
+            .filter(|slot| audio_slot_missing(self.editor.project(), self.path.as_deref(), *slot))
+            .collect::<Vec<_>>();
+        let pending_audio_relink = self.pending_audio.as_ref().is_some_and(|(slot, _)| {
+            audio_slot_missing(self.editor.project(), self.path.as_deref(), *slot)
+        });
         let selected_is_section_start = selected.is_some_and(|word| {
             self.editor
                 .project()
@@ -3663,8 +3677,25 @@ impl Render for Studio {
                     .child(div().cursor_pointer().child("Hoàn tất (Enter)")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.finish_tapping(true,cx))))
                     .child(format!("Từ {} / {}",self.tapping.as_ref().map(|s|s.clock.index+1).unwrap_or(0),self.editor.project().words.len()))))
+            .when(!missing_audio.is_empty(), |root| root.child(
+                div().flex().items_center().gap_3().px_4().py_2().bg(rgb(theme::ACCENT_SURFACE))
+                    .child("Thiếu file audio trong thư mục project:")
+                    .children(missing_audio.iter().map(|slot| {
+                        let slot = *slot;
+                        div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1()
+                            .child(match slot {
+                                AudioSlot::Beat => "Relink beat gốc",
+                                AudioSlot::Reference => "Relink bản hát",
+                            })
+                            .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.choose_audio(slot,cx)))
+                    }))
+            ))
             .when(self.pending_audio.is_some(),|root|root.child(div().flex().gap_3().p_3()
-                .child("Nhập media sẽ lưu project và tạo phiên bản trước thay đổi. Media khác có thể xóa mốc đồng bộ; thay bản hát có thể xóa lời cũ.")
+                .child(if pending_audio_relink {
+                    "File audio gốc đang thiếu. Nếu chọn đúng nguồn cũ, app sẽ nhận diện bằng fingerprint và giữ mốc/lời; chọn track khác sẽ thay media và có thể làm mới dữ liệu liên quan."
+                } else {
+                    "Nhập media sẽ lưu project và tạo phiên bản trước thay đổi. Media khác có thể xóa mốc đồng bộ; thay bản hát có thể xóa lời cũ."
+                })
                 .child(div().cursor_pointer().child("Nhập media")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_audio(cx))))
                 .child(div().cursor_pointer().child("Hủy")
@@ -3779,6 +3810,7 @@ impl Render for Studio {
                     .child(
                         div()
                             .w(px(workspace.left))
+                            .flex_shrink_0()
                             .flex()
                             .flex_col()
                             .overflow_hidden()
@@ -3801,10 +3833,10 @@ impl Render for Studio {
                             .when(self.left_tab_media,|panel|panel
                                 .child(div().mt_2().text_color(rgb(theme::TEXT_MUTED)).child("AUDIO & VIDEO"))
                                 .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
-                                    .child(if self.editor.project().beat.is_some(){"●  Beat gốc · đã nạp"}else{"＋  Nạp beat gốc"})
+                                    .child(audio_slot_label(self.editor.project(),self.path.as_deref(),AudioSlot::Beat))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_audio(AudioSlot::Beat,cx))))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
-                                    .child(if self.editor.project().reference.is_some(){"●  Bản hát · đã nạp"}else{"＋  Nạp bản hát / video"})
+                                    .child(audio_slot_label(self.editor.project(),self.path.as_deref(),AudioSlot::Reference))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_audio(AudioSlot::Reference,cx))))
                                 .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(if background_asset.is_some() {"▧  Thay ảnh nền"} else {"＋  Nạp ảnh nền"})
@@ -3840,6 +3872,7 @@ impl Render for Studio {
                             .flex()
                             .flex_col()
                             .flex_1()
+                            .overflow_hidden()
                             .gap_3()
                             .child(
                                 div()
@@ -3956,6 +3989,7 @@ impl Render for Studio {
                     .child(
                         div()
                             .w(px(workspace.right))
+                            .flex_shrink_0()
                             .flex()
                             .flex_col()
                             .id("design-inspector")
@@ -4337,6 +4371,61 @@ fn audio_slot_filename(slot: AudioSlot) -> &'static str {
     match slot {
         AudioSlot::Beat => "beat.wav",
         AudioSlot::Reference => "reference.wav",
+    }
+}
+
+fn audio_metadata(project: &Project, slot: AudioSlot) -> Option<&Value> {
+    match slot {
+        AudioSlot::Beat => project.beat.as_ref(),
+        AudioSlot::Reference => project.reference.as_ref(),
+    }
+}
+
+fn project_audio_file(
+    project: &Project,
+    project_path: Option<&std::path::Path>,
+    slot: AudioSlot,
+) -> Option<PathBuf> {
+    let metadata = audio_metadata(project, slot)?;
+    let filename = metadata
+        .get("filename")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| audio_slot_filename(slot));
+    let relative = std::path::Path::new(filename);
+    if relative.file_name().and_then(|name| name.to_str()) != Some(filename)
+        || relative.components().count() != 1
+    {
+        return None;
+    }
+    Some(project_path?.parent()?.join(relative))
+}
+
+fn audio_slot_missing(
+    project: &Project,
+    project_path: Option<&std::path::Path>,
+    slot: AudioSlot,
+) -> bool {
+    audio_metadata(project, slot).is_some()
+        && project_audio_file(project, project_path, slot).is_none_or(|path| !path.is_file())
+}
+
+fn audio_slot_label(
+    project: &Project,
+    project_path: Option<&std::path::Path>,
+    slot: AudioSlot,
+) -> String {
+    let has_metadata = audio_metadata(project, slot).is_some();
+    match (
+        slot,
+        has_metadata,
+        audio_slot_missing(project, project_path, slot),
+    ) {
+        (AudioSlot::Beat, false, _) => "＋  Nạp beat gốc".into(),
+        (AudioSlot::Beat, true, true) => "⚠  Beat gốc · thiếu file — Relink".into(),
+        (AudioSlot::Beat, true, false) => "●  Beat gốc · sẵn sàng".into(),
+        (AudioSlot::Reference, false, _) => "＋  Nạp bản hát / video".into(),
+        (AudioSlot::Reference, true, true) => "⚠  Bản hát · thiếu file — Relink".into(),
+        (AudioSlot::Reference, true, false) => "●  Bản hát · sẵn sàng".into(),
     }
 }
 
@@ -5005,6 +5094,47 @@ mod workspace_tests {
     fn playback_track_resolves_to_managed_audio_file() {
         assert_eq!(audio_slot_filename(AudioSlot::Beat), "beat.wav");
         assert_eq!(audio_slot_filename(AudioSlot::Reference), "reference.wav");
+    }
+
+    #[test]
+    fn missing_audio_is_visible_and_relink_resolves_project_local_asset() {
+        let directory = tempfile::tempdir().unwrap();
+        let project_path = directory.path().join("project.json");
+        let mut project = Project::new("relink");
+        project.beat = Some(serde_json::json!({
+            "filename": "beat.wav",
+            "sha256": "expected-hash",
+        }));
+        assert!(audio_slot_missing(
+            &project,
+            Some(&project_path),
+            AudioSlot::Beat
+        ));
+        assert!(
+            audio_slot_label(&project, Some(&project_path), AudioSlot::Beat).contains("thiếu file")
+        );
+
+        std::fs::write(directory.path().join("beat.wav"), b"audio fixture").unwrap();
+        assert!(!audio_slot_missing(
+            &project,
+            Some(&project_path),
+            AudioSlot::Beat
+        ));
+        assert_eq!(
+            project_audio_file(&project, Some(&project_path), AudioSlot::Beat),
+            Some(directory.path().join("beat.wav"))
+        );
+
+        project.beat = Some(serde_json::json!({ "filename": "../outside.wav" }));
+        assert!(audio_slot_missing(
+            &project,
+            Some(&project_path),
+            AudioSlot::Beat
+        ));
+        assert_eq!(
+            project_audio_file(&project, Some(&project_path), AudioSlot::Beat),
+            None
+        );
     }
 
     #[test]

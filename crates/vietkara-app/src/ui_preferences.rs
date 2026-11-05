@@ -36,9 +36,9 @@ fn workspace_layout_from_preferences(value: &serde_json::Value) -> Option<Worksp
     (layout.left.is_finite()
         && layout.preview.is_finite()
         && layout.right.is_finite()
-        && (120.0..=600.0).contains(&layout.left)
+        && (170.0..=600.0).contains(&layout.left)
         && (240.0..=1000.0).contains(&layout.preview)
-        && (160.0..=600.0).contains(&layout.right))
+        && (204.0..=600.0).contains(&layout.right))
     .then_some(layout)
 }
 

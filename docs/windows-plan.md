@@ -204,8 +204,10 @@ sửa khi migration/import/restore lỗi.
 ### 4.1. `vietkara-app`: create/open/relink/save/close/reopen
 
 - [ ] Gắn action thật vào UI mock hiện tại (`crates/vietkara-app/src/main.rs`):
-  mở file (file picker GPUI), tạo project mới, relink media thiếu
-  (hiện cảnh báo + chọn lại file), save/close/reopen.
+  mở file (file picker GPUI), tạo project mới, save/close/reopen.
+- [x] Relink audio project bị thiếu: hiển thị trạng thái thiếu file và nút
+  chọn lại beat/bản hát; chọn đúng nội dung cũ được nhận diện bằng fingerprint
+  để giữ anchors/lời như `vietkara-storage::audio_import` đã hỗ trợ.
 - [ ] Dùng `vietkara-domain` + `vietkara-storage` cho load/save, không
   viết lại logic save trong app.
 - [ ] Test: tạo project → lưu → đóng → mở lại → nội dung khớp fixture v2.
@@ -240,6 +242,20 @@ Chạy bằng tay, ghi lại kết quả (pass/fail + ghi chú) vào
 
 > Mở nhạc → nhập lời → căn bằng Space → sửa mốc → lưu → đóng → mở lại
 > — nội dung khớp, job hủy không để lại project hỏng, UI vẫn phản hồi.
+
+### W4: trạng thái và relink audio bị thiếu
+
+Studio đối chiếu metadata audio với file an toàn cạnh project, hiện banner
+relink nếu file beat/bản hát bị mất; tên file có separator/path traversal bị
+coi là không hợp lệ. Media panel không còn báo "đã nạp" chỉ dựa trên metadata.
+Khi file gốc thiếu, banner xác nhận giải thích fingerprint sẽ giữ mốc/lời nếu
+người dùng chọn đúng nguồn cũ. Playback cũng mở file theo metadata của project.
+Đã mở app Windows trên fixture thiếu cả hai file: banner hai nút relink và
+nhãn trong media panel hiện đúng; project fixture không bị chỉnh sửa. Runtime
+cũng lộ flex làm co cột lời/đẩy inspector khỏi cửa sổ; đã khóa co hai panel và
+cho vùng giữa co lại, ảnh kiểm tra sau sửa cho thấy đủ ba cột. Unit test
+trạng thái/file path pass; luồng convert, fingerprint và relink thật vẫn cần
+kiểm tra runtime có FFmpeg trên Windows.
 
 ## 5. Giai đoạn 4 — Preview/export parity
 
