@@ -50,6 +50,7 @@ struct Studio {
     editor: Editor,
     word_input: Entity<text_input::TextInput>,
     title_credit_input: Entity<text_input::TextInput>,
+    section_name_input: Entity<text_input::TextInput>,
     focus_handle: FocusHandle,
     edit_status: String,
     playing: bool,
@@ -520,6 +521,97 @@ impl Studio {
                 self.dirty = true;
                 self.autosave_pending = true;
                 "Đã cập nhật cài đặt xuất • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+    fn apply_section_name(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            self.edit_status = "Chọn một từ trong section trước".into();
+            cx.notify();
+            return;
+        };
+        let Some(selected) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+        else {
+            return;
+        };
+        let line = selected.line;
+        let name = self.section_name_input.read(cx).value();
+        let mut words = self.editor.project().words.clone();
+        set_section_name_on_line(&mut words, line, &name);
+        let project_text = vietkara_domain::lyrics::text_from_words(&words);
+        let was_dirty = self.dirty;
+        self.edit_status = match self.editor.execute(Command::SetLyrics {
+            words,
+            text: project_text,
+        }) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã đặt tên section • chưa lưu".into()
+            }
+            Err(error) => {
+                self.dirty = was_dirty;
+                error.to_string()
+            }
+        };
+        cx.notify();
+    }
+    fn toggle_section_boundary(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            self.edit_status = "Chọn một từ để đặt biên section".into();
+            cx.notify();
+            return;
+        };
+        let Some(selected) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+        else {
+            return;
+        };
+        let line = selected.line;
+        let mut words = self.editor.project().words.clone();
+        let Some(next) = toggle_section_on_line(&mut words, line) else {
+            return;
+        };
+        let project_text = vietkara_domain::lyrics::text_from_words(&words);
+        self.edit_status = match self.editor.execute(Command::SetLyrics {
+            words,
+            text: project_text,
+        }) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                if !next {
+                    "Đã bỏ biên section • chưa lưu".into()
+                } else {
+                    "Đã đặt biên section • chưa lưu".into()
+                }
             }
             Err(error) => error.to_string(),
         };
@@ -1161,6 +1253,7 @@ impl Studio {
             .find(|word| word.id == id)
         {
             let text = word.text.clone();
+            let section_name = word.section_name.clone().unwrap_or_default();
             let beat = vietkara_domain::timing::map_time(
                 word.start,
                 &self.editor.project().anchors,
@@ -1177,6 +1270,10 @@ impl Studio {
             let _ = beat;
             self.selected_word = Some(id);
             self.set_word_input(&text, cx);
+            self.section_name_input.update(cx, |input, cx| {
+                input.set_value(&section_name);
+                cx.notify();
+            });
             cx.notify();
         }
     }
@@ -2076,6 +2173,19 @@ impl Render for Studio {
         let selected_start = selected.map(|word| word.start).unwrap_or(0.);
         let selected_end = selected.map(|word| word.end).unwrap_or(0.);
         let selected_role = selected.map(|word| role_label(&word.role)).unwrap_or("—");
+        let selected_section = selected
+            .and_then(|word| word.section_name.as_deref())
+            .unwrap_or("")
+            .to_owned();
+        let selected_is_section_start = selected.is_some_and(|word| {
+            self.editor
+                .project()
+                .words
+                .iter()
+                .find(|item| item.line == word.line)
+                .and_then(|item| item.section)
+                .unwrap_or(false)
+        });
         let settings = &self.editor.project().settings;
         let display_mode = settings
             .extra
@@ -3069,6 +3179,15 @@ impl Render for Studio {
                                 .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Vai: {selected_role}"))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_role(cx)))))
+                            .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("SECTION / SCENE"))
+                            .child(div().mt_1().text_color(rgb(0x748297)).child(if selected_section.is_empty() {"Chưa đặt tên section".to_owned()} else {selected_section.clone()}))
+                            .child(div().mt_2().child(self.section_name_input.clone()))
+                            .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                .child("Đặt tên cho cả dòng")
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_section_name(cx))))
+                            .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                .child(if selected_is_section_start {"✓  Đây là đầu section"} else {"＋  Bắt đầu section tại dòng này"})
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.toggle_section_boundary(cx))))
                             .child(div().mt_4().child(format!("Bắt đầu {selected_start:.3}s")))
                             .child(div().mt_2().child(format!("Kết thúc {selected_end:.3}s")))
                             .children([(true,-0.05,"Đầu −50ms"),(true,0.05,"Đầu +50ms"),(false,-0.05,"Cuối −50ms"),(false,0.05,"Cuối +50ms")].into_iter().map(|(start,delta,label)|
@@ -3358,6 +3477,25 @@ fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
 }
 
+fn set_section_name_on_line(words: &mut [Word], line: u32, name: &str) {
+    let cleaned = name
+        .trim()
+        .chars()
+        .take(vietkara_domain::MAX_SECTION_NAME_CHARS)
+        .collect::<String>();
+    for word in words.iter_mut().filter(|word| word.line == line) {
+        word.section_name = (!cleaned.is_empty()).then(|| cleaned.clone());
+    }
+}
+
+fn toggle_section_on_line(words: &mut [Word], line: u32) -> Option<bool> {
+    let first_id = words.iter().find(|word| word.line == line)?.id.clone();
+    let first = words.iter_mut().find(|word| word.id == first_id)?;
+    let next = !first.section.unwrap_or(false);
+    first.section = Some(next);
+    Some(next)
+}
+
 fn countdown_window_at(
     words: &[Word],
     anchors: &[vietkara_domain::Anchor],
@@ -3498,6 +3636,7 @@ fn main() {
             |window, cx| {
                 let word_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 let title_credit_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
+                let section_name_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 cx.new(|cx: &mut Context<Studio>| {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
@@ -3595,6 +3734,7 @@ fn main() {
                         focus_handle,
                         word_input,
                         title_credit_input,
+                        section_name_input,
                         editor: Editor::new(project).expect("Project mới phải hợp lệ"),
                         edit_status: initial_status,
                         path,
@@ -3682,6 +3822,36 @@ mod workspace_tests {
         assert_eq!(preview_alignment("justify", 7, &rows), "left");
         assert_eq!(preview_alignment("justify", 8, &rows), "right");
         assert_eq!(preview_alignment("center", 7, &rows), "center");
+    }
+
+    #[test]
+    fn section_name_and_boundary_apply_to_selected_line_only() {
+        let mut words = vec![
+            serde_json::from_value(
+                serde_json::json!({"id":"a","text":"Xin","line":0,"role":"all"}),
+            )
+            .unwrap(),
+            serde_json::from_value(
+                serde_json::json!({"id":"b","text":"chào","line":0,"role":"all"}),
+            )
+            .unwrap(),
+            serde_json::from_value(
+                serde_json::json!({"id":"c","text":"Bạn","line":1,"role":"all"}),
+            )
+            .unwrap(),
+        ];
+        set_section_name_on_line(&mut words, 0, "  Điệp khúc  ");
+        assert_eq!(words[0].section_name.as_deref(), Some("Điệp khúc"));
+        assert_eq!(words[1].section_name.as_deref(), Some("Điệp khúc"));
+        assert_eq!(words[2].section_name, None);
+        assert_eq!(toggle_section_on_line(&mut words, 0), Some(true));
+        assert_eq!(words[0].section, Some(true));
+        assert_eq!(words[1].section, None);
+        assert_eq!(toggle_section_on_line(&mut words, 0), Some(false));
+        assert_eq!(words[0].section, Some(false));
+        set_section_name_on_line(&mut words, 0, "");
+        assert_eq!(words[0].section_name, None);
+        assert_eq!(words[1].section_name, None);
     }
 
     #[test]

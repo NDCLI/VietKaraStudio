@@ -261,6 +261,11 @@
 >   app **9/9**, domain **20/20**, jobs **5/5**, storage **19/19**, media
 >   non-FFmpeg **11/11** và render non-FFmpeg **39/39** pass. Full FFmpeg
 >   integrations chưa chạy được vì `ffmpeg.exe`/`ffprobe.exe` không có trong PATH.
+> - Inspector tab Từ có metadata section cho dòng đang chọn: đặt/bỏ biên
+>   section, đặt hoặc xóa tên section áp dụng cho cả dòng. Tên giới hạn theo
+>   domain 40 ký tự; thao tác dùng `SetLyrics`, giữ undo/redo và autosave, đồng
+>   thời tái tạo `project.text` để marker dòng trống khớp state. App **10/10**,
+>   workspace check/Clippy pass. Scene image/artwork editor chưa triển khai.
 
 ## 1. Mục tiêu và phạm vi
 
