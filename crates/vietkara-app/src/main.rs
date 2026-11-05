@@ -2440,22 +2440,14 @@ impl Render for Studio {
             .title
             .as_ref()
             .is_some_and(|title| preview_position >= title.start && preview_position < title.end);
-        let first_line_start = self
-            .editor
-            .project()
-            .words
-            .iter()
-            .map(|word| {
-                vietkara_domain::timing::map_time(word.start, &self.editor.project().anchors, false)
-            })
-            .fold(f64::INFINITY, f64::min);
-        let countdown_start = (first_line_start - 0.05 - countdown_seconds).max(0.0);
-        let countdown_end = (first_line_start - 0.05).max(0.0);
-        let countdown_preview_visible = display_mode == "karaoke"
-            && countdown != "none"
-            && countdown_end - countdown_start >= 0.4
-            && preview_position >= countdown_start
-            && preview_position < countdown_end;
+        let active_countdown_window = countdown_window_at(
+            &self.editor.project().words,
+            &self.editor.project().anchors,
+            preview_position,
+            countdown_seconds,
+        );
+        let countdown_preview_visible =
+            display_mode == "karaoke" && countdown != "none" && active_countdown_window.is_some();
         let scene_backing = self
             .path
             .as_ref()
@@ -2963,9 +2955,14 @@ impl Render for Studio {
                                                     })
                                                     .when(countdown_preview_visible, |rows| {
                                                         let glyph = match countdown { "mic"=>"♫", "star"=>"★", "heart"=>"♥", "note"=>"♪", "moon"=>"☾", _=>"" };
-                                                        rows.child(div().absolute().left(px(preview_width * 0.05)).top(px(preview_height * 0.28))
-                                                            .when(countdown == "image" && countdown_path.is_some(), |box_| box_.child(img(countdown_path.clone().unwrap()).w(px(22.0)).h(px(22.0)).object_fit(ObjectFit::Contain)))
-                                                            .when(countdown != "image", |box_| box_.text_size(px(22.0)).text_color(rgb(0xf4cf72)).child(glyph)))
+                                                        let (_, window_end) = active_countdown_window.unwrap();
+                                                        let remaining = (window_end - preview_position).ceil().clamp(1.0, 4.0) as usize;
+                                                        rows.child(div().absolute().left(px(preview_width * 0.05)).top(px(preview_height * 0.28)).flex().gap_2()
+                                                            .children((0..remaining).map(|_| {
+                                                                div().w(px(22.0)).h(px(22.0)).flex().items_center().justify_center()
+                                                                    .when(countdown == "image" && countdown_path.is_some(), |box_| box_.child(img(countdown_path.clone().unwrap()).size_full().object_fit(ObjectFit::Contain)))
+                                                                    .when(countdown != "image", |box_| box_.text_size(px(22.0)).text_color(rgb(0xf4cf72)).child(glyph))
+                                                            })))
                                                     })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
                                                         .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
@@ -3299,6 +3296,34 @@ fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
 }
 
+fn countdown_window_at(
+    words: &[Word],
+    anchors: &[vietkara_domain::Anchor],
+    time: f64,
+    duration: f64,
+) -> Option<(f64, f64)> {
+    let mut lines = std::collections::BTreeMap::<u32, (f64, f64)>::new();
+    for word in words {
+        let start = vietkara_domain::timing::map_time(word.start, anchors, false);
+        let end = vietkara_domain::timing::map_time(word.end, anchors, false);
+        let line = lines.entry(word.line).or_insert((start, end));
+        line.0 = line.0.min(start);
+        line.1 = line.1.max(end);
+    }
+    let mut previous_end: f64 = 0.0;
+    for (index, (start, end)) in lines.into_values().enumerate() {
+        if index == 0 || start - previous_end >= 8.0 {
+            let window_end = (start - 0.05).max(0.0);
+            let window_start = 0.0_f64.max(previous_end).max(window_end - duration);
+            if window_end - window_start >= 0.4 && time >= window_start && time < window_end {
+                return Some((window_start, window_end));
+            }
+        }
+        previous_end = previous_end.max(end);
+    }
+    None
+}
+
 fn title_preview_motion(
     title: &vietkara_render::layout::TitleLayout,
     time: f64,
@@ -3603,6 +3628,22 @@ mod workspace_tests {
         assert_eq!(parse_ffmpeg_time("01:00:00.000000"), Some(3600.0));
         assert_eq!(parse_ffmpeg_time("N/A"), None);
         assert_eq!(parse_ffmpeg_time("00:61:00.000000"), None);
+    }
+
+    #[test]
+    fn preview_countdown_matches_initial_and_long_pause_windows() {
+        let words = vec![
+            serde_json::from_value(serde_json::json!({"id":"00000000000000000000000000000001","line_uid":"00000000000000000000000000000011","text":"A","start":5.0,"end":6.0,"line":0,"role":"all"})).unwrap(),
+            serde_json::from_value(serde_json::json!({"id":"00000000000000000000000000000002","line_uid":"00000000000000000000000000000012","text":"B","start":20.0,"end":21.0,"line":1,"role":"all"})).unwrap(),
+        ];
+        let initial = countdown_window_at(&words, &[], 1.0, 4.0).unwrap();
+        assert!((initial.0 - 0.95).abs() < 1e-9);
+        assert!((initial.1 - 4.95).abs() < 1e-9);
+        let pause = countdown_window_at(&words, &[], 16.0, 4.0).unwrap();
+        assert!((pause.0 - 15.95).abs() < 1e-9);
+        assert!((pause.1 - 19.95).abs() < 1e-9);
+        assert_eq!(countdown_window_at(&words, &[], 8.0, 4.0), None);
+        assert_eq!(countdown_window_at(&words, &[], 5.0, 4.0), None);
     }
 
     #[test]

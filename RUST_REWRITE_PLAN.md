@@ -250,6 +250,10 @@
 > - Inspector/preview hỗ trợ subtitle backing: bật/tắt, chọn màu, opacity,
 >   radius; GPUI chỉ vẽ trong subtitle mode và dùng đúng các settings ASS.
 >   App fmt/check/Clippy sạch, unit tests **8/8** pass.
+> - Đồng bộ count-in preview với lịch renderer: grouped line timings, opening
+>   countdown và countdown sau khoảng nghỉ từ 8 giây; hiển thị đúng số slot
+>   còn lại và hỗ trợ PNG tùy chỉnh. Thêm regression test cho cửa sổ đầu bài,
+>   khoảng nghỉ và thời điểm không hoạt động; app unit tests **9/9** pass.
 
 ## 1. Mục tiêu và phạm vi
 
