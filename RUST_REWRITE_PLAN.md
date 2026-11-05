@@ -138,6 +138,10 @@
 > - Renderer này hiện có thể dựng khung từ nền project nhưng GPUI chưa có
 >   pipeline/job/UI export hoàn chỉnh; scene/logo/countdown và ASS layout
 >   parity vẫn đang mở.
+> - Tiếp theo đã port timeline scene theo section + anchors, resolve ảnh
+>   `scene_<id>.png`, ghép opacity/fade trước ASS và giữ soundtrack beat.
+>   Integration test tạo ảnh/video thật bằng FFmpeg và xác minh output.
+>   Workspace hiện **94/94**; fmt/clippy/check/build pass.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -14,8 +14,9 @@
 //!   `animation`, `rounded_box`, `ICONS`) — exact string ports.
 //! * `RenderProfile` / `frame_size` / `fps_value` / `encoding_options`
 //!   — the rules from `render_info.describe` / `encoding_options`.
-//! * `ffmpeg_command` — a pure argv builder (no process spawning), so
-//!   tests can assert the exact command.
+//! * `ffmpeg_command` — a pure argv builder for color/image/video
+//!   backgrounds, section-image scene overlays and guide audio, so tests
+//!   can assert the exact command.
 //! * `verify_output` — runs `ffprobe` on a rendered file.
 //!
 //! # Explicitly NOT in scope (Phase 4, after the layout contract
@@ -27,9 +28,8 @@
 //!   Linux with different fonts, would produce different layout and
 //!   different golden ASS output. Do not try to port `display_plan`
 //!   here.
-//! * Scene overlays, logo and countdown overlays, and the NVENC fallback
-//!   in `engine.render()` — those add filter-graph branches on top of the
-//!   background inputs supported here.
+//! * Scene keyframe motion/decorations, logo and countdown overlays, and
+//!   the NVENC fallback in `engine.render()` remain outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -657,6 +657,15 @@ pub enum RenderBackground {
     Video(PathBuf),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderScene {
+    pub image: PathBuf,
+    pub start: f64,
+    pub end: f64,
+    pub opacity: f64,
+    pub fade_seconds: f64,
+}
+
 /// Inputs for `ffmpeg_command`. Paths are used verbatim in the argv,
 /// as in Python (which passes `str(directory / "beat.wav")` and the
 /// relative `lyrics.ass` / `fonts` names, with the render run from
@@ -665,6 +674,7 @@ pub enum RenderBackground {
 pub struct RenderInputs {
     pub beat: PathBuf,
     pub background: Option<RenderBackground>,
+    pub scenes: Vec<RenderScene>,
     /// Guide vocal file; required only when
     /// `profile.audio_output == AudioOutput::Guide`.
     pub vocals: Option<PathBuf>,
@@ -682,6 +692,7 @@ impl RenderInputs {
         Self {
             beat: beat.into(),
             background: None,
+            scenes: Vec::new(),
             vocals: None,
             ass_file: PathBuf::from("lyrics.ass"),
             fonts_dir: PathBuf::from("fonts"),
@@ -764,6 +775,140 @@ impl RenderInputs {
             _ => None,
         };
         Ok(())
+    }
+
+    /// Resolve section-tagged scene stills onto the beat timeline, matching
+    /// `scene_tools.timeline` for the image layer used by the renderer.
+    pub fn configure_scenes_from_project(
+        &mut self,
+        project: &vietkara_domain::Project,
+        directory: &Path,
+    ) {
+        use std::collections::{BTreeMap, HashMap};
+        let valid_sections = [
+            "intro",
+            "verse",
+            "pre-chorus",
+            "chorus",
+            "bridge",
+            "outro",
+            "instrumental",
+        ];
+        let scenes = project
+            .scenes
+            .iter()
+            .filter_map(|scene| {
+                let section = scene.get("section_name")?.as_str()?.trim();
+                if !valid_sections.contains(&section) {
+                    return None;
+                }
+                let id = scene.get("id")?.as_str()?;
+                if !vietkara_domain::is_hex32(id) {
+                    return None;
+                }
+                let image = directory.join(format!("scene_{id}.png"));
+                if !image.is_file() {
+                    return None;
+                }
+                let number = |key: &str, default: f64| {
+                    scene
+                        .get(key)
+                        .and_then(serde_json::Value::as_f64)
+                        .filter(|value| value.is_finite())
+                        .unwrap_or(default)
+                };
+                let transition = scene
+                    .get("transition")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("fade");
+                Some((
+                    section.to_owned(),
+                    image,
+                    number("opacity", 100.0).clamp(0.0, 100.0) / 100.0,
+                    if transition == "fade" {
+                        number("transition_seconds", 0.6).clamp(0.0, 3.0)
+                    } else {
+                        0.0
+                    },
+                ))
+            })
+            .map(|(section, image, opacity, transition)| (section, (image, opacity, transition)))
+            .collect::<HashMap<_, _>>();
+        if scenes.is_empty() || project.words.is_empty() {
+            self.scenes.clear();
+            return;
+        }
+        let mut lines: BTreeMap<u32, (usize, f64, f64, String)> = BTreeMap::new();
+        for (index, word) in project.words.iter().enumerate() {
+            let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
+            let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
+            let entry = lines
+                .entry(word.line)
+                .or_insert((index, start, end, String::new()));
+            entry.0 = entry.0.min(index);
+            entry.1 = entry.1.min(start);
+            entry.2 = entry.2.max(end);
+            if entry.3.is_empty() {
+                entry.3 = word.section_name.as_deref().unwrap_or("").trim().to_owned();
+            }
+        }
+        let mut ordered = lines.into_values().collect::<Vec<_>>();
+        ordered.sort_by(|left, right| left.1.total_cmp(&right.1).then(left.0.cmp(&right.0)));
+        let mut runs: Vec<(String, f64, f64)> = Vec::new();
+        for (_, start, end, section) in ordered {
+            let section = if scenes.contains_key(&section) {
+                section
+            } else {
+                String::new()
+            };
+            if let Some(last) = runs.last_mut().filter(|last| last.0 == section) {
+                last.2 = last.2.max(end);
+            } else {
+                runs.push((section, start, end));
+            }
+        }
+        let duration = self.duration.max(0.0);
+        let mut resolved = Vec::new();
+        for (index, (section, run_start, _)) in runs.iter().enumerate() {
+            let Some((image, opacity, base_transition)) = scenes.get(section) else {
+                continue;
+            };
+            let previous_has_scene = index > 0 && scenes.contains_key(&runs[index - 1].0);
+            let next_index = index + 1;
+            let following_has_scene =
+                next_index < runs.len() && scenes.contains_key(&runs[next_index].0);
+            let mut transition = *base_transition;
+            if previous_has_scene {
+                transition = transition.min(((run_start - runs[index - 1].1) / 2.0).max(0.0));
+            }
+            if following_has_scene {
+                transition = transition.min(((runs[next_index].1 - run_start) / 2.0).max(0.0));
+            }
+            let start = if previous_has_scene {
+                run_start - transition / 2.0
+            } else {
+                *run_start
+            };
+            let end = if following_has_scene {
+                runs[next_index].1 + transition / 2.0
+            } else if next_index < runs.len() {
+                runs[next_index].1
+            } else {
+                duration
+            };
+            let start = start.max(0.0);
+            let end = end.min(duration);
+            if end - start >= 0.05 {
+                resolved.push(RenderScene {
+                    image: image.clone(),
+                    start,
+                    end,
+                    opacity: *opacity,
+                    fade_seconds: transition.min((end - start) / 2.0).max(0.05),
+                });
+            }
+        }
+        self.scenes = resolved;
     }
 }
 
@@ -850,23 +995,89 @@ pub fn ffmpeg_command(
     let beat_input = 1usize;
     args.extend(["-i".into(), inputs.beat.display().to_string()]);
     let guide = profile.audio_output == AudioOutput::Guide;
+    let vocals_input = beat_input + 1;
     if guide {
         let vocals = inputs
             .vocals
             .as_ref()
             .ok_or(RenderError::MissingGuideAudio)?;
-        let vocals_input = beat_input + 1;
         args.push("-i".into());
         args.push(vocals.display().to_string());
-        let graph = format!(
-            "[{background_input}:v:0]{visual_filter}[base];[{beat_input}:a:0][{vocals_input}:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]"
-        );
+    }
+    let mut scene_inputs: Vec<(usize, &RenderScene)> = Vec::new();
+    let mut next_input = beat_input + 1 + usize::from(guide);
+    for scene in &inputs.scenes {
+        if !scene.start.is_finite()
+            || !scene.end.is_finite()
+            || scene.end <= scene.start
+            || !scene.opacity.is_finite()
+            || !scene.fade_seconds.is_finite()
+        {
+            continue;
+        }
+        args.extend([
+            "-loop".into(),
+            "1".into(),
+            "-framerate".into(),
+            fps.clone(),
+            "-i".into(),
+            scene.image.display().to_string(),
+        ]);
+        scene_inputs.push((next_input, scene));
+        next_input += 1;
+    }
+    if guide || !scene_inputs.is_empty() {
+        let mut graph = format!("[{background_input}:v:0]{visual_filter}[scene_base]");
+        let mut last_background = "scene_base".to_owned();
+        for (index, (input_index, scene)) in scene_inputs.iter().enumerate() {
+            let start = scene.start.max(0.0);
+            let end = scene.end.min(inputs.duration);
+            if end <= start {
+                continue;
+            }
+            let fade = scene.fade_seconds.min((end - start) / 2.0).max(0.0);
+            let opacity = scene.opacity.clamp(0.0, 1.0);
+            let mut layer = format!(
+                "[{input_index}:v:0]setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,format=rgba,colorchannelmixer=aa={opacity:.4}"
+            );
+            if fade >= 0.05 {
+                layer.push_str(&format!(",fade=t=in:st=0:d={fade:.3}:alpha=1"));
+                layer.push_str(&format!(
+                    ",fade=t=out:st={:.3}:d={fade:.3}:alpha=1",
+                    (end - start - fade).max(0.0)
+                ));
+            }
+            layer.push_str(&format!(
+                ",trim=duration={:.3},setpts=PTS-STARTPTS+{start:.3}/TB[scene_layer{index}]",
+                end - start
+            ));
+            graph.push(';');
+            graph.push_str(&layer);
+            graph.push_str(&format!(
+                ";[{last_background}][scene_layer{index}]overlay=x=0:y=0:eof_action=pass:shortest=0:enable='between(t,{start:.3},{end:.3})'[scene_bg{index}]"
+            ));
+            last_background = format!("scene_bg{index}");
+        }
+        graph.push_str(&format!(
+            ";[{last_background}]ass={}:fontsdir={}[base]",
+            inputs.ass_file.display(),
+            inputs.fonts_dir.display()
+        ));
+        if guide {
+            graph.push_str(&format!(
+                ";[{beat_input}:a:0][{vocals_input}:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]"
+            ));
+        }
         args.push("-filter_complex".into());
         args.push(graph);
         args.push("-map".into());
         args.push("[base]".into());
         args.push("-map".into());
-        args.push("[audio]".into());
+        args.push(if guide {
+            "[audio]".into()
+        } else {
+            format!("{beat_input}:a:0")
+        });
     } else {
         args.push("-vf".into());
         args.push(visual_filter);
@@ -1420,6 +1631,57 @@ mod tests {
     }
 
     #[test]
+    fn project_scene_resolves_section_to_beat_interval_and_filter_graph() {
+        let directory = tempfile::tempdir().unwrap();
+        let scene_id = "0123456789abcdef0123456789abcdef";
+        let image = directory.path().join(format!("scene_{scene_id}.png"));
+        std::fs::write(&image, b"png").unwrap();
+        let mut project = vietkara_domain::Project::new("scene");
+        project.scenes.push(serde_json::json!({
+            "id": scene_id,
+            "section_name": "chorus",
+            "opacity": 75,
+            "transition": "fade",
+            "transition_seconds": 0.8
+        }));
+        project.words.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "line_uid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "text": "Chorus",
+                "start": 2.0,
+                "end": 3.0,
+                "line": 0,
+                "role": "all",
+                "section_name": "chorus"
+            }))
+            .unwrap(),
+        );
+        let mut inputs = RenderInputs::new("beat.wav", 10.0);
+        inputs.configure_scenes_from_project(&project, directory.path());
+        assert_eq!(inputs.scenes.len(), 1);
+        assert_eq!(inputs.scenes[0].image, image);
+        assert_eq!(inputs.scenes[0].start, 2.0);
+        assert_eq!(inputs.scenes[0].end, 10.0);
+        assert_eq!(inputs.scenes[0].opacity, 0.75);
+
+        let command = ffmpeg_command(&RenderProfile::default(), &inputs).unwrap();
+        let graph_index = command
+            .iter()
+            .position(|arg| arg == "-filter_complex")
+            .unwrap();
+        let graph = &command[graph_index + 1];
+        assert!(graph.contains("[2:v:0]"));
+        assert!(graph.contains("colorchannelmixer=aa=0.7500"));
+        assert!(graph.contains("overlay=x=0:y=0"));
+        assert!(graph.contains("ass=lyrics.ass:fontsdir=fonts[base]"));
+        assert_eq!(
+            &command[graph_index + 2..graph_index + 6],
+            ["-map", "[base]", "-map", "1:a:0"]
+        );
+    }
+
+    #[test]
     fn ffmpeg_command_beat_only_matches_engine() {
         let profile = RenderProfile {
             fps: Fps::Fixed(30.0),
@@ -1640,5 +1902,43 @@ mod tests {
             verify_output(&out, 10.0, 320, 240),
             Err(RenderError::DurationMismatch(_, _))
         ));
+
+        let scene_image = root.join("scene.png");
+        let image = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=64x64:d=1",
+                "-frames:v",
+                "1",
+            ])
+            .arg(&scene_image)
+            .output()
+            .unwrap();
+        assert!(image.status.success(), "scene image generation failed");
+        let mut scene_inputs = RenderInputs::new("beat.wav", 2.0);
+        scene_inputs.scenes.push(RenderScene {
+            image: scene_image,
+            start: 0.25,
+            end: 1.75,
+            opacity: 0.6,
+            fade_seconds: 0.2,
+        });
+        let argv = ffmpeg_command(&profile, &scene_inputs).unwrap();
+        let render = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            render.status.success(),
+            "scene render failed: {}",
+            String::from_utf8_lossy(&render.stderr)
+        );
+        assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
     }
 }
