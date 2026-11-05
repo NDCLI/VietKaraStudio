@@ -9,11 +9,11 @@
 - Rust toolchain: **1.99.1** (đã ghim trong `rust-toolchain.toml`; trước đây
   `stable-x86_64-pc-windows-msvc` làm `cargo` lỗi trên mọi host không phải
   Windows: `target tuple in channel name`).
-- Host kiểm chứng: Linux x86_64. `cargo check/test -p vietkara-domain` và
-  `-p vietkara-storage` chạy được. **Chưa kiểm chứng trên Windows.**
-- `vietkara-app` (GPUI 0.2.2) chưa được build/run trên Linux và chưa được
-  build trên Windows trong lần này — spike GPUI/Windows/IME/playback ở
-  Giai đoạn 1 vẫn còn mở, xem `RUST_REWRITE_PLAN.md` §4.1.
+- Host kiểm chứng Linux: x86_64. `cargo check/test -p vietkara-domain` và
+  `-p vietkara-storage` chạy được.
+- `vietkara-app` (GPUI 0.2.2) chưa được build/run trên Linux. Trên Windows,
+  `cargo check` và mở cửa sổ đã pass; kiểm tra thủ công GPUI/IME/playback
+  vẫn còn mở, xem `RUST_REWRITE_PLAN.md` §4.1.
 - Python baseline: `python3 -m pytest tests/test_timing.py tests/test_app.py -q`
   (xem README). Trong lần này chỉ chạy được `test_timing.py` (4/4 pass)
   và JS tapping/timeline (14/14 pass); `test_app.py` cần Flask và các
@@ -31,6 +31,19 @@
   `-- -D warnings`) sạch. FFmpeg/ffprobe 8.1.2 có sẵn trên máy Linux
   kiểm chứng, nên probe/render thật đã được test bằng file fixture
   sinh bằng ffmpeg.
+- Kết quả Windows 11 Pro x64 2026-11-05: PowerShell 5.1 chạy
+  `scripts/windows-spike-check.ps1` thành công; Rust 1.99.1,
+  `cargo fmt --check`, 6 crate **62/62 test**, `cargo clippy` với
+  `-D warnings`, `cargo check -p vietkara-app`, `cargo test --workspace`
+  và `cargo clippy --workspace --all-targets -- -D warnings` đều pass.
+  GPUI 0.2.2
+  đã mở được cửa sổ; Unicode tiếng Việt tĩnh và maximize/restore đã
+  quan sát được. IME, DPI, file picker, Unicode path round-trip và
+  responsiveness vẫn chưa kiểm chứng vì app mock chưa có control tương
+  ứng; quyết định go/no-go còn mở.
+- Baseline Python `pytest tests -q`: **167/167 pass**; Node tapping/timeline:
+  **14/14 pass**. Python cần `resources/source`, không có trong Git checkout
+  mới; dùng junction tạm tới asset local sẵn có rồi gỡ sau khi chạy test.
 
 ## Crate mới (đợt 2, headless — không GUI, không thiết bị)
 

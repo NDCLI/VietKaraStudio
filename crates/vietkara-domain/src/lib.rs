@@ -21,6 +21,13 @@
 //! `vietkara-storage` does this. `save()` also does **not** set
 //! `updated_at`; the caller/storage layer owns timestamps.
 
+pub mod edit;
+pub mod lyrics;
+pub mod timing;
+pub mod timeline;
+pub mod tapping;
+pub mod settings;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -61,8 +68,8 @@ pub struct Project {
     pub beat: Option<serde_json::Value>,
     #[serde(default)]
     pub anchors: Vec<Anchor>,
-    #[serde(default)]
-    pub settings: serde_json::Value,
+    #[serde(default, deserialize_with = "settings::deserialize_settings")]
+    pub settings: settings::Settings,
     #[serde(default)]
     pub text: String,
     #[serde(default)]
@@ -123,6 +130,8 @@ pub struct Anchor {
 
 #[derive(Debug, Error)]
 pub enum ProjectError {
+    #[error("Thiết lập không hợp lệ: {0}")]
+    InvalidSettings(String),
     #[error("Không đọc được project: {0}")]
     Io(#[from] std::io::Error),
     #[error("Project JSON không hợp lệ: {0}")]
@@ -171,7 +180,7 @@ impl Project {
             reference: None,
             beat: None,
             anchors: Vec::new(),
-            settings: serde_json::Value::Object(Default::default()),
+            settings: settings::Settings::default(),
             text: String::new(),
             alignment: None,
             scenes: Vec::new(),
@@ -222,6 +231,13 @@ impl Project {
     }
 
     pub fn validate(&self) -> Result<(), ProjectError> {
+        if !self.settings.font_size.is_finite()
+            || !(20.0..=240.0).contains(&self.settings.font_size)
+        {
+            return Err(ProjectError::InvalidSettings(
+                "font_size phải hữu hạn trong 20..240".into(),
+            ));
+        }
         if self.words.len() > MAX_WORDS {
             return Err(ProjectError::TooManyWords);
         }

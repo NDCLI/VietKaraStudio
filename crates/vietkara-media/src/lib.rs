@@ -17,10 +17,14 @@
 //!
 //! * `probe` never panics on malformed input: every parse failure is a
 //!   `MediaError`.
-//! * There is **no real audio device here**. `NullPlayer` advances only
+//! * The optional Windows device/worker backend is separate from `NullPlayer`, which advances only
 //!   via the injected `Clock` (plan §3.5: the playback clock is the
-//!   single source of time). A real Windows device player is Phase 1
-//!   spike work, not this crate.
+//!   single source of time). The real backend reads position from the device sink.
+
+#[cfg(windows)]
+pub mod device;
+#[cfg(windows)]
+pub mod playback;
 
 use serde::Deserialize;
 use std::io::{Read, Seek, SeekFrom};

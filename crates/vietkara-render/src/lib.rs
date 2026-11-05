@@ -495,45 +495,39 @@ impl RenderProfile {
     /// `vietkara-domain` `Project.settings` value), falling back to
     /// `DEFAULT_SETTINGS` for missing / invalid keys.
     pub fn from_project(project: &vietkara_domain::Project) -> Self {
+        use vietkara_domain::settings as domain;
         let settings = &project.settings;
-        let get = |key: &str| settings.get(key);
-        let mut profile = Self::default();
-        if let Some(serde_json::Value::String(v)) = get("aspect")
-            && v == "portrait"
-        {
-            profile.aspect = Aspect::Portrait;
-        }
-        if let Some(serde_json::Value::String(v)) = get("resolution")
-            && v == "4k"
-        {
-            profile.resolution = Resolution::K4;
-        }
-        if let Some(serde_json::Value::String(v)) = get("render_fps") {
-            profile.fps = match v.as_str() {
-                "source" => Fps::Source,
-                other => Fps::Fixed(fps_value(other)),
-            };
-        }
-        if let Some(serde_json::Value::String(v)) = get("render_quality") {
-            profile.quality = match v.as_str() {
-                "standard" => RenderQuality::Standard,
-                "maximum" => RenderQuality::Maximum,
-                _ => RenderQuality::High,
-            };
-        }
-        if let Some(serde_json::Value::String(v)) = get("render_format") {
-            profile.format = match v.as_str() {
-                "mov" => RenderFormat::Mov,
-                "mkv" => RenderFormat::Mkv,
-                _ => RenderFormat::Mp4,
-            };
-        }
-        if let Some(serde_json::Value::String(v)) = get("audio_output")
-            && v == "guide"
-        {
-            profile.audio_output = AudioOutput::Guide;
-        }
-        if let Some(serde_json::Value::String(v)) = get("background")
+        let mut profile = Self {
+            aspect: match settings.aspect {
+                domain::Aspect::Landscape => Aspect::Landscape,
+                domain::Aspect::Portrait => Aspect::Portrait,
+            },
+            resolution: match settings.resolution {
+                domain::Resolution::Hd => Resolution::P1080,
+                domain::Resolution::UltraHd => Resolution::K4,
+            },
+            quality: match settings.render_quality {
+                domain::RenderQuality::Standard => RenderQuality::Standard,
+                domain::RenderQuality::High => RenderQuality::High,
+                domain::RenderQuality::Maximum => RenderQuality::Maximum,
+            },
+            format: match settings.render_format {
+                domain::RenderFormat::Mp4 => RenderFormat::Mp4,
+                domain::RenderFormat::Mov => RenderFormat::Mov,
+                domain::RenderFormat::Mkv => RenderFormat::Mkv,
+            },
+            audio_output: match settings.audio_output {
+                domain::AudioOutput::Beat => AudioOutput::Beat,
+                domain::AudioOutput::Guide => AudioOutput::Guide,
+            },
+            fps: match settings.render_fps {
+                domain::RenderFps::Source => Fps::Source,
+                domain::RenderFps::Thirty => Fps::Fixed(30.),
+                domain::RenderFps::Sixty => Fps::Fixed(60.),
+            },
+            ..Default::default()
+        };
+        if let Some(serde_json::Value::String(v)) = settings.extra.get("background")
             && is_hex_color(v)
         {
             profile.background_color = v.to_ascii_lowercase();
@@ -1219,7 +1213,9 @@ mod tests {
             "render_format": "mkv",
             "audio_output": "guide",
             "background": "#AABBCC",
-        });
+        })
+        .try_into()
+        .unwrap();
         let profile = RenderProfile::from_project(&project);
         assert_eq!(profile.aspect, Aspect::Portrait);
         assert_eq!(profile.resolution, Resolution::K4);

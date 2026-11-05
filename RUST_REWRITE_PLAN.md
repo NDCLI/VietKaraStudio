@@ -20,9 +20,10 @@
 >   traversal). `cargo fmt --check`, `cargo clippy -p vietkara-domain
 >   -p vietkara-storage -- -D warnings`, `cargo test` 14/14 pass;
 >   `pytest tests/test_timing.py` 4/4, `node --test` tapping/timeline 14/14.
-> - **Chưa xong:** spike GPUI/Windows/IME/playback (Giai đoạn 1) — cần máy
->   Windows 10/11; `cargo test --workspace` (gồm `vietkara-app`/GPUI)
->   chưa chạy được trên Linux. Xem §9.
+> - **Chưa xong tại thời điểm kiểm chứng Linux:** spike GPUI/Windows/IME/
+>   playback (Giai đoạn 1); khi đó `cargo test --workspace` (gồm
+>   `vietkara-app`/GPUI) chưa chạy được trên Linux. Kết quả Windows cập nhật
+>   riêng bên dưới.
 >
 > **Tiến độ 2026-11-05 (tiếp) — các phần làm được trên Linux, Giai đoạn 3–5
 > (phần headless, không GUI/thiết bị):**
@@ -47,10 +48,32 @@
 >   --check` và `cargo clippy -- -D warnings` sạch; Python
 >   `test_timing.py` 4/4, JS tapping/timeline 14/14.
 >
+> **Tiến độ 2026-11-05 — Windows spike tự động (Giai đoạn 1, thủ công còn mở):**
+> - Checkout nhánh mới nhất `codex/rust-gpui-rewrite` vào local branch riêng
+>   `codex/rust-gpui-rewrite-local`, baseline `eb0df8d`.
+> - Windows 11 Pro x64: PowerShell 5.1 chạy thành công
+>   `scripts/windows-spike-check.ps1`; 6 crate headless **62/62**, `cargo fmt
+>   --check`, `cargo clippy --all-targets -- -D warnings` và
+>   `cargo check -p vietkara-app`, `cargo test --workspace` và workspace
+>   clippy đều pass. App GPUI chạy và mở cửa sổ; nhãn tiếng Việt hiển thị
+>   đúng dấu, maximize/restore hoạt động.
+> - Baseline Python `pytest tests -q` **167/167 pass** và Node tapping/
+>   timeline **14/14 pass**. Python suite cần `resources/source`, vốn không
+>   có trong Git checkout mới; dùng junction tạm tới asset local có sẵn,
+>   rồi gỡ junction sau test.
+> - Sửa import `ApplicationExt` không có trong GPUI 0.2.2; làm fake-worker
+>   tests chọn `python` trên Windows; sửa định dạng `vietkara-jobs` theo
+>   rustfmt 1.99.1; làm script spike tương thích PowerShell 5.1.
+> - UI hiện vẫn là mock. DPI, IME, file picker, save/load qua đường dẫn
+>   Unicode, kéo resize và responsiveness chưa được xác minh; UI helper lỗi
+>   khi đọc lại state sau phím Space. **Đã quyết định GO để tiếp tục W3** sau bằng chứng runtime và phản hồi
+>   thủ công của người dùng; giới hạn còn theo dõi ở `docs/windows-spike.md` §5.
+>
 > **Kế hoạch còn lại — làm trên Windows:** xem `docs/windows-plan.md`
-> (điểm xuất phát commit `df1a652`). Tài liệu đó liệt kê theo thứ tự:
-> W1 chuẩn bị máy + kiểm chứng lại 62 test, W2 spike GPUI + quyết định
-> go/no-go, W3 undo/redo + autosave, W4 vertical slice MVP, W5 full ASS
+> (điểm xuất phát commit `df1a652`). W1 kiểm chứng tự động đã pass;
+> W2 đã có quyết định GO, còn các mục kiểm chứng chi tiết được theo dõi;
+> các bước tiếp theo theo thứ tự:
+> W3 undo/redo + autosave, W4 vertical slice MVP, W5 full ASS
 > layout + render parity, W6 worker JSONL + AI + batch, W7 đóng gói +
 > rollout — kèm lệnh kiểm chứng, cách ghi kết quả và push.
 
@@ -75,14 +98,30 @@ Không nằm trong MVP đầu tiên: thay toàn bộ Python AI bằng Rust, tự
 
 ### 2.1. Phần Rust hiện có
 
-Workspace hiện chỉ có hai crate:
+Workspace hiện có bảy crate:
 
-- `crates/vietkara-domain`: model `Project`, `Word`, `Anchor`, schema v2, validation, load/save JSON và giữ unknown fields qua `serde(flatten)`.
-- `crates/vietkara-app`: khai báo GPUI 0.2.2 và có UI mô phỏng editor; chưa xác nhận app compile/run, chưa có event/action thật cho mở file, playback, timeline, import, save hay export.
+- `crates/vietkara-domain`: model `Project`, `Word`, `Anchor`, schema v2,
+  validation/migration v1→v2, ID 32 hex, typed word fields và giữ unknown
+  fields qua `serde(flatten)`.
+- `crates/vietkara-storage`: atomic save, manifest SHA-256, version snapshot,
+  restore an toàn, bundle ZIP staging/validation.
+- `crates/vietkara-jobs`: job lifecycle, cancel, persistence/recovery và
+  batch queue state machine; chưa nối vào app UI.
+- `crates/vietkara-media`: FFprobe/fallback, WAV reader, waveform/metrics,
+  playback trait và fake clock (`NullPlayer`); chưa phát qua thiết bị thật.
+- `crates/vietkara-render`: ASS helpers, render profile, FFmpeg argv và
+  output verification; chưa có `build_ass`/`display_plan` đầy đủ.
+- `crates/vietkara-ai-bridge`: JSON Lines v1 process bridge với timeout,
+  cancel và crash handling; worker Python JSONL entry point chưa có.
+- `crates/vietkara-app`: GPUI 0.2.2 mock editor; `cargo check` và chạy cửa
+  sổ pass trên Windows, nhưng chưa có action thật cho mở file, playback,
+  timeline, import, save hay export.
 
-Đã xác nhận `cargo check -p vietkara-domain` thành công. Chưa có kết quả test đáng tin cậy: test binary Windows bị treo sau khi khởi chạy; chưa được xem là test pass.
-
-Chưa tồn tại các crate được nêu trong kế hoạch cũ như storage, jobs, media, render và AI bridge. Vì vậy các crate này phải được tạo theo nhu cầu của từng vertical slice, không tạo toàn bộ skeleton trước khi có fixture và use case.
+Kiểm chứng headless: `cargo test` 6 crate **62/62 pass** trên Linux và
+Windows; `cargo fmt --check`/`cargo clippy` sạch. Trên Windows,
+`cargo check -p vietkara-app`, `cargo test --workspace`, workspace clippy
+và chạy app đều pass; xem giới hạn kiểm tra thủ công trong
+`docs/windows-spike.md`.
 
 ### 2.2. Production baseline Python
 
@@ -104,14 +143,24 @@ Các năng lực cần coi là hợp đồng tương thích hiện đang nằm t
 
 ### 2.3. Khoảng trống và ràng buộc đã xác nhận
 
-- Project JSON schema hiện là v2; project cũ không được ghi đè khi migration.
-- Rust hiện chỉ có typed fields cho một phần schema; `reference`, `beat`, `settings`, `alignment`, `scenes` còn là JSON value. `serde(flatten)` giữ unknown fields ở project/word, nhưng chưa có fixture chứng minh mọi đường round-trip.
-- Importer Rust hiện nhận cả project schema 1 và 2 về mặt deserialize, nhưng schema 1 chưa có migration tương đương Python; chỉ đổi trường `schema` lên 2. Ngoài ra, ID mới của Rust hiện là UUID có dấu gạch nối, khác ID 32 ký tự hex mà app Python sinh và dùng để định danh thư mục. Phải sửa và kiểm thử trước khi ghi project dùng chung.
-- `Project::save` hiện ghi thẳng vào file đích, chưa atomic; chưa dùng để ghi production project cho đến khi có storage transaction.
-- Archive có manifest media, SHA-256, giới hạn tổng dung lượng ZIP 3 GiB/2.000 entry, giới hạn project JSON 20 MiB và allowlist tên media. Các quy tắc này phải được chuyển thành acceptance tests.
-- Không mặc định xem mọi hành vi hiện tại là hợp đồng an toàn: `restore_version` xóa media đang có trước khi chép media khôi phục; lỗi giữa chừng có thể làm project mất media. Rust phải stage, xác minh fingerprint rồi mới swap an toàn; không sao chép trình tự xóa trước này.
-- Batch render và job recovery là tính năng production, không được để đến cuối nếu vertical slice dùng chung job system.
-- Import bundle hiện giải nén media vào thư mục đích trước khi kiểm tra xong manifest/fingerprint; nếu lỗi có thể còn file dở. Rust phải giải nén vào staging, xác minh toàn bộ rồi mới đưa vào project.
+- Project JSON schema hiện là v2; fixture schema 1/2 xác minh migration,
+  ID 32 hex, typed word fields và unknown fields trong các đường round-trip
+  đã có. `settings`, `reference`, `beat`, `alignment`, `scenes` vẫn còn
+  những field dạng JSON linh hoạt; settings chưa được typed đầy đủ.
+- `vietkara-storage` đã có atomic save, manifest media, SHA-256, giới hạn
+  ZIP 3 GiB/2.000 entry, project JSON 20 MiB, allowlist tên media và restore
+  an toàn theo verify → stage → swap/rollback. Các crate storage tests
+  xác minh fixture; thao tác UI và kiểm chứng path Unicode trên Windows
+  còn mở.
+- Giữ khác biệt an toàn với Python: `restore_version` stage và xác minh
+  fingerprint trước khi swap; bundle import kiểm tra trong staging trước
+  khi đưa media vào project.
+- `vietkara-jobs` đã port lifecycle/recovery và batch queue model, nhưng
+  chưa chạy render jobs từ UI; batch render production flow còn thiếu.
+- Playback hiện chỉ có abstraction/fake clock, chưa có audio device thật;
+  app UI chưa có action playback, timeline, open/save, import/export.
+- Full ASS/layout, worker JSONL entry point thật, autosave/recovery gắn UI,
+  undo/redo, preset/scene, updater và đóng gói vẫn còn trong các giai đoạn sau.
 - Beat gốc là nguồn audio xuất video; vocal tách riêng chỉ phục vụ nhận dạng/căn lời theo README.
 - Môi trường mục tiêu là Windows 10/11 x64, có đường dẫn Unicode, CPU-only và NVIDIA.
 
@@ -311,11 +360,16 @@ Không gọi một giai đoạn là hoàn tất chỉ vì compile thành công; 
 
 1. ✅ Bổ sung fixture project v1/v2, fixture archive và golden ASS/FFmpeg output từ baseline Python. — *2026-11-05: fixture v1/v2 và fixture archive/bundle trong test của `vietkara-storage` đã xong; golden ASS/FFmpeg output vẫn còn (thuộc Giai đoạn 4, làm sau khi layout contract ổn định).*
 2. ✅ Hoàn thiện `vietkara-domain` validation/migration contract và tạo `vietkara-storage`.
-3. ⏳ Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock. — *Cần máy Windows, chưa làm được trên Linux. Runbook + script tự động đã chuẩn bị sẵn: `docs/windows-spike.md`, `scripts/windows-spike-check.ps1`.*
-4. ✅ Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync. — *2026-11-05: `vietkara-jobs` và `vietkara-media` đã xong phần headless trên Linux; vertical slice có UI/tap-sync thật vẫn cần spike Windows (Giai đoạn 1) và `vietkara-app`.*
-5. ⏳ Chỉ sau khi luồng save/reopen ổn định mới port preview/export. — *Save/reopen đã ổn định (domain + storage, 14 test). Phần headless của render đã làm xong (`vietkara-render`: helper ASS, FFmpeg command, verify_output); full `build_ass`/layout vẫn còn.*
-4. Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync.
-5. Chỉ sau khi luồng save/reopen ổn định mới port preview/export.
+3. ⏳ Hoàn tất GPUI/Windows spike có IME, DPI, file picker, đường dẫn Unicode
+   và responsiveness. — *Windows 11: automated checks, `cargo check` và mở
+   cửa sổ đã pass; các kiểm tra thủ công còn mở vì mock không có control
+   nhập/file action, UI state capture sau Space bị lỗi. Xem runbook.*
+4. ⏳ Bắt đầu vertical slice playback/tap-sync sau khi GPUI có go/no-go. —
+   *Jobs/media headless đã xong; app chưa có audio device/player thật hoặc
+   timeline actions.*
+5. ⏳ Port preview/export sau khi luồng UI save/reopen ổn định. — *Domain/
+   storage round-trip fixture pass; phần headless render đã có helper ASS,
+   FFmpeg command và `verify_output`; full `build_ass`/layout còn thiếu.*
 6. Chỉ sau khi MVP đạt mới đưa AI bridge và batch render vào Rust.
 
 ## 10. Ước lượng và mốc quyết định

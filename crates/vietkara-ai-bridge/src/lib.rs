@@ -563,6 +563,10 @@ mod tests {
     use super::*;
     use std::sync::atomic::Ordering as AtomicOrdering;
 
+    fn python_command() -> &'static str {
+        if cfg!(windows) { "python" } else { "python3" }
+    }
+
     fn test_request(kind: AiKind) -> AiRequest {
         AiRequest::new(
             kind,
@@ -750,7 +754,8 @@ emit({"protocol_version": 1, "request_id": req["request_id"], "type": "result", 
     #[test]
     fn run_returns_result_and_reports_progress() {
         let script = write_fake_worker(FAKE_WORKER);
-        let config = WorkerConfig::new("python3").arg(script.path().to_string_lossy().into_owned());
+        let config =
+            WorkerConfig::new(python_command()).arg(script.path().to_string_lossy().into_owned());
         let request = test_request(AiKind::Separate);
         let mut worker = Worker::spawn(config, request).unwrap();
         let mut seen: Vec<(f32, String)> = Vec::new();
@@ -779,7 +784,8 @@ req = json.loads(sys.stdin.readline())
 print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type": "error", "error": "model missing"}), flush=True)
 "#,
         );
-        let config = WorkerConfig::new("python3").arg(script.path().to_string_lossy().into_owned());
+        let config =
+            WorkerConfig::new(python_command()).arg(script.path().to_string_lossy().into_owned());
         let mut worker = Worker::spawn(config, test_request(AiKind::Recognize)).unwrap();
         let err = worker.run(|_, _| {}).unwrap_err();
         assert!(matches!(err, AiError::WorkerFailed(m) if m == "model missing"));
@@ -790,7 +796,8 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
         let script = write_fake_worker(
             "import sys\nprint('boom: model file not found', file=sys.stderr, flush=True)\nsys.exit(3)\n",
         );
-        let config = WorkerConfig::new("python3").arg(script.path().to_string_lossy().into_owned());
+        let config =
+            WorkerConfig::new(python_command()).arg(script.path().to_string_lossy().into_owned());
         let mut worker = Worker::spawn(config, test_request(AiKind::Align)).unwrap();
         let err = worker.run(|_, _| {}).unwrap_err();
         match err {
@@ -810,7 +817,7 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
         let script = write_fake_worker(
             "import json, sys, time\nreq = json.loads(sys.stdin.readline())\ntime.sleep(30)\nprint(json.dumps({\"protocol_version\": 1, \"request_id\": req[\"request_id\"], \"type\": \"result\", \"result\": {}}), flush=True)\n",
         );
-        let config = WorkerConfig::new("python3")
+        let config = WorkerConfig::new(python_command())
             .arg(script.path().to_string_lossy().into_owned())
             .timeout(Duration::from_secs(60));
         let mut worker = Worker::spawn(config, test_request(AiKind::Align)).unwrap();
@@ -828,7 +835,7 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
         let script = write_fake_worker(
             "import json, sys, time\nreq = json.loads(sys.stdin.readline())\ntime.sleep(30)\nprint(json.dumps({\"protocol_version\": 1, \"request_id\": req[\"request_id\"], \"type\": \"result\", \"result\": {}}), flush=True)\n",
         );
-        let config = WorkerConfig::new("python3")
+        let config = WorkerConfig::new(python_command())
             .arg(script.path().to_string_lossy().into_owned())
             .timeout(Duration::from_millis(300));
         let mut worker = Worker::spawn(config, test_request(AiKind::Align)).unwrap();
@@ -838,7 +845,7 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
 
     #[test]
     fn discover_worker_finds_python_and_rejects_missing_programs() {
-        assert!(discover_worker("python3").is_ok());
+        assert!(discover_worker(python_command()).is_ok());
         let err = discover_worker("vietkara-no-such-worker-xyz").unwrap_err();
         assert!(
             matches!(err, AiError::WorkerNotFound(name) if name == "vietkara-no-such-worker-xyz")

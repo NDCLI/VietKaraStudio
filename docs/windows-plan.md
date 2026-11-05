@@ -33,7 +33,8 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
 
 **Chưa xong — tất cả ở dưới đây, đều cần Windows (trừ khi ghi rõ):**
 
-- Spike GPUI/Windows/IME/playback (Giai đoạn 1) — chưa từng build `vietkara-app`.
+- Spike GPUI/Windows/IME/playback (Giai đoạn 1) — `cargo check` và mở cửa sổ
+  app đã pass trên Windows; kiểm tra IME/DPI/Unicode/playback thủ công còn mở.
 - Phát audio bằng thiết bị thật, waveform/playhead thật, tap-sync thật.
 - Full ASS layout (`build_ass` / `display_plan`) — cần đo font trên Windows.
 - Entry point worker JSONL thật — `worker.py` hiện tại chưa nói protocol mới.
@@ -82,15 +83,14 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
 git clone https://github.com/NDCLI/VietKaraStudio.git
 cd VietKaraStudio
 git checkout codex/rust-gpui-rewrite
-git log --oneline -1   # kỳ vọng: f74d4db (commit mới nhất của nhánh;
-                     # nếu nhánh đã có commit mới hơn thì lấy commit đó)
+git log --oneline -1   # baseline spike: eb0df8d (hoặc commit mới hơn)
 rustc --version        # kỳ vọng: 1.99.1
 cargo --version        # kỳ vọng: 1.99.1
 powershell -ExecutionPolicy Bypass -File scripts\windows-spike-check.ps1
 ```
 
-Script trên chạy: `cargo fmt --check`, `cargo test` 6 crate headless,
-`cargo clippy -- -D warnings`, rồi `cargo check -p vietkara-app`.
+Script trên chạy: `cargo fmt --check`, test/clippy 6 crate headless,
+`cargo check -p vietkara-app`, sau đó test/clippy toàn workspace gồm GPUI.
 Kỳ vọng tối thiểu: 6 crate vẫn **62/62** trên Windows như trên Linux.
 Nếu crate nào fail trên Windows, **dừng lại, ghi lỗi vào
 `docs/windows-spike.md` §5** — đó là phát hiện quan trọng hơn cả GPUI.
@@ -109,21 +109,34 @@ Nếu crate nào fail trên Windows, **dừng lại, ghi lỗi vào
 **Tài liệu chính:** `docs/windows-spike.md` — làm đúng theo đó, không
 viết lại ở đây. Tóm tắt các bước và điểm quyết định:
 
-1. [ ] Chạy `scripts/windows-spike-check.ps1`, ghi log vào
-   `windows-spike-results.log` (đã gitignore, không commit).
+1. [x] Chạy `scripts/windows-spike-check.ps1` trên PowerShell 5.1; 6 crate
+   62/62, `fmt`, `clippy`, `cargo check -p vietkara-app`, workspace tests
+   và workspace clippy pass. Log nằm ở
+   `windows-spike-results.log` (gitignore, không commit).
+   Lần sau vẫn cần chạy lại khi có thay đổi code.
 2. [ ] `cargo run -p vietkara-app`: cửa sổ mở, resize, DPI 100% → 125% →
    150%, file picker / drag-drop, IME tiếng Việt, phím Space/phím tắt,
    font Unicode/VNI/TCVN3, đường dẫn Unicode (thư mục `Bài hát tiếng Việt`).
-3. [ ] Fake playback clock: quyết định tại chỗ theo `windows-spike.md` §4
-   mục 8 — (a) thêm thread tick clock giả 10 Hz ngoài UI thread để đo UI
-   có block không, hay (b) hoãn sang `vietkara-media` ở §4. Ghi quyết định
-   và lý do, đừng giả vờ đã test playback thật.
+3. [x] Fake playback clock: hoãn tới vertical slice playback; fake clock
+   đã có unit tests ở `vietkara-media`, nhưng chưa có UI hook để đo
+   responsiveness. Không thêm thread giả trong spike.
 4. [ ] Điền quyết định vào `docs/windows-spike.md` §5:
    **GPUI 0.2.2: tiếp tục / dừng**, phiên bản đã khóa (Rust 1.99.1,
    GPUI 0.2.2, commit spike), giới hạn ghi nhận được.
 5. [ ] Commit kết quả spike (chỉ file tài liệu + code spike nếu có):
    cập nhật `docs/windows-spike.md` §5 và `docs/compatibility-matrix.md`,
    push lên nhánh `codex/rust-gpui-rewrite`.
+
+**Kết quả Windows 2026-11-05:** bước tự động đã pass trên PowerShell 5.1
+(6 crate 62/62, fmt, clippy, `cargo check -p vietkara-app`,
+`cargo test --workspace`, workspace clippy); Python baseline 167/167 và
+Node tapping/timeline 14/14 cũng pass. Python suite cần `resources/source`,
+được nối tạm từ assets local có sẵn và đã gỡ junction sau test. App mở được
+cửa sổ. Bước thủ công chưa đủ để quyết định go/no-go: xem kết quả chi tiết
+trong `docs/windows-spike.md` §4–5. GO tiếp tục W3 theo quyết định và giới hạn ở windows-spike.md §5. Các spike riêng đã xác nhận mở/hủy dialog
+native, dán Unicode, Ctrl+A và Telex cơ bản (`as` → `á`, Space commit,
+Backspace trước/sau commit). Chưa đủ chuỗi Telex, DPI/resize và chọn
+đường dẫn qua dialog; xem bảng bằng chứng hiện tại trong runbook.
 
 **Điểm dừng (kế hoạch gốc §4.1):** nếu GPUI không đáp ứng IME, file
 dialog hoặc render ổn định, **dừng ở đây** — giữ `vietkara-domain` /
@@ -135,16 +148,39 @@ quyết định mới, và ghi rõ quyết định đó vào `RUST_REWRITE_PLAN.
 
 Phần lớn đã xong trên Linux. Còn lại, làm trên Windows theo thứ tự:
 
+Bắt đầu W3: `vietkara-domain::edit` có Editor sở hữu project, command sửa
+word theo ID, anchors/settings/scenes, inverse commands và event thành công.
+Lệnh lỗi không publish candidate hoặc thay history. Đã thêm InsertWord/RemoveWord và Batch (một undo step, từng lệnh con phải
+giữ project hợp lệ). Batch lỗi ở lệnh sau không publish thay đổi trước đó.
+Domain command tests và
+Clippy pass, gồm edit→undo→redo→save→reopen và lỗi giữ redo. Chưa nối UI,
+chưa autosave; bước dưới vẫn chưa hoàn tất.
+
 1. [ ] **Undo/redo — command/event model** (kế hoạch §4.2): thiết kế
    command cho sửa word/anchor/settings/scene thay vì để UI sửa trực
    tiếp struct; mỗi command có undo/redo, và autosave không ghi đè bản
    chính khi command lỗi. Test: sửa → undo → redo → save → reopen,
    nội dung phải khớp.
+Tiến độ settings: đã có `settings::Settings` cho font/font_size, aspect,
+resolution, render quality/format/fps, audio output/normalize và timeline
+linked; enum theo baseline, default và flatten giữ các field còn lại.
+Boundary `from_value` chuẩn hóa font và font_size, test domain 14/14 và
+Clippy pass. `Project.settings` và SetSettings command đã dùng typed struct;
+renderer ánh xạ enum trực tiếp. Project deserialize chuẩn hóa core settings,
+validate từ chối font_size không hữu hạn/ngoài giới hạn. Chưa nối UI;
+chưa tuyên bố parity toàn bộ `styles.validate_settings`.
+
 2. [ ] **Settings đã typed:** chuyển các field settings hay dùng trong
    `styles.validate_settings` / `DEFAULT_SETTINGS` (font, font_size,
    aspect, resolution, render_quality/format/fps, audio_output, …)
    từ `serde_json::Value` sang typed struct có default, nhưng vẫn giữ
    unknown settings fields qua `flatten` (như project/word).
+Tiến độ autosave: `vietkara-storage::autosave` ghi file recovery riêng bằng
+atomic domain save, kiểm tra project identity, chỉ đề xuất snapshot có
+mtime mới hơn bản chính. Candidate giữ snapshot đã đọc; accept trả project
+trong RAM, không ghi bản chính. Storage 8/8 tests và Clippy pass, gồm lỗi
+giữ bản chính/recovery cũ. Chưa có timer, prompt UI hoặc crash/restart test.
+
 3. [ ] **Autosave + recovery gắn vào app:** autosave ghi file tạm +
    rename (dùng `vietkara-storage`), recovery khi mở lại: nếu có bản
    autosave mới hơn bản chính, hỏi người dùng trước khi khôi phục, không
@@ -333,7 +369,7 @@ headless (đã làm xong phần lớn trên Linux) và việc UI/thiết bị.
 cargo fmt --check
 cargo test -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge
 cargo clippy -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge --all-targets -- -D warnings
-# Khi vietkara-app đã build được trên Windows, thêm:
+# Script spike chạy thêm hai lệnh dưới sau khi app có thể build:
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 # Baseline Python + JS (venv theo README.md):
@@ -341,7 +377,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 node --test tests/tapping.test.js tests/timeline_edit.test.js
 ```
 
-Nếu `cargo test --workspace` vẫn fail vì `vietkara-app`/GPUI trên Windows,
+`cargo test --workspace` và workspace clippy đã pass trên Windows 11 Pro
+2026-11-05. Nếu một lần chạy sau fail vì `vietkara-app`/GPUI trên Windows,
 ghi rõ lỗi vào `docs/windows-spike.md` §5 và tiếp tục chạy theo `-p` như
 trên — đừng bỏ qua test của các crate khác.
 
@@ -403,3 +440,173 @@ trên — đừng bỏ qua test của các crate khác.
   `crates/vietkara-render`, `crates/vietkara-ai-bridge`
   (mỗi crate có doc comment ở đầu `src/lib.rs` ghi rõ đã port gì,
   cố tình khác Python ở đâu, và chưa làm gì).
+
+### W3: nối command vào studio
+
+Studio hiện sở hữu Editor, chỉ đọc project qua accessor; cỡ chữ +/-
+phát SetSettings command, có nút undo/redo và trạng thái thành công/lỗi.
+Giới hạn 20..240, bấm ở giới hạn không thêm history. App check và Clippy
+all-targets pass. Chưa xác minh thao tác nút bằng runtime ở lượt này;
+chưa có preview render theo setting, keyboard shortcut, open/save thật
+hoặc timer/prompt autosave trong studio. Các mục W3 vẫn đang làm.
+
+### W3: mở đường dẫn và recovery trong studio
+
+`cargo run -p vietkara-app -- <project.json>` mở project và kiểm tra
+candidate mới hơn. Banner yêu cầu chọn Khôi phục hoặc Dùng bản chính;
+chặn edit/save khi chưa chọn. Recovery chấp nhận chỉ đổi Editor trong RAM.
+Nút Lưu project ghi atomic trên background executor; edit bị chặn trong
+lúc lưu để trạng thái kết quả không bị gán nhầm cho thay đổi mới. Chưa
+có Save As cho project mới, dialog Open, timer autosave hoặc kiểm tra
+crash/restart. App check/Clippy all-targets pass; runtime UI chưa kiểm tra.
+
+### W3: timer autosave trong studio
+
+Timer 30 giây được giữ bằng Task thuộc Studio (đóng entity thì hủy task),
+ghi snapshot bằng background executor khi command/undo/redo thành công.
+Không ghi khi chưa có path, đang save chính hoặc đang chờ recovery choice.
+Manual save bị chặn trong lúc autosave để tránh hai writer cạnh tranh.
+Edit khi autosave chạy vẫn đặt pending cho lượt sau; lỗi autosave đặt lại
+pending để retry và hiện lỗi, không báo saved nhầm. Save chính thành công
+xóa pending. App check/Clippy all-targets pass; chưa có bằng chứng timer
+thực sự ghi sau 30 giây hoặc kill/restart recovery trong runtime UI.
+
+### Runtime studio trên bản sao fixture
+
+Build app thành công; launch với `target/runtime-recovery/project.json`
+(copy fixture v2) mở cửa sổ, hiện tên project, 4 từ và cỡ chữ 110.
+Chưa có command thành công được xác nhận sau thao tác click cỡ chữ qua
+UI helper; không coi đây là bằng chứng timer đã ghi. Bản runtime vẫn
+được giữ để kiểm tra tiếp; chưa chạy kill/restart.
+
+Runtime đối chiếu bổ sung: UI studio hiện cỡ chữ 100 và `Đã lưu project`,
+khớp JSON file thử font_size 100, field lạ còn nguyên. Chưa xác định người
+thực hiện các thao tác lưu/chỉnh trước đó. Khi thử tạo thêm thay đổi,
+helper báo `user input was detected in this window`; dừng điều khiển để
+không tranh với người dùng. Chưa có snapshot autosave được quan sát.
+
+### W3: keyboard actions
+
+Studio có FocusHandle/key context riêng, gán focus lúc mở. Ctrl+S gọi
+luồng save hiện có; Ctrl+Z undo; Ctrl+Y/Ctrl+Shift+Z redo. Các action dùng
+cùng guard recovery/save và cùng Editor với nút bấm, không sửa state
+ngoài command. App check và Clippy all-targets pass. Chưa build/chạy lại
+UI để xác minh shortcut; executable đang chạy từ lượt trước chưa có chúng.
+
+### Storage recovery sau khi kill tiến trình
+
+Integration test `autosave_crash` spawn một writer child, chờ marker sau
+atomic autosave, kill child và đợi kết thúc. Recovery đọc lại đúng ID,
+tên chỉnh sửa và field settings lạ; bytes bản chính giữ nguyên. Test
+chạy pass trên Windows, Clippy storage all-targets pass. ChildGuard bảo
+đảm kill/wait child nếu test lỗi. Đây là crash của writer storage sau khi
+ghi xong snapshot, chưa phải crash GPUI trong lúc ghi hoặc kiểm chứng
+timer30s/prompt UI. Các phép thử runtime app đó vẫn còn mở.
+
+Rà soát phát hiện key context/action trước đó gắn nhầm vào từng lyric row.
+Đã chuyển tất cả lên root Studio và refocus root khi click, để project
+rỗng vẫn có nơi nhận phím và tránh lặp focus handle theo số từ. App check
+và Clippy all-targets pass sau sửa; vẫn cần runtime shortcut trên project
+rỗng/có từ. Không dùng kết quả compile làm bằng chứng thao tác phím đạt.
+
+Theo yêu cầu người dùng, từ lượt này gom kiểm thử vào mốc tính năng.
+Đã viết Save As/native path picker và Ctrl+Shift+S; Ctrl+S cho project mới
+mở picker. Path chỉ được cập nhật sau save thành công, hủy/lỗi giữ path
+cũ. Thay đổi mới chưa build/test; còn cần kiểm tra media refs khi Save As
+sang thư mục khác trước khi coi luồng Save As đầy đủ.
+
+Luồng Open mới: Ctrl+O/nút Mở dùng dialog native, load/candidate/Editor
+trên background executor; chỉ thay session sau khi tất cả thành công.
+Dirty độc lập với autosave_pending, không mất cờ chưa lưu sau autosave.
+Nếu dirty, banner cho bỏ thay đổi và mở hoặc hủy; có thể lưu bằng nút
+Lưu/Ctrl+S trước rồi chọn Mở lại. Cancel/load lỗi giữ project/history/path.
+Thay đổi này đang viết, chưa build/test theo yêu cầu gom kiểm thử.
+
+Đã viết guard đóng cửa sổ: chặn trong lúc ghi file, hỏi đóng không lưu
+hoặc tiếp tục khi dirty. Header có dấu * cho thay đổi chưa lưu, tách
+trạng thái recovery với save chính. Autosave thành công cập nhật trạng
+thái riêng và giữ dirty. Chưa build/test thay đổi mới (gom kiểm thử).
+
+Đang viết Save As bảo toàn layout media Python: copy managed media sang
+thư mục đích, preflight từ chối media cùng tên khác nội dung, publish
+media bằng hard-link từ bản copy tạm và JSON atomic cuối cùng. Không
+replace media đích. Nếu bước cuối lỗi, media mới thêm có thể còn để retry;
+file JSON cũ giữ nguyên. Cần kiểm tra filesystem không hỗ trợ hard-link
+và các media ref chưa thuộc allowlist trong lượt kiểm thử tổng hợp.
+
+Đang viết nhập SRT theo `static/app.js`: chia từ đều trong cue trên clock
+beat, inverse-map qua anchors về reference, bỏ tag, normalize và validate
+trước khi tạo SetLyrics command (một undo). Từ chối thay lời có khóa.
+Chưa nối nút nhập vào UI, chưa build/test theo lịch gom kiểm thử.
+
+Đã viết nút Nhập SRT/Ctrl+Shift+I: đọc UTF-8 có giới hạn 10 MiB, parse
+ở background, chờ banner xác nhận rồi commit một command. Trong lúc
+chờ, chặn chỉnh sửa/đổi project để candidate không áp vào state khác.
+Hủy/error giữ data/history. Chưa build/test các thay đổi mới.
+
+Đang viết backend audio Windows DevicePlayer dùng Rodio 0.21.1 đã ghim
+API (docs.rs versioned). Play/pause/stop/seek và position từ sink, không
+dùng fake clock để giả playback thật. Có reload khi kết thúc file. Chưa
+có worker adapter/UI hook và chưa build/test (gom kiểm thử cuối mốc).
+
+Đã viết playback worker Windows: queue bounded16, load/unload/play/pause/
+stop/seek, snapshot position/duration/error cập nhật 20ms. Device chỉ tồn
+tại trong worker, drop controller đặt cancellation, không join/block UI.
+Lỗi device/load được trả trong snapshot. Chưa nối transport UI; chưa
+build/test phần mới theo lịch gom kiểm thử.
+
+Đang nối transport thật: project-local beat.wav, controller mới khi đổi
+project, poll snapshot50ms, play/pause/stop/seek ±5s. Ctrl+Space phát,
+Escape dừng, Ctrl+Left/Right seek; vị trí lấy từ sink. Chưa import/relink
+beat và chưa build/test code mới.
+
+Đã viết shared map_time reference/beat cho SRT và timeline; click chọn
+từ để seek, highlight từ theo sink clock, panel hiện text/start/end thật
+và chỉnh đầu/cuối ±50ms qua ReplaceWord command, tôn trọng locked và
+validation. Chưa có timeline hình học hai hàng/zoom/scroll/waveform;
+code mới chưa build/test theo yêu cầu gom kiểm thử.
+
+Đã viết TapTiming theo state machine JS: tap nhanh commit ở nhịp kế,
+giữ ≥180ms commit khi thả, ngưỡng từ40ms, chống repeat, cancel/finish/back.
+Wall time tách beat time. tap_command inverse-map sang reference và từ
+chối locked/mốc âm. Chưa nối keydown/up vào UI và chưa build/test mới.
+
+Đang nối tap-sync Ctrl+T và Space keydown/up. Staging words riêng để
+commit một SetLyrics undo step khi hoàn tất; autosave chụp cả mốc đã tap
+trong staging. Lock sửa lời/open/save trong session. Vị trí lấy trực tiếp
+snapshot sink lúc event, không dùng tick UI. Còn cần xử lý backspace,
+blur/end-of-audio và hoàn thiện nút điều khiển. Chưa build/test mới.
+
+Bổ sung tap session: Backspace trả từ về mốc trước session và seek lùi1s;
+activation observer pause/cancel hold khi mất focus. Pause/seek hủy hold
+nhưng giữ session, Stop/Escape kết thúc các tap đã commit. Hết audio hoặc
+hết từ tự hoàn tất. Close guard tính cả staging chưa lưu. Có nút bắt đầu,
+từ trước, hoàn tất và bộ đếm. Chưa build/test code mới.
+
+Đang viết audio import transaction: convert WAV staging, waveform và
+SHA256, checkpoint trước replace, rollback WAV khi JSON save lỗi. Fingerprint
+khớp giữ anchors/alignment; replace khác reset theo baseline. Import media
+là checkpoint transaction, sẽ reset Editor history sau thành công thay vì
+cho undo metadata mà không khôi phục WAV. Chưa nối UI/build/test mới.
+
+Đã viết UI nhập beat/reference và Ctrl+B/Ctrl+R, chọn nguồn rồi banner
+xác nhận checkpoint/ảnh hưởng mốc lời trước convert. Yêu cầu project đã
+có path. Playback được nhả trước transaction và reset cả khi lỗi. Sau
+thành công, session chuyển sang project đã save, history cũ nằm trong
+version checkpoint. Chưa build/test mới (gom kiểm thử).
+
+Đã viết resize clock beat theo timeline_edit.js: duration tối thiểu50ms,
+chỉ nối hàng xóm chạm trong60ms và cùng line; inverse-map về reference.
+Neighbor locked trả lỗi. Một Batch command cho resize và neighbor, có
+toggle linked/independent trong UI. Đang chuẩn bị phần vẽ waveform/
+timeline hình học; code mới chưa build/test.
+
+Đã viết timeline hình học: waveform reference/beat từ metadata peaks,
+axis thời gian, khối từ hai hàng theo line, playhead sink, zoom10..500px/s
+và scroll ngang. Danh sách từ cuộn riêng để chọn. Chưa drag handle hoặc
+tối ưu virtualization cho project lớn. Chưa build/test phần mới.
+
+Đang viết drag đầu/cuối khối từ: preview riêng, commit Batch một lần khi
+mouseup/up-out; delta tính zoom và scroll. Khóa các lệnh đổi state trong
+drag, zoom giữ nguyên trong gesture. Cần kiểm tra event routing/capture
+và borrow/lifetime khi gom build/test; chưa tuyên bố runtime đạt.

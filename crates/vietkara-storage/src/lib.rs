@@ -17,6 +17,10 @@
 //! `Project::save` in `vietkara-domain` is already atomic; this crate
 //! adds the archive/version/bundle layer on top of it.
 
+pub mod autosave;
+pub mod audio_import;
+pub mod copy;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -42,6 +46,10 @@ pub const FIXED_MEDIA: &[&str] = &[
 
 #[derive(Debug, Error)]
 pub enum StorageError {
+    #[error("Media đích đã tồn tại với nội dung khác: {0}")]
+    MediaCopyConflict(PathBuf),
+    #[error("Bản phục hồi thuộc project khác.")]
+    RecoveryIdentityMismatch,
     #[error("Lỗi đọc/ghi file: {0}")]
     Io(#[from] std::io::Error),
     #[error("JSON không hợp lệ: {0}")]

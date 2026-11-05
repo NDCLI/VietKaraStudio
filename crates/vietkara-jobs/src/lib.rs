@@ -227,12 +227,13 @@ impl Job {
         let mut data = self.inner.lock().unwrap();
         data.devices.insert(stage.clone(), device);
         if let Some(reason) = reason
-            && !reason.is_empty() {
-                data.fallbacks.push(Fallback {
-                    stage,
-                    reason: truncate_chars(&reason, MAX_FALLBACK_REASON_CHARS),
-                });
-            }
+            && !reason.is_empty()
+        {
+            data.fallbacks.push(Fallback {
+                stage,
+                reason: truncate_chars(&reason, MAX_FALLBACK_REASON_CHARS),
+            });
+        }
         data.updated_at = Some(unix_now());
     }
 

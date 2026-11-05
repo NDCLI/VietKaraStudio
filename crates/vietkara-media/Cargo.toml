@@ -12,3 +12,6 @@ vietkara-domain = { path = "../vietkara-domain" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+rodio = "=0.21.1"

@@ -5930,7 +5930,11 @@ name = "vietkara-app"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "serde_json",
+ "tempfile",
+ "unicode-segmentation",
  "vietkara-domain",
+ "vietkara-storage",
 ]
 
 [[package]]
