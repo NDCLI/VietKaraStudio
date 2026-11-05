@@ -374,6 +374,75 @@ impl Studio {
         })
         .detach();
     }
+    fn choose_background_video(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_lyrics.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm video nền".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn video nền (MP4, MOV, MKV, WebM, AVI hoặc M4V)".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang tạo proxy video nền và phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_video_background(
+                                    &project, &main, &source,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã thêm nền video • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn video nền".into(),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
         {
@@ -1317,12 +1386,14 @@ impl Render for Studio {
             .and_then(|path| path.parent())
             .map(|directory| directory.join("background.jpg"))
             .filter(|path| path.is_file());
-        let background_image =
-            if background_type == "image" || (background_type == "auto" && use_background) {
-                background_asset.clone()
-            } else {
-                None
-            };
+        let background_image = if background_type == "image"
+            || background_type == "video"
+            || (background_type == "auto" && use_background)
+        {
+            background_asset.clone()
+        } else {
+            None
+        };
         let background_color = setting_color(settings, "background", 0x101d2b);
         let display_position = settings
             .extra
@@ -1753,6 +1824,9 @@ impl Render for Studio {
                                 .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(if background_asset.is_some() {"▧  Thay ảnh nền"} else {"＋  Nạp ảnh nền"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_background_image(cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if background_type == "video" {"▶  Thay video nền"} else {"＋  Nạp video nền"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_background_video(cx))))
                                 .child(div().mt_4().text_color(rgb(0x9aa7b7)).child("Project JSON"))
                                 .child(div().mt_2().text_size(px(11.)).child(self.path.as_ref().map(|path|path.display().to_string()).unwrap_or_else(||"Chưa lưu project".into()))))
                             .when(!self.left_tab_media,|panel|panel
