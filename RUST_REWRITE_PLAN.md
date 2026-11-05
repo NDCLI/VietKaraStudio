@@ -142,6 +142,8 @@
 >   `scene_<id>.png`, ghép opacity/fade trước ASS và giữ soundtrack beat.
 >   Integration test tạo ảnh/video thật bằng FFmpeg và xác minh output.
 >   Workspace hiện **94/94**; fmt/clippy/check/build pass.
+> - Port tiếp keyframe đầu/cuối cho pan, zoom và alpha của scene image; test
+>   integration chạy FFmpeg với chuyển động và alpha thay đổi theo thời gian.
 
 ## 1. Mục tiêu và phạm vi
 

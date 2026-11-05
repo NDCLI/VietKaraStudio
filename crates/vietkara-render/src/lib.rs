@@ -664,6 +664,26 @@ pub struct RenderScene {
     pub end: f64,
     pub opacity: f64,
     pub fade_seconds: f64,
+    pub keyframes: [SceneKeyframe; 2],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SceneKeyframe {
+    pub x: f64,
+    pub y: f64,
+    pub scale: f64,
+    pub opacity: f64,
+}
+
+impl Default for SceneKeyframe {
+    fn default() -> Self {
+        Self {
+            x: 0.0,
+            y: 0.0,
+            scale: 100.0,
+            opacity: 100.0,
+        }
+    }
 }
 
 /// Inputs for `ffmpeg_command`. Paths are used verbatim in the argv,
@@ -821,6 +841,29 @@ impl RenderInputs {
                     .get("transition")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("fade");
+                let parse_frame = |value: Option<&serde_json::Value>, fallback: SceneKeyframe| {
+                    let value = value.filter(|value| value.is_object());
+                    let frame_value = |key: &str, default: f64, min: f64, max: f64| {
+                        value
+                            .and_then(|frame| frame.get(key))
+                            .and_then(serde_json::Value::as_f64)
+                            .filter(|value| value.is_finite())
+                            .unwrap_or(default)
+                            .clamp(min, max)
+                    };
+                    SceneKeyframe {
+                        x: frame_value("x", fallback.x, -100.0, 100.0),
+                        y: frame_value("y", fallback.y, -100.0, 100.0),
+                        scale: frame_value("scale", fallback.scale, 100.0, 200.0),
+                        opacity: frame_value("opacity", fallback.opacity, 0.0, 100.0),
+                    }
+                };
+                let frames = scene.get("keyframes").and_then(serde_json::Value::as_array);
+                let first = parse_frame(
+                    frames.and_then(|frames| frames.first()),
+                    SceneKeyframe::default(),
+                );
+                let second = parse_frame(frames.and_then(|frames| frames.get(1)), first);
                 Some((
                     section.to_owned(),
                     image,
@@ -830,9 +873,12 @@ impl RenderInputs {
                     } else {
                         0.0
                     },
+                    [first, second],
                 ))
             })
-            .map(|(section, image, opacity, transition)| (section, (image, opacity, transition)))
+            .map(|(section, image, opacity, transition, frames)| {
+                (section, (image, opacity, transition, frames))
+            })
             .collect::<HashMap<_, _>>();
         if scenes.is_empty() || project.words.is_empty() {
             self.scenes.clear();
@@ -870,7 +916,7 @@ impl RenderInputs {
         let duration = self.duration.max(0.0);
         let mut resolved = Vec::new();
         for (index, (section, run_start, _)) in runs.iter().enumerate() {
-            let Some((image, opacity, base_transition)) = scenes.get(section) else {
+            let Some((image, opacity, base_transition, keyframes)) = scenes.get(section) else {
                 continue;
             };
             let previous_has_scene = index > 0 && scenes.contains_key(&runs[index - 1].0);
@@ -905,6 +951,7 @@ impl RenderInputs {
                     end,
                     opacity: *opacity,
                     fade_seconds: transition.min((end - start) / 2.0).max(0.05),
+                    keyframes: *keyframes,
                 });
             }
         }
@@ -1037,9 +1084,34 @@ pub fn ffmpeg_command(
             }
             let fade = scene.fade_seconds.min((end - start) / 2.0).max(0.0);
             let opacity = scene.opacity.clamp(0.0, 1.0);
-            let mut layer = format!(
-                "[{input_index}:v:0]setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,format=rgba,colorchannelmixer=aa={opacity:.4}"
+            let [first, last] = scene.keyframes;
+            let local_progress = format!(
+                "min(max(on/{:.6},0),1)",
+                (end - start) * profile.fps_value()
             );
+            let alpha_progress = format!("min(max(T/{:.6},0),1)", end - start);
+            let lerp =
+                |a: f64, b: f64, progress: &str| format!("({a:.4}+({:.4})*{progress})", b - a);
+            let scale = format!(
+                "max(1,{}/100)",
+                lerp(first.scale, last.scale, &local_progress)
+            );
+            let x = lerp(first.x, last.x, &local_progress);
+            let y = lerp(first.y, last.y, &local_progress);
+            let mut layer = format!(
+                "[{input_index}:v:0]setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,zoompan=z='{scale}':x='iw/2-iw/zoom/2-({x})*(iw-iw/zoom)/100':y='ih/2-ih/zoom/2-({y})*(ih-ih/zoom)/100':d=1:s={width}x{height}:fps={fps},format=rgba"
+            );
+            if (first.opacity - last.opacity).abs() < 0.001 {
+                layer.push_str(&format!(
+                    ",colorchannelmixer=aa={:.4}",
+                    opacity * first.opacity / 100.0
+                ));
+            } else {
+                let opacity_curve = lerp(first.opacity, last.opacity, &alpha_progress);
+                layer.push_str(&format!(
+                    ",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity:.4}*{opacity_curve}/100)/100'"
+                ));
+            }
             if fade >= 0.05 {
                 layer.push_str(&format!(",fade=t=in:st=0:d={fade:.3}:alpha=1"));
                 layer.push_str(&format!(
@@ -1642,7 +1714,11 @@ mod tests {
             "section_name": "chorus",
             "opacity": 75,
             "transition": "fade",
-            "transition_seconds": 0.8
+            "transition_seconds": 0.8,
+            "keyframes": [
+                {"x":-50,"y":20,"scale":100,"opacity":100},
+                {"x":50,"y":-20,"scale":150,"opacity":40}
+            ]
         }));
         project.words.push(
             serde_json::from_value(serde_json::json!({
@@ -1664,6 +1740,9 @@ mod tests {
         assert_eq!(inputs.scenes[0].start, 2.0);
         assert_eq!(inputs.scenes[0].end, 10.0);
         assert_eq!(inputs.scenes[0].opacity, 0.75);
+        assert_eq!(inputs.scenes[0].keyframes[0].x, -50.0);
+        assert_eq!(inputs.scenes[0].keyframes[1].scale, 150.0);
+        assert_eq!(inputs.scenes[0].keyframes[1].opacity, 40.0);
 
         let command = ffmpeg_command(&RenderProfile::default(), &inputs).unwrap();
         let graph_index = command
@@ -1672,7 +1751,12 @@ mod tests {
             .unwrap();
         let graph = &command[graph_index + 1];
         assert!(graph.contains("[2:v:0]"));
-        assert!(graph.contains("colorchannelmixer=aa=0.7500"));
+        assert!(
+            graph.contains(
+                "zoompan=z='max(1,(100.0000+(50.0000)*min(max(on/240.000000,0),1))/100)'"
+            )
+        );
+        assert!(graph.contains("geq=r='r(X,Y)'"));
         assert!(graph.contains("overlay=x=0:y=0"));
         assert!(graph.contains("ass=lyrics.ass:fontsdir=fonts[base]"));
         assert_eq!(
@@ -1927,6 +2011,15 @@ mod tests {
             end: 1.75,
             opacity: 0.6,
             fade_seconds: 0.2,
+            keyframes: [
+                SceneKeyframe::default(),
+                SceneKeyframe {
+                    x: 50.0,
+                    y: -25.0,
+                    scale: 150.0,
+                    opacity: 35.0,
+                },
+            ],
         });
         let argv = ffmpeg_command(&profile, &scene_inputs).unwrap();
         let render = std::process::Command::new(&argv[0])
