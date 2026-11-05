@@ -1,8 +1,9 @@
 # Spike GPUI / Windows — runbook (Giai đoạn 1)
 
 > Kế hoạch: `RUST_REWRITE_PLAN.md` §4.1 và §9 bước 3.
-> Nhánh: `codex/rust-gpui-rewrite`, commit baseline `a047c6b`
-> (Phase 0 + đầu Phase 2, kiểm chứng trên Linux 2026-11-05).
+> Nhánh: `codex/rust-gpui-rewrite`, commit baseline `f74d4db`
+> (Phase 0 + headless jobs/media/render/ai-bridge + kế hoạch Windows,
+> kiểm chứng trên Linux 2026-11-05: 62/62 test).
 > Mục tiêu spike: quyết định **tiếp tục với GPUI 0.2.2 đã khóa, hay dừng ở
 > điểm dừng** (giữ `vietkara-domain`/`vietkara-storage`, thay UI shell)
 > trước khi đầu tư editor.
@@ -46,7 +47,8 @@
 git clone https://github.com/NDCLI/VietKaraStudio.git
 cd VietKaraStudio
 git checkout codex/rust-gpui-rewrite
-git log --oneline -1   # kỳ vọng: a047c6b
+git log --oneline -1   # kỳ vọng: f74d4db (commit mới nhất của nhánh;
+                     # nếu nhánh đã có commit mới hơn thì lấy commit đó)
 rustc --version        # kỳ vọng: 1.99.1
 cargo --version        # kỳ vọng: 1.99.1
 ```

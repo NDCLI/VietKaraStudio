@@ -82,7 +82,8 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
 git clone https://github.com/NDCLI/VietKaraStudio.git
 cd VietKaraStudio
 git checkout codex/rust-gpui-rewrite
-git log --oneline -1   # kỳ vọng: df1a652
+git log --oneline -1   # kỳ vọng: f74d4db (commit mới nhất của nhánh;
+                     # nếu nhánh đã có commit mới hơn thì lấy commit đó)
 rustc --version        # kỳ vọng: 1.99.1
 cargo --version        # kỳ vọng: 1.99.1
 powershell -ExecutionPolicy Bypass -File scripts\windows-spike-check.ps1
