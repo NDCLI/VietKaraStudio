@@ -610,3 +610,15 @@ tối ưu virtualization cho project lớn. Chưa build/test phần mới.
 mouseup/up-out; delta tính zoom và scroll. Khóa các lệnh đổi state trong
 drag, zoom giữ nguyên trong gesture. Cần kiểm tra event routing/capture
 và borrow/lifetime khi gom build/test; chưa tuyên bố runtime đạt.
+
+### W3: kiểm thử gom mốc (sau commit 516dd2d)
+
+Lượt gom kiểm thử đầu tiên cho code viết chưa build trước đó. `cargo check`
+lỗi E0502 ở `Studio::render` (mượn `cx` khi `lyric_rows` còn sống): đã gọi
+`timeline_view(cx)` trước khi tạo `lyric_rows`. Sửa thêm hai cảnh báo
+clippy `collapsible_if` (let-chain) và chạy `cargo fmt`. Kết quả trên
+Windows: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D
+warnings` sạch; `cargo test --workspace` pass toàn bộ (vietkara-media cần
+`ffmpeg`/`ffprobe` trong PATH, nếu thiếu 3 test fixture sẽ fail). Chưa có
+bằng chứng runtime cho transport/tap-sync/timeline drag/Save As/Open/import
+beat; các mục đó vẫn mở.

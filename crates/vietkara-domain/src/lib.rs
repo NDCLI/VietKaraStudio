@@ -23,10 +23,10 @@
 
 pub mod edit;
 pub mod lyrics;
-pub mod timing;
-pub mod timeline;
-pub mod tapping;
 pub mod settings;
+pub mod tapping;
+pub mod timeline;
+pub mod timing;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

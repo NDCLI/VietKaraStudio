@@ -17,8 +17,8 @@
 //! `Project::save` in `vietkara-domain` is already atomic; this crate
 //! adds the archive/version/bundle layer on top of it.
 
-pub mod autosave;
 pub mod audio_import;
+pub mod autosave;
 pub mod copy;
 
 use serde::{Deserialize, Serialize};

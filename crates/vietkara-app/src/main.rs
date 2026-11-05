@@ -1,7 +1,8 @@
 mod timeline;
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent, PathPromptOptions, ScrollHandle, MouseButton, Render, Task, Timer,
-    Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
+    MouseButton, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window, WindowBounds,
+    WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
 use vietkara_domain::{
     Project, Word,
@@ -12,15 +13,32 @@ use std::path::PathBuf;
 use vietkara_storage::audio_import::AudioSlot;
 use vietkara_storage::autosave::{RecoveryCandidate, recovery_candidate};
 
-actions!(studio, [Undo, Redo, Save, SaveAs, Open, ImportSrt, TogglePlayback, StopPlayback, SeekBack, SeekForward, BeginTapping, ImportBeat, ImportReference]);
+actions!(
+    studio,
+    [
+        Undo,
+        Redo,
+        Save,
+        SaveAs,
+        Open,
+        ImportSrt,
+        TogglePlayback,
+        StopPlayback,
+        SeekBack,
+        SeekForward,
+        BeginTapping,
+        ImportBeat,
+        ImportReference
+    ]
+);
 
 #[cfg(windows)]
 use vietkara_media::playback::{Playback, PlaybackCommand};
 
 struct TapSession {
-    clock:vietkara_domain::tapping::TapTiming,
-    words:Vec<Word>,
-    wall:std::time::Instant,
+    clock: vietkara_domain::tapping::TapTiming,
+    words: Vec<Word>,
+    wall: std::time::Instant,
 }
 struct Studio {
     editor: Editor,
@@ -28,9 +46,9 @@ struct Studio {
     edit_status: String,
     playing: bool,
     selected_word: Option<String>,
-    timeline_zoom:f32,
-    timeline_drag:Option<timeline::TimelineDrag>,
-    timeline_scroll:ScrollHandle,
+    timeline_zoom: f32,
+    timeline_drag: Option<timeline::TimelineDrag>,
+    timeline_scroll: ScrollHandle,
     tapping: Option<TapSession>,
     play_position: f64,
     play_duration: f64,
@@ -45,7 +63,7 @@ struct Studio {
     confirm_open: bool,
     confirm_close: bool,
     pending_srt: Option<Command>,
-    pending_audio: Option<(AudioSlot,PathBuf)>,
+    pending_audio: Option<(AudioSlot, PathBuf)>,
     autosave_status: String,
     autosaving: bool,
     autosave_pending: bool,
@@ -53,298 +71,634 @@ struct Studio {
 }
 
 impl Studio {
-    fn choose_audio(&mut self,slot:AudioSlot,cx:&mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() || self.pending_audio.is_some() || self.pending_srt.is_some() {return;}
-        if self.path.is_none() {self.edit_status="Hãy lưu project trước khi nhập media".into();cx.notify();return;}
-        let selection=cx.prompt_for_paths(PathPromptOptions {files:true,directories:false,multiple:false,prompt:Some("Chọn audio hoặc video nguồn".into())});
-        self.saving=true;cx.notify();
-        cx.spawn(async move |this,cx| {
-            let selected=selection.await;
-            let _=this.update(cx,|this,cx| {
-                this.saving=false;
+    fn choose_audio(&mut self, slot: AudioSlot, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_srt.is_some()
+        {
+            return;
+        }
+        if self.path.is_none() {
+            self.edit_status = "Hãy lưu project trước khi nhập media".into();
+            cx.notify();
+            return;
+        }
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn audio hoặc video nguồn".into()),
+        });
+        self.saving = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let selected = selection.await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
                 match selected {
-                    Ok(Ok(Some(paths)))=>if let Some(path)=paths.into_iter().next() {this.pending_audio=Some((slot,path));},
-                    Ok(Ok(None))=>this.edit_status="Đã hủy nhập audio".into(),
-                    Ok(Err(error))=>this.edit_status=error.to_string(),
-                    Err(error)=>this.edit_status=error.to_string(),
+                    Ok(Ok(Some(paths))) => {
+                        if let Some(path) = paths.into_iter().next() {
+                            this.pending_audio = Some((slot, path));
+                        }
+                    }
+                    Ok(Ok(None)) => this.edit_status = "Đã hủy nhập audio".into(),
+                    Ok(Err(error)) => this.edit_status = error.to_string(),
+                    Err(error) => this.edit_status = error.to_string(),
                 }
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
     }
-    fn accept_audio(&mut self,cx:&mut Context<Self>) {
-        if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some() {return;}
-        let Some((slot,source))=self.pending_audio.take() else {return;};
-        let Some(main)=self.path.clone() else {return;};
-        let project=self.editor.project().clone();
-        #[cfg(windows)] {self.playback=None;}
-        self.playing=false;self.saving=true;
-        self.edit_status="Đang nhập audio và tạo phiên bản phục hồi…".into();cx.notify();
-        cx.spawn(async move |this,cx| {
-            let result=cx.background_executor().spawn(async move {
-                vietkara_storage::audio_import::import_audio(&project,&main,&source,slot)
-            }).await;
-            let _=this.update(cx,|this,cx| {
-                this.saving=false;
+    fn accept_audio(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some((slot, source)) = self.pending_audio.take() else {
+            return;
+        };
+        let Some(main) = self.path.clone() else {
+            return;
+        };
+        let project = self.editor.project().clone();
+        #[cfg(windows)]
+        {
+            self.playback = None;
+        }
+        self.playing = false;
+        self.saving = true;
+        self.edit_status = "Đang nhập audio và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    vietkara_storage::audio_import::import_audio(&project, &main, &source, slot)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
                 match result {
-                    Ok(imported)=>match Editor::new(imported.project) {
-                        Ok(editor)=>{
-                            this.editor=editor;this.selected_word=None;this.dirty=false;this.autosave_pending=false;
-                            this.edit_status=format!("{} • phiên bản trước: {}",if imported.relinked {"Đã relink audio, giữ mốc"}else{"Đã nhập audio"},imported.version_id);
+                    Ok(imported) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.selected_word = None;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            this.edit_status = format!(
+                                "{} • phiên bản trước: {}",
+                                if imported.relinked {
+                                    "Đã relink audio, giữ mốc"
+                                } else {
+                                    "Đã nhập audio"
+                                },
+                                imported.version_id
+                            );
                         }
-                        Err(error)=>this.edit_status=error.to_string(),
-                    }
-                    Err(error)=>this.edit_status=error,
+                        Err(error) => this.edit_status = error.to_string(),
+                    },
+                    Err(error) => this.edit_status = error,
                 }
-                this.reset_playback();cx.notify();
+                this.reset_playback();
+                cx.notify();
             });
-        }).detach();
+        })
+        .detach();
     }
 
-    fn cancel_tap_hold(&mut self,cx:&mut Context<Self>) {
-        if let Some(session)=&mut self.tapping {session.clock.cancel();}
-        #[cfg(windows)] if let Some(worker)=&self.playback {let _=worker.send(PlaybackCommand::Pause);}
-        cx.notify();
-    }
-    fn previous_tap(&mut self,cx:&mut Context<Self>) {
-        let Some(session)=&mut self.tapping else {return;};
-        let Some(tap)=session.clock.back() else {return;};
-        session.words[tap.index]=self.editor.project().words[tap.index].clone();
-        self.selected_word=Some(session.words[tap.index].id.clone());
-        self.autosave_pending=true;
-        #[cfg(windows)] if let Some(worker)=&self.playback {let _=worker.send(PlaybackCommand::Seek((tap.start-1.).max(0.)));}
-        cx.notify();
-    }
-    fn begin_tapping(&mut self,cx:&mut Context<Self>) {
-        if self.saving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() {return;}
-        if self.editor.project().words.iter().any(|w|w.locked==Some(true)) {self.edit_status="Mở khóa lời trước khi căn nhịp".into();cx.notify();return;}
-        #[cfg(windows)] {
-            let Some(worker)=&self.playback else {return;};
-            let state=worker.snapshot();if !state.loaded {return;}
-            let words=self.editor.project().words.clone();
-            let index=words.iter().position(|w|Some(&w.id)==self.selected_word.as_ref()).unwrap_or(0);
-            let Ok(clock)=vietkara_domain::tapping::TapTiming::new(words.len(),index) else {return;};
-            self.tapping=Some(TapSession{clock,words,wall:std::time::Instant::now()});
-            let _=worker.send(PlaybackCommand::Play);
-            self.edit_status="Căn nhịp: Space nhấn/thả, Enter hoàn tất".into();cx.notify();
+    fn cancel_tap_hold(&mut self, cx: &mut Context<Self>) {
+        if let Some(session) = &mut self.tapping {
+            session.clock.cancel();
         }
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback {
+            let _ = worker.send(PlaybackCommand::Pause);
+        }
+        cx.notify();
     }
-    fn accept_tap(&mut self,tap:Option<vietkara_domain::tapping::Tap>,cx:&mut Context<Self>) {
-        let Some(tap)=tap else {return;};
-        let Some(session)=&mut self.tapping else {return;};
-        let mut project=self.editor.project().clone();project.words=session.words.clone();
-        match vietkara_domain::tapping::tap_command(&project,tap) {
-            Ok(Command::ReplaceWord{word,..})=>{
-                self.selected_word=Some(word.id.clone());session.words[tap.index]=*word;
-                self.autosave_pending=true;cx.notify();
+    fn previous_tap(&mut self, cx: &mut Context<Self>) {
+        let Some(session) = &mut self.tapping else {
+            return;
+        };
+        let Some(tap) = session.clock.back() else {
+            return;
+        };
+        session.words[tap.index] = self.editor.project().words[tap.index].clone();
+        self.selected_word = Some(session.words[tap.index].id.clone());
+        self.autosave_pending = true;
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback {
+            let _ = worker.send(PlaybackCommand::Seek((tap.start - 1.).max(0.)));
+        }
+        cx.notify();
+    }
+    fn begin_tapping(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        if self
+            .editor
+            .project()
+            .words
+            .iter()
+            .any(|w| w.locked == Some(true))
+        {
+            self.edit_status = "Mở khóa lời trước khi căn nhịp".into();
+            cx.notify();
+            return;
+        }
+        #[cfg(windows)]
+        {
+            let Some(worker) = &self.playback else {
+                return;
+            };
+            let state = worker.snapshot();
+            if !state.loaded {
+                return;
             }
-            Err(error)=>{session.clock.back();self.edit_status=error;cx.notify();}
-            _=>{},
+            let words = self.editor.project().words.clone();
+            let index = words
+                .iter()
+                .position(|w| Some(&w.id) == self.selected_word.as_ref())
+                .unwrap_or(0);
+            let Ok(clock) = vietkara_domain::tapping::TapTiming::new(words.len(), index) else {
+                return;
+            };
+            self.tapping = Some(TapSession {
+                clock,
+                words,
+                wall: std::time::Instant::now(),
+            });
+            let _ = worker.send(PlaybackCommand::Play);
+            self.edit_status = "Căn nhịp: Space nhấn/thả, Enter hoàn tất".into();
+            cx.notify();
         }
     }
-    fn finish_tapping(&mut self,finalize:bool,cx:&mut Context<Self>) {
-        if finalize {
-            let tap=self.tapping.as_mut().and_then(|s|s.clock.finish(self.play_position));
-            self.accept_tap(tap,cx);
+    fn accept_tap(&mut self, tap: Option<vietkara_domain::tapping::Tap>, cx: &mut Context<Self>) {
+        let Some(tap) = tap else {
+            return;
+        };
+        let Some(session) = &mut self.tapping else {
+            return;
+        };
+        let mut project = self.editor.project().clone();
+        project.words = session.words.clone();
+        match vietkara_domain::tapping::tap_command(&project, tap) {
+            Ok(Command::ReplaceWord { word, .. }) => {
+                self.selected_word = Some(word.id.clone());
+                session.words[tap.index] = *word;
+                self.autosave_pending = true;
+                cx.notify();
+            }
+            Err(error) => {
+                session.clock.back();
+                self.edit_status = error;
+                cx.notify();
+            }
+            _ => {}
         }
-        let Some(session)=self.tapping.take() else {return;};
+    }
+    fn finish_tapping(&mut self, finalize: bool, cx: &mut Context<Self>) {
+        if finalize {
+            let tap = self
+                .tapping
+                .as_mut()
+                .and_then(|s| s.clock.finish(self.play_position));
+            self.accept_tap(tap, cx);
+        }
+        let Some(session) = self.tapping.take() else {
+            return;
+        };
         if !session.clock.history.is_empty() {
-            self.edit_status=match self.editor.execute(Command::SetLyrics{words:session.words,text:self.editor.project().text.clone()}) {
-                Ok(_)=>{self.dirty=true;self.autosave_pending=true;"Đã căn nhịp • chưa lưu".into()}
-                Err(error)=>error.to_string(),
+            self.edit_status = match self.editor.execute(Command::SetLyrics {
+                words: session.words,
+                text: self.editor.project().text.clone(),
+            }) {
+                Ok(_) => {
+                    self.dirty = true;
+                    self.autosave_pending = true;
+                    "Đã căn nhịp • chưa lưu".into()
+                }
+                Err(error) => error.to_string(),
             };
         }
         cx.notify();
     }
-    fn tap_down(&mut self,event:&KeyDownEvent,cx:&mut Context<Self>) {
-        if self.tapping.is_none() || event.keystroke.modifiers.control {return;}
-        if event.keystroke.key=="backspace" {if !event.is_held {self.previous_tap(cx);}cx.stop_propagation();return;}
-        if event.keystroke.key=="enter" {self.finish_tapping(true,cx);cx.stop_propagation();return;}
-        if event.keystroke.key!="space" || !self.playing {return;}
-        let time=self.playback_position();
-        let tap=self.tapping.as_mut().and_then(|s|s.clock.down(time,event.is_held,s.wall.elapsed().as_secs_f64()*1000.));
-        self.accept_tap(tap,cx);
-        if self.tapping.as_ref().is_some_and(|s|s.clock.done()) {self.finish_tapping(false,cx);}
+    fn tap_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        if self.tapping.is_none() || event.keystroke.modifiers.control {
+            return;
+        }
+        if event.keystroke.key == "backspace" {
+            if !event.is_held {
+                self.previous_tap(cx);
+            }
+            cx.stop_propagation();
+            return;
+        }
+        if event.keystroke.key == "enter" {
+            self.finish_tapping(true, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if event.keystroke.key != "space" || !self.playing {
+            return;
+        }
+        let time = self.playback_position();
+        let tap = self.tapping.as_mut().and_then(|s| {
+            s.clock
+                .down(time, event.is_held, s.wall.elapsed().as_secs_f64() * 1000.)
+        });
+        self.accept_tap(tap, cx);
+        if self.tapping.as_ref().is_some_and(|s| s.clock.done()) {
+            self.finish_tapping(false, cx);
+        }
         cx.stop_propagation();
     }
-    fn tap_up(&mut self,event:&KeyUpEvent,cx:&mut Context<Self>) {
-        if event.keystroke.key!="space" || self.tapping.is_none() {return;}
-        let time=self.playback_position();
-        let tap=self.tapping.as_mut().and_then(|s|s.clock.up(time,s.wall.elapsed().as_secs_f64()*1000.));
-        self.accept_tap(tap,cx);
-        if self.tapping.as_ref().is_some_and(|s|s.clock.done()) {self.finish_tapping(false,cx);}
+    fn tap_up(&mut self, event: &KeyUpEvent, cx: &mut Context<Self>) {
+        if event.keystroke.key != "space" || self.tapping.is_none() {
+            return;
+        }
+        let time = self.playback_position();
+        let tap = self
+            .tapping
+            .as_mut()
+            .and_then(|s| s.clock.up(time, s.wall.elapsed().as_secs_f64() * 1000.));
+        self.accept_tap(tap, cx);
+        if self.tapping.as_ref().is_some_and(|s| s.clock.done()) {
+            self.finish_tapping(false, cx);
+        }
         cx.stop_propagation();
     }
-    fn playback_position(&self)->f64 {
-        #[cfg(windows)] if let Some(worker)=&self.playback {return worker.snapshot().position;}
+    fn playback_position(&self) -> f64 {
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback {
+            return worker.snapshot().position;
+        }
         self.play_position
     }
 
-    fn select_word(&mut self,id:String,cx:&mut Context<Self>) {
-        if self.tapping.is_some() {return;}
-        if let Some(word)=self.editor.project().words.iter().find(|word|word.id==id) {
-            let beat=vietkara_domain::timing::map_time(word.start,&self.editor.project().anchors,false).max(0.);
-            #[cfg(windows)] if let Some(worker)=&self.playback {
-                if let Err(error)=worker.send(PlaybackCommand::Seek(beat)) {self.playback_error=Some(error);}
+    fn select_word(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.tapping.is_some() {
+            return;
+        }
+        if let Some(word) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+        {
+            let beat = vietkara_domain::timing::map_time(
+                word.start,
+                &self.editor.project().anchors,
+                false,
+            )
+            .max(0.);
+            #[cfg(windows)]
+            if let Some(worker) = &self.playback
+                && let Err(error) = worker.send(PlaybackCommand::Seek(beat))
+            {
+                self.playback_error = Some(error);
             }
-            #[cfg(not(windows))] let _=beat;
-            self.selected_word=Some(id);cx.notify();
+            #[cfg(not(windows))]
+            let _ = beat;
+            self.selected_word = Some(id);
+            cx.notify();
         }
     }
-    fn toggle_linked(&mut self,cx:&mut Context<Self>) {
-        if self.saving || self.tapping.is_some() || self.timeline_drag.is_some() || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() {return;}
-        let mut settings=self.editor.project().settings.clone();settings.timeline_linked=!settings.timeline_linked;
+    fn toggle_linked(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+        {
+            return;
+        }
+        let mut settings = self.editor.project().settings.clone();
+        settings.timeline_linked = !settings.timeline_linked;
         match self.editor.execute(Command::SetSettings(settings)) {
-            Ok(_)=>{self.dirty=true;self.autosave_pending=true;}
-            Err(error)=>self.edit_status=error.to_string(),
-        }cx.notify();
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+            }
+            Err(error) => self.edit_status = error.to_string(),
+        }
+        cx.notify();
     }
-    fn adjust_word(&mut self,start:bool,delta:f64,cx:&mut Context<Self>) {
-        if self.saving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() {return;}
-        let Some(index)=self.editor.project().words.iter().position(|word|Some(&word.id)==self.selected_word.as_ref()) else {return;};
-        let edge=if start {vietkara_domain::timeline::Edge::Start}else{vietkara_domain::timeline::Edge::End};
-        let duration=if self.play_duration>0. {self.play_duration}else{self.editor.project().words.iter().map(|w|vietkara_domain::timing::map_time(w.end,&self.editor.project().anchors,false)).fold(0.,f64::max)};
-        let result=vietkara_domain::timeline::resize(self.editor.project(),index,edge,delta,duration)
-            .and_then(|command|self.editor.execute(command).map_err(|e|e.to_string()));
-        self.edit_status=match result {
-            Ok(_)=>{self.dirty=true;self.autosave_pending=true;"Đã chỉnh mốc • chưa lưu".into()}
-            Err(error)=>error,
-        };cx.notify();
+    fn adjust_word(&mut self, start: bool, delta: f64, cx: &mut Context<Self>) {
+        if self.saving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(index) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .position(|word| Some(&word.id) == self.selected_word.as_ref())
+        else {
+            return;
+        };
+        let edge = if start {
+            vietkara_domain::timeline::Edge::Start
+        } else {
+            vietkara_domain::timeline::Edge::End
+        };
+        let duration = if self.play_duration > 0. {
+            self.play_duration
+        } else {
+            self.editor
+                .project()
+                .words
+                .iter()
+                .map(|w| {
+                    vietkara_domain::timing::map_time(w.end, &self.editor.project().anchors, false)
+                })
+                .fold(0., f64::max)
+        };
+        let result =
+            vietkara_domain::timeline::resize(self.editor.project(), index, edge, delta, duration)
+                .and_then(|command| self.editor.execute(command).map_err(|e| e.to_string()));
+        self.edit_status = match result {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã chỉnh mốc • chưa lưu".into()
+            }
+            Err(error) => error,
+        };
+        cx.notify();
     }
 
     fn reset_playback(&mut self) {
-        self.playing=false;self.play_position=0.;self.play_duration=0.;self.playback_error=None;
-        #[cfg(windows)] {
-            self.playback=None;
-            let Some(directory)=self.path.as_ref().and_then(|p|p.parent()) else {return;};
-            let path=directory.join("beat.wav");
-            if !path.is_file() {self.playback_error=Some("Chưa có beat.wav; cần nhập hoặc relink beat".into());return;}
+        self.playing = false;
+        self.play_position = 0.;
+        self.play_duration = 0.;
+        self.playback_error = None;
+        #[cfg(windows)]
+        {
+            self.playback = None;
+            let Some(directory) = self.path.as_ref().and_then(|p| p.parent()) else {
+                return;
+            };
+            let path = directory.join("beat.wav");
+            if !path.is_file() {
+                self.playback_error = Some("Chưa có beat.wav; cần nhập hoặc relink beat".into());
+                return;
+            }
             match Playback::new() {
-                Ok(worker)=>{
-                    if let Err(error)=worker.send(PlaybackCommand::Load(path)) {self.playback_error=Some(error);}
-                    self.playback=Some(worker);
+                Ok(worker) => {
+                    if let Err(error) = worker.send(PlaybackCommand::Load(path)) {
+                        self.playback_error = Some(error);
+                    }
+                    self.playback = Some(worker);
                 }
-                Err(error)=>self.playback_error=Some(error),
+                Err(error) => self.playback_error = Some(error),
             }
         }
-        #[cfg(not(windows))] {self.playback_error=Some("Backend audio hiện hỗ trợ Windows".into());}
+        #[cfg(not(windows))]
+        {
+            self.playback_error = Some("Backend audio hiện hỗ trợ Windows".into());
+        }
     }
-    fn transport(&mut self, operation:u8, cx:&mut Context<Self>) {
+    fn transport(&mut self, operation: u8, cx: &mut Context<Self>) {
         if self.tapping.is_some() {
-            if operation==1 {self.finish_tapping(false,cx);}
-            else if let Some(session)=&mut self.tapping {session.clock.cancel();}
+            if operation == 1 {
+                self.finish_tapping(false, cx);
+            } else if let Some(session) = &mut self.tapping {
+                session.clock.cancel();
+            }
         }
-        #[cfg(windows)] if let Some(worker)=&self.playback {
-            let state=worker.snapshot();
-            let command=match operation {
-                0=>if state.state==vietkara_media::PlayerState::Playing {PlaybackCommand::Pause} else {PlaybackCommand::Play},
-                1=>PlaybackCommand::Stop,
-                2=>PlaybackCommand::Seek((state.position-5.).max(0.)),
-                _=>PlaybackCommand::Seek((state.position+5.).min(state.duration)),
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback {
+            let state = worker.snapshot();
+            let command = match operation {
+                0 => {
+                    if state.state == vietkara_media::PlayerState::Playing {
+                        PlaybackCommand::Pause
+                    } else {
+                        PlaybackCommand::Play
+                    }
+                }
+                1 => PlaybackCommand::Stop,
+                2 => PlaybackCommand::Seek((state.position - 5.).max(0.)),
+                _ => PlaybackCommand::Seek((state.position + 5.).min(state.duration)),
             };
-            if let Err(error)=worker.send(command) {self.playback_error=Some(error);}
+            if let Err(error) = worker.send(command) {
+                self.playback_error = Some(error);
+            }
         }
-        #[cfg(not(windows))] let _=operation;
+        #[cfg(not(windows))]
+        let _ = operation;
         cx.notify();
     }
-    fn poll_playback(&mut self,cx:&mut Context<Self>) {
-        #[cfg(windows)] if let Some(worker)=&self.playback {
-            let state=worker.snapshot();
-            let playing=state.state==vietkara_media::PlayerState::Playing;
-            let ended=self.playing && state.state==vietkara_media::PlayerState::Stopped && state.loaded && state.position>=state.duration;
-            if self.playing!=playing || (self.play_position-state.position).abs()>0.005 || self.play_duration!=state.duration || self.playback_error!=state.error {
-                self.playing=playing;self.play_position=state.position;self.play_duration=state.duration;self.playback_error=state.error;
+    fn poll_playback(&mut self, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback {
+            let state = worker.snapshot();
+            let playing = state.state == vietkara_media::PlayerState::Playing;
+            let ended = self.playing
+                && state.state == vietkara_media::PlayerState::Stopped
+                && state.loaded
+                && state.position >= state.duration;
+            if self.playing != playing
+                || (self.play_position - state.position).abs() > 0.005
+                || self.play_duration != state.duration
+                || self.playback_error != state.error
+            {
+                self.playing = playing;
+                self.play_position = state.position;
+                self.play_duration = state.duration;
+                self.playback_error = state.error;
                 cx.notify();
             }
-            if ended && self.tapping.is_some() {self.finish_tapping(true,cx);}
+            if ended && self.tapping.is_some() {
+                self.finish_tapping(true, cx);
+            }
         }
-        #[cfg(not(windows))] let _=cx;
+        #[cfg(not(windows))]
+        let _ = cx;
     }
 
     fn import_srt(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() { return; }
-        if self.editor.project().words.iter().any(|w| w.locked==Some(true)) {
-            self.edit_status = "Mở khóa các câu trước khi nhập SRT".into(); cx.notify(); return;
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        if self
+            .editor
+            .project()
+            .words
+            .iter()
+            .any(|w| w.locked == Some(true))
+        {
+            self.edit_status = "Mở khóa các câu trước khi nhập SRT".into();
+            cx.notify();
+            return;
         }
         let project = self.editor.project().clone();
         let selection = cx.prompt_for_paths(PathPromptOptions {
-            files:true,directories:false,multiple:false,prompt:Some("Nhập file SRT".into()),
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Nhập file SRT".into()),
         });
         self.saving = true;
-        self.edit_status = "Đang chuẩn bị lời từ SRT…".into(); cx.notify();
-        cx.spawn(async move |this,cx| {
+        self.edit_status = "Đang chuẩn bị lời từ SRT…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
             let result = match selection.await {
-                Ok(Ok(Some(paths))) => if let Some(path)=paths.into_iter().next() {
-                    cx.background_executor().spawn(async move {
-                        use std::io::Read;
-                        let file = std::fs::File::open(path).map_err(|e|e.to_string())?;
-                        let mut source=String::new();
-                        file.take(10*1024*1024+1).read_to_string(&mut source).map_err(|e|e.to_string())?;
-                        if source.len()>10*1024*1024 {return Err("SRT vượt quá 10 MiB".to_owned());}
-                        vietkara_domain::lyrics::import_srt(&project,&source).map(Some).map_err(|e|e.to_string())
-                    }).await
-                } else {Ok(None)},
+                Ok(Ok(Some(paths))) => {
+                    if let Some(path) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                use std::io::Read;
+                                let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+                                let mut source = String::new();
+                                file.take(10 * 1024 * 1024 + 1)
+                                    .read_to_string(&mut source)
+                                    .map_err(|e| e.to_string())?;
+                                if source.len() > 10 * 1024 * 1024 {
+                                    return Err("SRT vượt quá 10 MiB".to_owned());
+                                }
+                                vietkara_domain::lyrics::import_srt(&project, &source)
+                                    .map(Some)
+                                    .map_err(|e| e.to_string())
+                            })
+                            .await
+                    } else {
+                        Ok(None)
+                    }
+                }
                 Ok(Ok(None)) => Ok(None),
                 Ok(Err(error)) => Err(error.to_string()),
                 Err(error) => Err(error.to_string()),
             };
-            let _=this.update(cx, |this,cx| {
-                this.saving=false;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
                 match result {
-                    Ok(Some(command)) => {this.pending_srt=Some(command);this.edit_status="SRT đã sẵn sàng, chờ xác nhận".into();}
-                    Ok(None) => this.edit_status="Đã hủy nhập SRT".into(),
-                    Err(error) => this.edit_status=error,
+                    Ok(Some(command)) => {
+                        this.pending_srt = Some(command);
+                        this.edit_status = "SRT đã sẵn sàng, chờ xác nhận".into();
+                    }
+                    Ok(None) => this.edit_status = "Đã hủy nhập SRT".into(),
+                    Err(error) => this.edit_status = error,
                 }
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
     }
-    fn accept_srt(&mut self, cx:&mut Context<Self>) {
-        let Some(command)=self.pending_srt.take() else {return;};
-        self.edit_status=match self.editor.execute(command) {
-            Ok(_) => {self.dirty=true;self.autosave_pending=true;"Đã nhập SRT • chưa lưu".into()}
+    fn accept_srt(&mut self, cx: &mut Context<Self>) {
+        let Some(command) = self.pending_srt.take() else {
+            return;
+        };
+        self.edit_status = match self.editor.execute(command) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã nhập SRT • chưa lưu".into()
+            }
             Err(error) => error.to_string(),
         };
         cx.notify();
     }
 
     fn open(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() { return; }
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
         if self.dirty {
-            self.confirm_open = true; cx.notify(); return;
+            self.confirm_open = true;
+            cx.notify();
+            return;
         }
         self.choose_open(cx);
     }
     fn choose_open(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() { return; }
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
         self.confirm_open = false;
         self.saving = true;
         let selection = cx.prompt_for_paths(PathPromptOptions {
-            files:true, directories:false, multiple:false, prompt:Some("Mở project".into()),
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Mở project".into()),
         });
         cx.notify();
-        cx.spawn(async move |this,cx| {
+        cx.spawn(async move |this, cx| {
             let result = match selection.await {
-                Ok(Ok(Some(paths))) => if let Some(path) = paths.into_iter().next() {
-                    cx.background_executor().spawn(async move {
-                        let project = vietkara_storage::load_project(&path).map_err(|e|e.to_string())?;
-                        let recovery = recovery_candidate(&path).map_err(|e|e.to_string())?;
-                        let editor = Editor::new(project).map_err(|e|e.to_string())?;
-                        Ok(Some((path,editor,recovery)))
-                    }).await
-                } else { Ok(None) },
+                Ok(Ok(Some(paths))) => {
+                    if let Some(path) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                let project = vietkara_storage::load_project(&path)
+                                    .map_err(|e| e.to_string())?;
+                                let recovery =
+                                    recovery_candidate(&path).map_err(|e| e.to_string())?;
+                                let editor = Editor::new(project).map_err(|e| e.to_string())?;
+                                Ok(Some((path, editor, recovery)))
+                            })
+                            .await
+                    } else {
+                        Ok(None)
+                    }
+                }
                 Ok(Ok(None)) => Ok(None),
                 Ok(Err(error)) => Err(error.to_string()),
                 Err(error) => Err(error.to_string()),
             };
-            let _ = this.update(cx, |this,cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.saving = false;
                 match result {
-                    Ok(Some((path,editor,recovery))) => {
-                        this.path = Some(path); this.editor = editor; this.recovery = recovery;
-                        this.autosave_pending = false; this.dirty = false;
+                    Ok(Some((path, editor, recovery))) => {
+                        this.path = Some(path);
+                        this.editor = editor;
+                        this.recovery = recovery;
+                        this.autosave_pending = false;
+                        this.dirty = false;
                         this.edit_status = "Đã mở project".into();
-                        this.selected_word=None;
+                        this.selected_word = None;
                         this.reset_playback();
                     }
                     Ok(None) => this.edit_status = "Đã hủy mở project".into(),
@@ -352,7 +706,8 @@ impl Studio {
                 }
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
     }
 
     fn recover(&mut self, accept: bool, cx: &mut Context<Self>) {
@@ -373,38 +728,86 @@ impl Studio {
         }
     }
     fn save(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
             return;
         }
-        if let Some(path) = self.path.clone() { self.save_to(path,cx); }
-        else { self.save_as(cx); }
+        if let Some(path) = self.path.clone() {
+            self.save_to(path, cx);
+        } else {
+            self.save_as(cx);
+        }
     }
     fn save_as(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() { return; }
-        let directory = match self.path.as_ref().and_then(|p| p.parent()).map(PathBuf::from)
-            .map(Ok).unwrap_or_else(std::env::current_dir) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let directory = match self
+            .path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(PathBuf::from)
+            .map(Ok)
+            .unwrap_or_else(std::env::current_dir)
+        {
             Ok(path) => path,
-            Err(error) => { self.edit_status = error.to_string(); cx.notify(); return; }
+            Err(error) => {
+                self.edit_status = error.to_string();
+                cx.notify();
+                return;
+            }
         };
-        let result = cx.prompt_for_new_path(&directory,Some("project.json"));
+        let result = cx.prompt_for_new_path(&directory, Some("project.json"));
         self.saving = true;
         self.edit_status = "Chọn nơi lưu project".into();
         cx.notify();
-        cx.spawn(async move |this,cx| {
+        cx.spawn(async move |this, cx| {
             let selection = result.await;
-            let _ = this.update(cx, |this,cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.saving = false;
                 match selection {
-                    Ok(Ok(Some(path))) => this.save_to(path,cx),
-                    Ok(Ok(None)) => { this.edit_status = "Đã hủy chọn nơi lưu".into(); cx.notify(); }
-                    Ok(Err(error)) => { this.edit_status = error.to_string(); cx.notify(); }
-                    Err(error) => { this.edit_status = error.to_string(); cx.notify(); }
+                    Ok(Ok(Some(path))) => this.save_to(path, cx),
+                    Ok(Ok(None)) => {
+                        this.edit_status = "Đã hủy chọn nơi lưu".into();
+                        cx.notify();
+                    }
+                    Ok(Err(error)) => {
+                        this.edit_status = error.to_string();
+                        cx.notify();
+                    }
+                    Err(error) => {
+                        this.edit_status = error.to_string();
+                        cx.notify();
+                    }
                 }
             });
-        }).detach();
+        })
+        .detach();
     }
     fn save_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() { return; }
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
         let source_path = self.path.clone();
         let saved_path = path.clone();
         let project = self.editor.project().clone();
@@ -414,7 +817,13 @@ impl Studio {
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { vietkara_storage::copy::save_project_copy(&project, source_path.as_deref(), &path) })
+                .spawn(async move {
+                    vietkara_storage::copy::save_project_copy(
+                        &project,
+                        source_path.as_deref(),
+                        &path,
+                    )
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.saving = false;
@@ -436,7 +845,13 @@ impl Studio {
     }
 
     fn font_size(&mut self, delta: f64, cx: &mut Context<Self>) {
-        if self.saving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() {
+        if self.saving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
             return;
         }
         let mut settings = self.editor.project().settings.clone();
@@ -456,7 +871,13 @@ impl Studio {
         cx.notify();
     }
     fn history(&mut self, redo: bool, cx: &mut Context<Self>) {
-        if self.saving || self.recovery.is_some() || self.pending_srt.is_some() || self.pending_audio.is_some() || self.tapping.is_some() || self.timeline_drag.is_some() {
+        if self.saving
+            || self.recovery.is_some()
+            || self.pending_srt.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
             return;
         }
         let result = if redo {
@@ -500,20 +921,44 @@ impl Render for Studio {
         } else {
             "▶  Phát"
         };
-        let display_words=self.timeline_drag.as_ref().map(|s|s.words.as_slice()).or_else(||self.tapping.as_ref().map(|s|s.words.as_slice())).unwrap_or(&self.editor.project().words);
-        let selected=display_words.iter().find(|word|Some(&word.id)==self.selected_word.as_ref());
-        let selected_text=selected.map(|word|word.text.clone()).unwrap_or_else(||"Chọn một từ trên timeline".into());
-        let selected_start=selected.map(|word|word.start).unwrap_or(0.);
-        let selected_end=selected.map(|word|word.end).unwrap_or(0.);
-        let reference_position=vietkara_domain::timing::map_time(self.play_position,&self.editor.project().anchors,true);
+        let display_words = self
+            .timeline_drag
+            .as_ref()
+            .map(|s| s.words.as_slice())
+            .or_else(|| self.tapping.as_ref().map(|s| s.words.as_slice()))
+            .unwrap_or(&self.editor.project().words);
+        let selected = display_words
+            .iter()
+            .find(|word| Some(&word.id) == self.selected_word.as_ref());
+        let selected_text = selected
+            .map(|word| word.text.clone())
+            .unwrap_or_else(|| "Chọn một từ trên timeline".into());
+        let selected_start = selected.map(|word| word.start).unwrap_or(0.);
+        let selected_end = selected.map(|word| word.end).unwrap_or(0.);
+        let reference_position = vietkara_domain::timing::map_time(
+            self.play_position,
+            &self.editor.project().anchors,
+            true,
+        );
+        let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {
-            let id=line.id.clone();
-            let selected=Some(&line.id)==self.selected_word.as_ref();
-            let active=self.playing && reference_position>=line.start && reference_position<line.end;
+            let id = line.id.clone();
+            let selected = Some(&line.id) == self.selected_word.as_ref();
+            let active =
+                self.playing && reference_position >= line.start && reference_position < line.end;
             div()
                 .cursor_pointer()
-                .bg(rgb(if selected {0x34465b} else if active {0x255348} else {0x20232b}))
-                .on_mouse_down(MouseButton::Left,cx.listener(move |this, _, _, cx|this.select_word(id.clone(),cx)))
+                .bg(rgb(if selected {
+                    0x34465b
+                } else if active {
+                    0x255348
+                } else {
+                    0x20232b
+                }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _, _, cx| this.select_word(id.clone(), cx)),
+                )
                 .flex()
                 .justify_between()
                 .px_3()
@@ -758,7 +1203,7 @@ impl Render for Studio {
                                     .bg(rgb(0x20232b))
                                     .rounded_md()
                                     .p_3()
-                                    .child(self.timeline_view(cx))
+                                    .child(timeline)
                                     .child("DANH SÁCH TỪ")
                                     .child(div().cursor_pointer().child(if self.editor.project().settings.timeline_linked {"Mốc: Liên kết"}else{"Mốc: Độc lập"})
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx))))
@@ -833,13 +1278,13 @@ fn main() {
     };
     Application::new().run(move |cx: &mut App| {
         cx.bind_keys([
-            KeyBinding::new("ctrl-b",ImportBeat,Some("Studio")),
-            KeyBinding::new("ctrl-r",ImportReference,Some("Studio")),
-            KeyBinding::new("ctrl-t",BeginTapping,Some("Studio")),
-            KeyBinding::new("ctrl-space",TogglePlayback,Some("Studio")),
-            KeyBinding::new("escape",StopPlayback,Some("Studio")),
-            KeyBinding::new("ctrl-left",SeekBack,Some("Studio")),
-            KeyBinding::new("ctrl-right",SeekForward,Some("Studio")),
+            KeyBinding::new("ctrl-b", ImportBeat, Some("Studio")),
+            KeyBinding::new("ctrl-r", ImportReference, Some("Studio")),
+            KeyBinding::new("ctrl-t", BeginTapping, Some("Studio")),
+            KeyBinding::new("ctrl-space", TogglePlayback, Some("Studio")),
+            KeyBinding::new("escape", StopPlayback, Some("Studio")),
+            KeyBinding::new("ctrl-left", SeekBack, Some("Studio")),
+            KeyBinding::new("ctrl-right", SeekForward, Some("Studio")),
             KeyBinding::new("ctrl-shift-i", ImportSrt, Some("Studio")),
             KeyBinding::new("ctrl-o", Open, Some("Studio")),
             KeyBinding::new("ctrl-s", Save, Some("Studio")),
@@ -858,23 +1303,35 @@ fn main() {
                 cx.new(|cx: &mut Context<Studio>| {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
-                        weak.update(cx, |studio: &mut Studio,cx| {
+                        weak.update(cx, |studio: &mut Studio, cx| {
                             if studio.saving || studio.autosaving {
-                                studio.edit_status = "Đang ghi file, vui lòng chờ trước khi đóng".into();
-                                cx.notify(); return false;
+                                studio.edit_status =
+                                    "Đang ghi file, vui lòng chờ trước khi đóng".into();
+                                cx.notify();
+                                return false;
                             }
-                            if studio.dirty || studio.tapping.as_ref().is_some_and(|s|!s.clock.history.is_empty()) {
+                            if studio.dirty
+                                || studio
+                                    .tapping
+                                    .as_ref()
+                                    .is_some_and(|s| !s.clock.history.is_empty())
+                            {
                                 studio.confirm_close = true;
-                                cx.notify(); return false;
+                                cx.notify();
+                                return false;
                             }
                             true
-                        }).unwrap_or(true)
+                        })
+                        .unwrap_or(true)
                     });
                     let focus_handle = cx.focus_handle();
                     window.focus(&focus_handle);
-                    cx.observe_window_activation(window, |studio,window,cx| {
-                        if !window.is_window_active() && studio.tapping.is_some() {studio.cancel_tap_hold(cx);}
-                    }).detach();
+                    cx.observe_window_activation(window, |studio, window, cx| {
+                        if !window.is_window_active() && studio.tapping.is_some() {
+                            studio.cancel_tap_hold(cx);
+                        }
+                    })
+                    .detach();
                     let task = cx.spawn(async move |this, cx| {
                         loop {
                             Timer::after(std::time::Duration::from_secs(30)).await;
@@ -886,11 +1343,16 @@ fn main() {
                                 let path = this.path.clone()?;
                                 this.autosave_pending = false;
                                 this.autosaving = true;
-                                Some(({
-                                    let mut project=this.editor.project().clone();
-                                    if let Some(session)=&this.tapping {project.words=session.words.clone();}
-                                    project
-                                }, path))
+                                Some((
+                                    {
+                                        let mut project = this.editor.project().clone();
+                                        if let Some(session) = &this.tapping {
+                                            project.words = session.words.clone();
+                                        }
+                                        project
+                                    },
+                                    path,
+                                ))
                             });
                             let Ok(snapshot) = snapshot else {
                                 break;
@@ -923,13 +1385,15 @@ fn main() {
                             }
                         }
                     });
-                    let playback_task=cx.spawn(async move |this,cx| {
+                    let playback_task = cx.spawn(async move |this, cx| {
                         loop {
                             Timer::after(std::time::Duration::from_millis(50)).await;
-                            if this.update(cx,|this,cx|this.poll_playback(cx)).is_err() {break;}
+                            if this.update(cx, |this, cx| this.poll_playback(cx)).is_err() {
+                                break;
+                            }
                         }
                     });
-                    let mut studio=Studio {
+                    let mut studio = Studio {
                         focus_handle,
                         editor: Editor::new(project).expect("Project mới phải hợp lệ"),
                         edit_status: initial_status,
@@ -940,14 +1404,23 @@ fn main() {
                         confirm_open: false,
                         confirm_close: false,
                         pending_srt: None,
-                        pending_audio:None,
+                        pending_audio: None,
                         autosave_status: String::new(),
                         autosaving: false,
                         autosave_pending: false,
                         _autosave_task: task,
-                        playing: false, selected_word:None, timeline_zoom:80.,timeline_drag:None,timeline_scroll:ScrollHandle::new(), tapping:None, play_position:0.,play_duration:0.,playback_error:None,
-                        #[cfg(windows)] playback:None,
-                        _playback_task:playback_task,
+                        playing: false,
+                        selected_word: None,
+                        timeline_zoom: 80.,
+                        timeline_drag: None,
+                        timeline_scroll: ScrollHandle::new(),
+                        tapping: None,
+                        play_position: 0.,
+                        play_duration: 0.,
+                        playback_error: None,
+                        #[cfg(windows)]
+                        playback: None,
+                        _playback_task: playback_task,
                     };
                     studio.reset_playback();
                     studio

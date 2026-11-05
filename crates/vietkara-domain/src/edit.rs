@@ -5,7 +5,10 @@ use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub enum Command {
-    SetLyrics { words: Vec<Word>, text: String },
+    SetLyrics {
+        words: Vec<Word>,
+        text: String,
+    },
     InsertWord {
         index: usize,
         word: Box<Word>,
@@ -39,9 +42,9 @@ pub enum EditError {
 impl Command {
     fn apply(&self, project: &mut Project) -> Result<Self, EditError> {
         Ok(match self {
-            Self::SetLyrics {words,text} => Self::SetLyrics {
-                words: std::mem::replace(&mut project.words,words.clone()),
-                text: std::mem::replace(&mut project.text,text.clone()),
+            Self::SetLyrics { words, text } => Self::SetLyrics {
+                words: std::mem::replace(&mut project.words, words.clone()),
+                text: std::mem::replace(&mut project.text, text.clone()),
             },
             Self::InsertWord { index, word } => {
                 if *index > project.words.len() {
