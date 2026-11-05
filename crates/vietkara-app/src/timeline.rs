@@ -1,5 +1,13 @@
 use super::*;
 use gpui::Div;
+
+fn clamp_seek_position(position: f64, duration: f64) -> f64 {
+    if !position.is_finite() || !duration.is_finite() {
+        return 0.0;
+    }
+    position.clamp(0.0, duration.max(0.0))
+}
+
 pub(super) struct TimelineDrag {
     index: usize,
     edge: vietkara_domain::timeline::Edge,
@@ -9,6 +17,29 @@ pub(super) struct TimelineDrag {
     pub(super) words: Vec<Word>,
 }
 impl Studio {
+    pub(super) fn seek_timeline(&mut self, position: f64, cx: &mut Context<Self>) {
+        if self.tapping.is_some() || self.timeline_drag.is_some() {
+            return;
+        }
+        let project = self.editor.project();
+        let word_duration = project
+            .words
+            .iter()
+            .map(|word| vietkara_domain::timing::map_time(word.end, &project.anchors, false))
+            .fold(0.0, f64::max);
+        let duration = self.play_duration.max(word_duration);
+        let position = clamp_seek_position(position, duration);
+        #[cfg(windows)]
+        if let Some(worker) = &self.playback
+            && let Err(error) = worker.send(PlaybackCommand::Seek(position))
+        {
+            self.playback_error = Some(error);
+        }
+        self.play_position = position;
+        self.request_background_frame(cx);
+        cx.notify();
+    }
+
     pub(super) fn start_resize(
         &mut self,
         index: usize,
@@ -114,8 +145,18 @@ impl Studio {
                     .absolute()
                     .left(px(time as f32 * zoom))
                     .top(px(0.))
+                    .w(px(
+                        ((step as f32 * zoom).min(width - time as f32 * zoom)).max(1.)
+                    ))
+                    .h(px(18.))
                     .text_size(px(10.))
-                    .child(format!("{time:.0}s")),
+                    .cursor_pointer()
+                    .hover(|style| style.bg(rgb(0x343b49)))
+                    .child(format!("{time:.0}s"))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _, _, cx| this.seek_timeline(time, cx)),
+                    ),
             );
         }
         for (metadata, label, top, color) in [
@@ -254,5 +295,20 @@ impl Studio {
                     .h(px(190.))
                     .child(content),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_seek_position;
+
+    #[test]
+    fn timeline_seek_is_clamped_and_rejects_non_finite_values() {
+        assert_eq!(clamp_seek_position(-3.0, 20.0), 0.0);
+        assert_eq!(clamp_seek_position(8.5, 20.0), 8.5);
+        assert_eq!(clamp_seek_position(25.0, 20.0), 20.0);
+        assert_eq!(clamp_seek_position(8.5, -1.0), 0.0);
+        assert_eq!(clamp_seek_position(f64::NAN, 20.0), 0.0);
+        assert_eq!(clamp_seek_position(8.5, f64::INFINITY), 0.0);
     }
 }

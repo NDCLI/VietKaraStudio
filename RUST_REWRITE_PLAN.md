@@ -305,6 +305,10 @@
 >   được lọc do binary không có trên PATH. Làm mềm glow bằng 9 lớp glyph trắng
 >   alpha thấp lệch quanh mép trong clipping band; GPUI 0.2.2 chưa có blur glyph
 >   trực tiếp nên đây là xấp xỉ raster qua các lớp, không phải Gaussian blur.
+> - Thước timeline GPUI đã có thể click để seek beat tới từng mốc thời gian; thao
+>   tác gửi lệnh seek cho playback worker, cập nhật playhead/preview ngay, giới
+>   hạn trong duration và bỏ qua khi đang căn nhịp hoặc kéo mốc. Regression test
+>   kiểm tra clamp và giá trị không hữu hạn; app check và test mục tiêu pass.
 
 ## 1. Mục tiêu và phạm vi
 
