@@ -55,6 +55,55 @@ pub struct DisplayPlan {
     pub height: u32,
     pub font: String,
     pub rows: Vec<DisplayRow>,
+    pub title: Option<TitleLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TitleRow {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub size: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TitleTemplate {
+    pub colors: Vec<String>,
+    pub opacity: f64,
+    pub border: String,
+    pub border_width: f64,
+    pub radius: f64,
+    pub pad_x: f64,
+    pub pad_y: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TitleBox {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub template: TitleTemplate,
+}
+
+#[derive(Debug, Clone)]
+pub struct TitleLayout {
+    pub start: f64,
+    pub end: f64,
+    pub effect_seconds: f64,
+    pub enter: String,
+    pub exit: String,
+    pub rows: Vec<TitleRow>,
+    pub color: String,
+    pub outline: String,
+    pub outline_width: f64,
+    pub shadow: f64,
+    pub shadow_color: String,
+    pub weight: u32,
+    pub italic: bool,
+    pub font: String,
+    pub template: Option<TitleBox>,
 }
 
 #[derive(Clone)]
@@ -104,6 +153,231 @@ fn text_width<M: TextMeasurer>(
     horizontal_scale: f64,
 ) -> f64 {
     measure.width(text, font, size, italic).max(0.0) * horizontal_scale / 100.0
+}
+
+fn setting_color(settings: &serde_json::Map<String, Value>, key: &str, default: &str) -> String {
+    settings
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| crate::is_hex_color(value))
+        .unwrap_or(default)
+        .to_owned()
+}
+
+fn title_template(name: &str) -> Option<TitleTemplate> {
+    let (colors, opacity, border, border_width, radius, pad_x, pad_y) = match name {
+        "gradient" => (
+            ["#762ee5", "#e83e86", "#ffab51"],
+            96.0,
+            "#ffe8f2",
+            0.0,
+            14.0,
+            0.42,
+            0.24,
+        ),
+        "midnight" => (
+            ["#101a2b", "#1c2b42", ""],
+            95.0,
+            "#e8c568",
+            2.0,
+            8.0,
+            0.42,
+            0.25,
+        ),
+        "crystal" => (
+            ["#183144", "#476d82", ""],
+            82.0,
+            "#b8e7f5",
+            1.5,
+            18.0,
+            0.40,
+            0.28,
+        ),
+        "neon" => (
+            ["#10112b", "#301446", ""],
+            96.0,
+            "#48e9dc",
+            2.0,
+            7.0,
+            0.42,
+            0.25,
+        ),
+        "retro" => (
+            ["#321b18", "#73401f", ""],
+            96.0,
+            "#e5aa58",
+            2.0,
+            2.0,
+            0.42,
+            0.25,
+        ),
+        "pastel" => (
+            ["#71395e", "#554d83", ""],
+            94.0,
+            "#ffc7e1",
+            1.5,
+            16.0,
+            0.40,
+            0.26,
+        ),
+        _ => return None,
+    };
+    Some(TitleTemplate {
+        colors: colors
+            .into_iter()
+            .filter(|color| !color.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        opacity,
+        border: border.to_owned(),
+        border_width,
+        radius,
+        pad_x,
+        pad_y,
+    })
+}
+
+fn title_layout<M: TextMeasurer>(
+    project: &Project,
+    measure: &M,
+    width: u32,
+    height: u32,
+) -> Option<TitleLayout> {
+    let settings = &project.settings.extra;
+    if !boolean(settings, "title_enabled", false) {
+        return None;
+    }
+    let title = string(settings, "title_text", "").trim();
+    if title.is_empty() {
+        return None;
+    }
+    let start = number(settings, "title_start", 0.0).max(0.0);
+    let configured_end = number(settings, "title_end", 8.0);
+    let beat_duration = project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("duration"))
+        .and_then(Value::as_f64)
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .unwrap_or(configured_end);
+    let end = configured_end.min(beat_duration);
+    if !end.is_finite() || end <= start {
+        return None;
+    }
+    let font = string(settings, "title_font", "Arial").to_owned();
+    let italic = boolean(settings, "title_italic", false);
+    let title_size = number(settings, "title_size", 105.0).clamp(30.0, 220.0);
+    let credit = string(settings, "title_credit", "").trim();
+    let mut rows = Vec::new();
+    let mut y = f64::from(height) * number(settings, "title_y", 28.0).clamp(5.0, 85.0) / 100.0;
+    for (text, factor) in [(title, 1.0), (credit, 0.43)] {
+        if text.is_empty() {
+            continue;
+        }
+        let size = title_size * factor;
+        let measured = measure.width(text, &font, size, italic).max(0.0);
+        rows.push(TitleRow {
+            text: text.to_owned(),
+            x: 0.0,
+            y,
+            width: measured,
+            size,
+        });
+        y += size * 1.45;
+    }
+    let initial_width = rows.iter().map(|row| row.width).fold(0.0_f64, f64::max);
+    let initial_shrink = (f64::from(width) * 0.86 / initial_width.max(1.0)).min(1.0);
+    if initial_shrink < 1.0 {
+        let first_y = rows[0].y;
+        for row in &mut rows {
+            row.size *= initial_shrink;
+            row.width *= initial_shrink;
+            row.y = first_y + (row.y - first_y) * initial_shrink;
+        }
+    }
+
+    let template = title_template(string(settings, "title_template", "none"));
+    let title_x = number(settings, "title_x", 50.0).clamp(5.0, 95.0) / 100.0;
+    let title_box = if let Some(mut template) = template {
+        let outline = number(settings, "title_outline_width", 3.0).clamp(0.0, 12.0);
+        let shadow = number(settings, "title_shadow", 2.0).clamp(0.0, 15.0);
+        let paint_x = outline + shadow * 2.5 + template.border_width + 3.0;
+        let paint_y = paint_x;
+        let mut main_size = rows[0].size;
+        let mut pad_x = (main_size * template.pad_x).max(paint_x + main_size * 0.04);
+        let mut pad_y = (main_size * template.pad_y).max(paint_y + main_size * 0.04);
+        let content_width = rows.iter().map(|row| row.width).fold(0.0_f64, f64::max);
+        let shrink =
+            ((f64::from(width) * 0.94 - 2.0 * pad_x) / (content_width * 1.02).max(1.0)).min(1.0);
+        if shrink < 1.0 {
+            let first_y = rows[0].y;
+            for row in &mut rows {
+                row.size *= shrink;
+                row.width *= shrink;
+                row.y = first_y + (row.y - first_y) * shrink;
+            }
+            main_size = rows[0].size;
+            pad_x = (main_size * template.pad_x).max(paint_x + main_size * 0.04);
+            pad_y = (main_size * template.pad_y).max(paint_y + main_size * 0.04);
+        }
+        template.pad_x = pad_x;
+        template.pad_y = pad_y;
+        let first_y = rows[0].y;
+        let box_height =
+            rows.last().unwrap().y + rows.last().unwrap().size * 1.2 - first_y + 2.0 * pad_y;
+        let box_y = (f64::from(height) * 0.02)
+            .max((rows[0].y - pad_y).min(f64::from(height) * 0.98 - box_height));
+        let content_width = rows.iter().map(|row| row.width).fold(0.0_f64, f64::max);
+        let box_width = (content_width + 2.0 * pad_x).min(f64::from(width) * 0.94);
+        let box_x = (f64::from(width) * 0.02).max(
+            (f64::from(width) * title_x - box_width / 2.0).min(f64::from(width) * 0.98 - box_width),
+        );
+        let text_inset = pad_x + (content_width * 1.02 - content_width) / 2.0;
+        for row in &mut rows {
+            row.x = box_x + text_inset;
+            row.y = row.y + box_y + pad_y - first_y;
+        }
+        Some(TitleBox {
+            x: box_x,
+            y: box_y,
+            width: box_width,
+            height: box_height,
+            template,
+        })
+    } else {
+        let content_width = rows.iter().map(|row| row.width).fold(0.0_f64, f64::max);
+        let x = (f64::from(width) * 0.02).max(
+            (f64::from(width) * title_x - content_width / 2.0)
+                .min(f64::from(width) * 0.98 - content_width),
+        );
+        let overflow = (rows.last().unwrap().y + rows.last().unwrap().size * 1.2
+            - f64::from(height) * 0.95)
+            .max(0.0);
+        for row in &mut rows {
+            row.x = x;
+            row.y -= overflow;
+        }
+        None
+    };
+    Some(TitleLayout {
+        start,
+        end,
+        effect_seconds: number(settings, "title_effect_seconds", 0.7)
+            .clamp(0.1, 3.0)
+            .min((end - start) / 2.0),
+        enter: string(settings, "title_enter", "fade").to_owned(),
+        exit: string(settings, "title_exit", "fade").to_owned(),
+        rows,
+        color: setting_color(settings, "title_color", "#ffffff"),
+        outline: setting_color(settings, "title_outline", "#15202a"),
+        outline_width: number(settings, "title_outline_width", 3.0).clamp(0.0, 12.0),
+        shadow: number(settings, "title_shadow", 2.0).clamp(0.0, 15.0),
+        shadow_color: setting_color(settings, "title_shadow_color", "#000000"),
+        weight: number(settings, "title_weight", 700.0).clamp(300.0, 900.0) as u32,
+        italic,
+        font,
+        template: title_box,
+    })
 }
 
 /// Build the lyric portion of the display plan from project words and anchors.
@@ -375,6 +649,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
         height,
         font: font.to_owned(),
         rows,
+        title: title_layout(project, measure, width, height),
     }
 }
 

@@ -2117,42 +2117,62 @@ impl Render for Studio {
         };
         let preview_scale = preview_width / layout.width as f32;
         let preview_position = self.play_position;
-        let current_preview: Vec<_> = if display_mode == "karaoke" && !active_plan_rows.is_empty() {
-            active_plan_rows
-                .iter()
-                .flat_map(|&row_index| {
-                    let row = &layout.rows[row_index];
-                    let line_color = role_color(row.line);
-                    row.words.iter().map(move |planned| {
-                        let active =
-                            preview_position >= planned.start && preview_position < planned.end;
-                        let sung = preview_position >= planned.end;
-                        let color = if active || sung {
-                            line_color
-                        } else if Some(planned.word.id.as_str()) == selected_id {
-                            0xffdf79
-                        } else {
-                            0xffffff
-                        };
-                        div()
-                            .absolute()
-                            .left(px(planned.x as f32 * preview_scale))
-                            .top(px(row.y as f32 * preview_scale))
-                            .text_size(px(row.font_size as f32 * preview_scale))
-                            .text_color(rgb(color))
-                            .when(italic, |text| text.italic())
-                            .child(planned.word.text.clone())
+        let title_visible = layout
+            .title
+            .as_ref()
+            .is_some_and(|title| preview_position >= title.start && preview_position < title.end);
+        let mut current_preview: Vec<_> =
+            if display_mode == "karaoke" && !active_plan_rows.is_empty() {
+                active_plan_rows
+                    .iter()
+                    .flat_map(|&row_index| {
+                        let row = &layout.rows[row_index];
+                        let line_color = role_color(row.line);
+                        row.words.iter().map(move |planned| {
+                            let active =
+                                preview_position >= planned.start && preview_position < planned.end;
+                            let sung = preview_position >= planned.end;
+                            let color = if active || sung {
+                                line_color
+                            } else if Some(planned.word.id.as_str()) == selected_id {
+                                0xffdf79
+                            } else {
+                                0xffffff
+                            };
+                            div()
+                                .absolute()
+                                .left(px(planned.x as f32 * preview_scale))
+                                .top(px(row.y as f32 * preview_scale))
+                                .text_size(px(row.font_size as f32 * preview_scale))
+                                .text_color(rgb(color))
+                                .when(italic, |text| text.italic())
+                                .child(planned.word.text.clone())
+                        })
                     })
-                })
-                .collect()
-        } else {
-            preview_rows
-                .iter()
-                .map(|(line, size, subdued, color)| {
-                    preview_line_element(*line, *size, *subdued, *color)
-                })
-                .collect()
-        };
+                    .collect()
+            } else {
+                preview_rows
+                    .iter()
+                    .map(|(line, size, subdued, color)| {
+                        preview_line_element(*line, *size, *subdued, *color)
+                    })
+                    .collect()
+            };
+        if let Some(title) = layout.title.as_ref().filter(|_| title_visible) {
+            for row in &title.rows {
+                current_preview.push(
+                    div()
+                        .absolute()
+                        .left(px(row.x as f32 * preview_scale))
+                        .top(px(row.y as f32 * preview_scale))
+                        .text_size(px(row.size as f32 * preview_scale))
+                        .text_color(rgb(0xffffff))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .when(title.italic, |text| text.italic())
+                        .child(row.text.clone()),
+                );
+            }
+        }
         let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {
             let id = line.id.clone();
@@ -2465,7 +2485,7 @@ impl Render for Studio {
                                                     .when(display_align == "center" || display_align == "justify", |rows| rows.items_center())
                                                     .when(display_align == "right", |rows| rows.items_end())
                                                     .children(current_preview)
-                                                    .when(preview_rows.is_empty(),|empty|empty
+                                                .when(preview_rows.is_empty() && !title_visible,|empty|empty
                                                         .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
                                     ),
                             )

@@ -346,6 +346,7 @@ mod tests {
             width: 1920,
             height: 1080,
             font: "Arial".into(),
+            title: None,
             rows: vec![
                 row(0, 0, 0, 1.0, 2.0, 0.0, 2.6),
                 row(1, 1, 1, 2.0, 3.0, 0.5, 3.6),

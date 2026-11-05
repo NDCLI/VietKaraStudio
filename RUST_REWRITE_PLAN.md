@@ -195,6 +195,15 @@
 >   backing; integration render FFmpeg chạy gradient cùng countdown vector.
 >   Workspace **109/109**; title cards, role artwork, readability backing
 >   theo scene và bundled fonts vẫn còn thiếu.
+> - Port title-card measured layout vào `DisplayPlan`: title/credit, time window,
+>   font/weight/italic, safe-area position, sáu template, và geometry box dùng
+>   chung cho preview/export. ASS tạo 24 dải gradient ngang, viền bo góc và
+>   hai event riêng cho entrance/exit (`fade`, slide, zoom, flip); GPUI preview
+>   hiển thị các dòng title trong khoảng thời gian đã cấu hình. Title ASS có
+>   unit test xác minh text, timing, template và motion; crate/app clippy,
+>   workspace check và app build pass. Toàn bộ FFmpeg integration/workspace
+>   suite chưa chạy được trong shell này do thiếu `ffmpeg.exe`/`ffprobe.exe`;
+>   template/effect của title trong GPUI preview chưa vẽ đầy đủ.
 
 ## 1. Mục tiêu và phạm vi
 

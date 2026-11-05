@@ -1,13 +1,13 @@
 //! ASS lyric serialization from the shared measured display plan.
 //!
 //! This native pass covers line timing/animation, karaoke word sweeps,
-//! gradients, subtitle backing and vector count-in icons. Title cards and role
-//! artwork remain open.
+//! gradients, subtitle backing, title cards and vector count-in icons. Role
+//! artwork remains open.
 
 use serde_json::Value;
 use vietkara_domain::Project;
 
-use crate::layout::{DisplayPlan, DisplayRow, PlannedWord};
+use crate::layout::{DisplayPlan, DisplayRow, PlannedWord, TitleLayout};
 use crate::{AnimOpts, RowAnim, TextAlign, animation, ass_color, literal, stamp};
 
 fn string<'a>(
@@ -124,6 +124,155 @@ fn dialogue(layer: u8, start: f64, end: f64, tags: &str, text: &str) -> Option<S
             stamp(end)
         )
     })
+}
+
+fn title_state(mode: &str) -> (f64, f64, u8, u8) {
+    match mode {
+        "slide_up" => (0.0, 1.0, 100, 0),
+        "slide_down" => (0.0, -1.0, 100, 0),
+        "slide_left" => (1.0, 0.0, 100, 0),
+        "slide_right" => (-1.0, 0.0, 100, 0),
+        "zoom" => (0.0, 0.0, 65, 0),
+        "flip" => (0.0, 0.0, 100, 75),
+        _ => (0.0, 0.0, 100, 0),
+    }
+}
+
+fn title_enter_tags(layout: &TitleLayout, row: &crate::layout::TitleRow) -> String {
+    let ms = (layout.effect_seconds * 1000.0).round_ties_even().max(1.0);
+    let (dx, dy, scale, rx) = title_state(&layout.enter);
+    let offset = row.size * 0.65;
+    let x = row.x;
+    let y = row.y;
+    let place = if dx != 0.0 || dy != 0.0 {
+        format!(
+            "\\move({:.3},{:.3},{x:.3},{y:.3},0,{ms:.0})",
+            x + dx * offset,
+            y + dy * offset
+        )
+    } else {
+        format!("\\pos({x:.3},{y:.3})")
+    };
+    format!("\\an7{place}\\fscx{scale}\\fscy{scale}\\frx{rx}\\t(0,{ms:.0},\\fscx100\\fscy100\\frx0)\\fad({:.0},0)", if layout.enter == "none" {0.0} else {ms}).replace(&format!("\\t(0,{ms:.0},\\fscx100\\fscy100\\frx0)"), &if layout.enter == "none" {String::new()} else {format!("\\t(0,{ms:.0},\\fscx100\\fscy100\\frx0)")}).replace(&format!("\\fscx{scale}\\fscy{scale}\\frx{rx}"), &if layout.enter == "none" {"\\fscx100\\fscy100\\frx0".to_owned()} else {format!("\\fscx{scale}\\fscy{scale}\\frx{rx}")})
+}
+
+fn title_exit_tags(layout: &TitleLayout, row: &crate::layout::TitleRow) -> String {
+    let ms = (layout.effect_seconds * 1000.0).round_ties_even().max(1.0);
+    let (dx, dy, scale, rx) = title_state(&layout.exit);
+    let offset = row.size * 0.65;
+    let x = row.x;
+    let y = row.y;
+    let place = if dx != 0.0 || dy != 0.0 {
+        format!(
+            "\\move({x:.3},{y:.3},{:.3},{:.3},0,{ms:.0})",
+            x - dx * offset,
+            y - dy * offset
+        )
+    } else {
+        format!("\\pos({x:.3},{y:.3})")
+    };
+    format!(
+        "\\an7{place}\\fscx100\\fscy100\\frx0\\t(0,{ms:.0},\\fscx{scale}\\fscy{scale}\\frx{rx})\\fad(0,{:.0})",
+        if layout.exit == "none" { 0.0 } else { ms }
+    )
+}
+
+fn title_events(layout: &TitleLayout) -> Vec<String> {
+    let mut output = Vec::new();
+    let split = layout.end - layout.effect_seconds;
+    let fade_in = if layout.enter == "none" {
+        0.0
+    } else {
+        (layout.effect_seconds * 1000.0).round_ties_even()
+    };
+    let fade_out = if layout.exit == "none" {
+        0.0
+    } else {
+        (layout.effect_seconds * 1000.0).round_ties_even()
+    };
+    if let Some(box_layout) = &layout.template {
+        let template = &box_layout.template;
+        let shape = crate::rounded_box(
+            0.0,
+            0.0,
+            box_layout.width,
+            box_layout.height,
+            template.radius,
+        );
+        let opacity = ((100.0 - template.opacity) / 100.0 * 255.0).round_ties_even() as u8;
+        for index in 0..24 {
+            let amount = index as f64 / 24.0 * (template.colors.len() - 1) as f64;
+            let stop = (amount.floor() as usize).min(template.colors.len() - 2);
+            let fill = crate::blend(
+                &template.colors[stop],
+                &template.colors[stop + 1],
+                amount - stop as f64,
+            );
+            let x0 = box_layout.width * index as f64 / 24.0;
+            let x1 = box_layout.width * (index + 1) as f64 / 24.0 + 0.25;
+            let band = format!(
+                "m {x0:.2} 0 l {x1:.2} 0 {x1:.2} {:.2} {x0:.2} {:.2}",
+                box_layout.height, box_layout.height
+            );
+            let tags = format!(
+                "\\an7\\pos({:.2},{:.2})\\p1\\bord0\\shad0\\1c{}\\1a&H{opacity:02X}&\\fad({fade_in:.0},{fade_out:.0})",
+                box_layout.x,
+                box_layout.y,
+                crate::ass_color(&fill, 100)
+            );
+            if let Some(event) = dialogue(8, layout.start, layout.end, &tags, &band) {
+                output.push(event);
+            }
+        }
+        if template.border_width > 0.0 {
+            let tags = format!(
+                "\\an7\\pos({:.2},{:.2})\\p1\\bord{:.2}\\shad0\\1a&HFF&\\3c{}\\3a&H00&\\fad({fade_in:.0},{fade_out:.0})",
+                box_layout.x,
+                box_layout.y,
+                template.border_width,
+                crate::ass_color(&template.border, 100)
+            );
+            if let Some(event) = dialogue(9, layout.start, layout.end, &tags, &shape) {
+                output.push(event);
+            }
+        }
+    }
+    for row in &layout.rows {
+        let motion = title_enter_tags(layout, row);
+        let bold = layout.weight >= 600;
+        let tags = format!(
+            "{motion}\\fn{}\\fs{:.3}\\b{}\\i{}\\1c{}\\3c{}\\4c{}\\bord{:.2}\\shad{:.2}",
+            layout.font.replace(',', ""),
+            row.size,
+            if bold { 1 } else { 0 },
+            if layout.italic { -1 } else { 0 },
+            crate::ass_color(&layout.color, 100),
+            crate::ass_color(&layout.outline, 100),
+            crate::ass_color(&layout.shadow_color, 100),
+            layout.outline_width,
+            layout.shadow
+        );
+        if let Some(event) = dialogue(10, layout.start, split, &tags, &literal(&row.text)) {
+            output.push(event);
+        }
+        let tags = format!(
+            "{}\\fn{}\\fs{:.3}\\b{}\\i{}\\1c{}\\3c{}\\4c{}\\bord{:.2}\\shad{:.2}",
+            title_exit_tags(layout, row),
+            layout.font.replace(',', ""),
+            row.size,
+            if bold { 1 } else { 0 },
+            if layout.italic { -1 } else { 0 },
+            crate::ass_color(&layout.color, 100),
+            crate::ass_color(&layout.outline, 100),
+            crate::ass_color(&layout.shadow_color, 100),
+            layout.outline_width,
+            layout.shadow
+        );
+        if let Some(event) = dialogue(10, split, layout.end, &tags, &literal(&row.text)) {
+            output.push(event);
+        }
+    }
+    output
 }
 
 fn gradient_bands(
@@ -339,6 +488,9 @@ pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
             lines.extend(word_event(row, word, &options, &row_style, &bands));
         }
     }
+    if let Some(title) = &plan.title {
+        lines.extend(title_events(title));
+    }
     lines.extend(countdown_events(
         project,
         plan,
@@ -478,6 +630,36 @@ mod tests {
         assert!(dialogues[1].starts_with("Dialogue: 2,"));
         assert!(dialogues[1].ends_with("Xin chào"));
         assert!(!ass.contains("\\clip("));
+    }
+
+    #[test]
+    fn title_card_uses_measured_layout_and_template_events() {
+        let mut project = project();
+        project.settings.extra.extend([
+            ("title_enabled".into(), Value::Bool(true)),
+            (
+                "title_text".into(),
+                Value::String("Xin chào Việt Nam".into()),
+            ),
+            ("title_credit".into(), Value::String("NDCLI".into())),
+            ("title_template".into(), Value::String("midnight".into())),
+            ("title_enter".into(), Value::String("slide_up".into())),
+            ("title_exit".into(), Value::String("fade".into())),
+        ]);
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let title = plan.title.as_ref().unwrap();
+        assert_eq!(title.rows.len(), 2);
+        assert_eq!(title.rows[0].text, "Xin chào Việt Nam");
+        assert_eq!(title.rows[1].text, "NDCLI");
+        assert!(title.template.is_some());
+
+        let ass = build_lyrics_ass(&project, &plan);
+        assert!(ass.contains("Xin chào Việt Nam"));
+        assert!(ass.contains("NDCLI"));
+        assert!(ass.contains("\\move("));
+        assert!(ass.contains("\\fad(0,"));
+        assert!(ass.contains("\\clip("));
+        assert!(ass.contains("Dialogue: 8,0:00:00.00,0:00:08.00"));
     }
 
     #[test]
