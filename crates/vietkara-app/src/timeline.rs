@@ -96,6 +96,113 @@ fn remove_anchor_at(
     Some(candidate)
 }
 
+fn sample_waveform(peaks: &[f64], duration: f64, time: f64) -> Option<f64> {
+    if peaks.len() < 2 || !duration.is_finite() || duration <= 0.0 || time < 0.0 || time > duration
+    {
+        return None;
+    }
+    let position = time / duration * (peaks.len() - 1) as f64;
+    let left = position.floor() as usize;
+    let right = (left + 1).min(peaks.len() - 1);
+    let amount = position - left as f64;
+    Some(peaks[left] * (1.0 - amount) + peaks[right] * amount)
+}
+
+fn pearson_correlation(left: &[f64], right: &[f64]) -> Option<f64> {
+    if left.len() != right.len() || left.len() < 20 {
+        return None;
+    }
+    let left_mean = left.iter().sum::<f64>() / left.len() as f64;
+    let right_mean = right.iter().sum::<f64>() / right.len() as f64;
+    let mut covariance = 0.0;
+    let mut left_variance = 0.0;
+    let mut right_variance = 0.0;
+    for (left, right) in left.iter().zip(right) {
+        let left = left - left_mean;
+        let right = right - right_mean;
+        covariance += left * right;
+        left_variance += left * left;
+        right_variance += right * right;
+    }
+    let denominator = (left_variance * right_variance).sqrt();
+    (denominator > 1e-8).then_some((covariance / denominator).clamp(-1.0, 1.0))
+}
+
+fn suggest_anchor_alignment(
+    anchor: &vietkara_domain::Anchor,
+    anchors: &[vietkara_domain::Anchor],
+    reference_peaks: &[f64],
+    reference_duration: f64,
+    beat_peaks: &[f64],
+    beat_duration: f64,
+) -> Option<(f64, f64)> {
+    if reference_peaks.len() < 20
+        || beat_peaks.len() < 20
+        || !reference_duration.is_finite()
+        || !beat_duration.is_finite()
+        || reference_duration <= 0.0
+        || beat_duration <= 0.0
+    {
+        return None;
+    }
+    let step = (reference_duration / reference_peaks.len() as f64)
+        .min(beat_duration / beat_peaks.len() as f64)
+        .clamp(0.005, 0.025);
+    let half_window = 0.35;
+    let window_steps = (half_window / step).floor() as i32;
+    let shift_steps = (0.5 / step).floor() as i32;
+    let mut best: Option<(f64, f64)> = None;
+    let mut current_score = None;
+
+    for shift in -shift_steps..=shift_steps {
+        let offset = shift as f64 * step;
+        let mut reference_window = Vec::with_capacity((window_steps * 2 + 1) as usize);
+        let mut beat_window = Vec::with_capacity((window_steps * 2 + 1) as usize);
+        for sample in -window_steps..=window_steps {
+            let reference_time = anchor.r#ref + sample as f64 * step;
+            let beat_time =
+                vietkara_domain::timing::map_time(reference_time, anchors, false) + offset;
+            if let (Some(reference_value), Some(beat_value)) = (
+                sample_waveform(reference_peaks, reference_duration, reference_time),
+                sample_waveform(beat_peaks, beat_duration, beat_time),
+            ) {
+                reference_window.push(reference_value);
+                beat_window.push(beat_value);
+            }
+        }
+        let Some(score) = pearson_correlation(&reference_window, &beat_window) else {
+            continue;
+        };
+        if shift == 0 {
+            current_score = Some(score);
+        }
+        if best.is_none_or(|(best_offset, best_score)| {
+            score > best_score + 1e-6
+                || ((score - best_score).abs() <= 1e-6 && offset.abs() < best_offset.abs())
+        }) {
+            best = Some((offset, score));
+        }
+    }
+
+    let (offset, score) = best?;
+    let current_score = current_score?;
+    (offset.abs() >= step * 1.5 && score >= 0.45 && score - current_score >= 0.08)
+        .then_some((anchor.beat + offset, score))
+}
+
+fn waveform_from_metadata(metadata: Option<&Value>) -> Option<(Vec<f64>, f64)> {
+    let metadata = metadata?;
+    let duration = metadata.get("duration")?.as_f64()?;
+    let peaks = metadata
+        .get("peaks")?
+        .as_array()?
+        .iter()
+        .map(Value::as_f64)
+        .collect::<Option<Vec<_>>>()?;
+    (duration.is_finite() && duration > 0.0 && peaks.iter().all(|peak| peak.is_finite()))
+        .then_some((peaks, duration))
+}
+
 pub(super) fn project_timeline_duration(
     project: &Project,
     playback_duration: f64,
@@ -202,6 +309,74 @@ impl Studio {
                 self.dirty = true;
                 self.autosave_pending = true;
                 "Đã xóa anchor • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
+    pub(super) fn auto_align_selected_anchor(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+        {
+            return;
+        }
+        let Some(index) = self.selected_anchor else {
+            self.edit_status = "Chọn anchor cần tự căn trước".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project();
+        let Some(anchor) = project.anchors.get(index).cloned() else {
+            self.selected_anchor = None;
+            self.edit_status = "Anchor đã thay đổi, hãy chọn lại".into();
+            cx.notify();
+            return;
+        };
+        let Some((reference_peaks, reference_duration)) =
+            waveform_from_metadata(project.reference.as_ref())
+        else {
+            self.edit_status = "Chưa có waveform hợp lệ của bản hát".into();
+            cx.notify();
+            return;
+        };
+        let Some((beat_peaks, beat_duration)) = waveform_from_metadata(project.beat.as_ref())
+        else {
+            self.edit_status = "Chưa có waveform hợp lệ của beat".into();
+            cx.notify();
+            return;
+        };
+        let anchors = project.anchors.clone();
+        let Some((beat, confidence)) = suggest_anchor_alignment(
+            &anchor,
+            &anchors,
+            &reference_peaks,
+            reference_duration,
+            &beat_peaks,
+            beat_duration,
+        ) else {
+            self.edit_status = "Waveform quanh anchor chưa đủ tương quan để tự căn an toàn".into();
+            cx.notify();
+            return;
+        };
+        let offset = beat - anchor.beat;
+        let mut candidate = anchors;
+        candidate[index].beat = beat.max(0.0);
+        if !anchors_valid(&candidate) {
+            self.edit_status = "Gợi ý waveform làm đảo thứ tự anchors; chưa áp dụng".into();
+            cx.notify();
+            return;
+        }
+        self.edit_status = match self.editor.execute(Command::SetAnchors(candidate)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                format!("Đã tự căn anchor (r={confidence:.2}, Δbeat={offset:+.3}s) • chưa lưu")
             }
             Err(error) => error.to_string(),
         };
@@ -595,6 +770,18 @@ impl Studio {
                                 cx.listener(|this, _, _, cx| this.remove_selected_anchor(cx)),
                             ),
                     )
+                    .child(
+                        div()
+                            .cursor_pointer()
+                            .rounded_sm()
+                            .bg(rgb(theme::ACCENT_SURFACE))
+                            .px_2()
+                            .child("Tự căn anchor")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| this.auto_align_selected_anchor(cx)),
+                            ),
+                    )
                     .child(div().cursor_pointer().child("Zoom +").on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
@@ -627,7 +814,8 @@ mod tests {
     use super::super::AudioSlot;
     use super::{
         anchors_valid, clamp_seek_position, insert_anchor_at_beat, remove_anchor_at,
-        timeline_to_track_time, track_to_timeline_time, waveform_timeline_interval,
+        suggest_anchor_alignment, timeline_to_track_time, track_to_timeline_time,
+        waveform_timeline_interval,
     };
     use vietkara_domain::Anchor;
 
@@ -735,5 +923,51 @@ mod tests {
         let remaining = remove_anchor_at(&anchors, 0).unwrap();
         assert_eq!(remaining, vec![anchors[1].clone()]);
         assert!(remove_anchor_at(&anchors, 2).is_none());
+    }
+
+    #[test]
+    fn waveform_alignment_suggests_shift_only_for_correlated_envelopes() {
+        let mut reference = vec![0.02_f64; 2000];
+        let mut beat = vec![0.02_f64; 2000];
+        for event in [9.68, 9.82, 9.96, 10.12, 10.29, 10.34] {
+            for (index, value) in reference.iter_mut().enumerate() {
+                let time = index as f64 * 20.0 / 1999.0;
+                let distance = (time - event) / 0.025;
+                *value = (*value).max(0.02 + (-distance * distance / 2.0).exp());
+            }
+            for (index, value) in beat.iter_mut().enumerate() {
+                let time = index as f64 * 20.0 / 1999.0;
+                let distance = (time - event - 0.15) / 0.025;
+                *value = (*value).max(0.02 + (-distance * distance / 2.0).exp());
+            }
+        }
+        let anchor = Anchor {
+            r#ref: 10.0,
+            beat: 10.0,
+        };
+        let suggestion = suggest_anchor_alignment(
+            &anchor,
+            std::slice::from_ref(&anchor),
+            &reference,
+            20.0,
+            &beat,
+            20.0,
+        )
+        .unwrap();
+        assert!((suggestion.0 - 10.15).abs() < 0.03);
+        assert!(suggestion.1 >= 0.45);
+
+        let flat = vec![0.5_f64; 2000];
+        assert!(
+            suggest_anchor_alignment(
+                &anchor,
+                std::slice::from_ref(&anchor),
+                &flat,
+                20.0,
+                &flat,
+                20.0,
+            )
+            .is_none()
+        );
     }
 }

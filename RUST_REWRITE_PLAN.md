@@ -329,6 +329,12 @@
 >   qua `SetAnchors`, giữ undo/redo và autosave. Thêm anchor mới sẽ tự chọn nó;
 >   đổi project hoặc undo/redo sẽ xóa trạng thái chọn cũ để tránh nhầm index.
 >   Inspector timeline hiển thị rõ thời gian Ref ↔ Beat của anchor đang chọn.
+> - Thêm action tự căn anchor bằng tương quan Pearson giữa envelope waveform
+>   Ref/Beat trong cửa sổ ±350 ms, tìm shift trong ±500 ms. Chỉ áp dụng khi
+>   tương quan đạt 0.45 và cải thiện ít nhất 0.08 so với vị trí hiện tại; dữ
+>   liệu phẳng/thiếu hoặc thứ tự anchors sai sẽ không bị sửa. Action dùng
+>   `SetAnchors`, hiển thị confidence/shift và undo được; test waveform giả lập
+>   shift 150 ms cùng trường hợp envelope phẳng.
 
 ## 1. Mục tiêu và phạm vi
 
