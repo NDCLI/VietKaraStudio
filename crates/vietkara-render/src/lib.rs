@@ -20,18 +20,18 @@
 //!   geometry and the first native subtitle pass, consuming the same plan.
 //! * `verify_output` — runs `ffprobe` on a rendered file.
 //!
-//! # Explicitly NOT in scope (Phase 4, after the layout contract
-//! stabilises)
+//! # Remaining parity work
 //!
 //! * `TextMeasurer` is injected so preview/export can use the same actual font
-//!   face. GPUI currently supplies the Windows preview measurer; the export
-//!   action must pass its cached `DisplayPlan` to `prepare_lyrics_ass`.
+//!   face. GPUI supplies the Windows preview measurer and passes its cached
+//!   `DisplayPlan` to `prepare_lyrics_ass` in the export action.
 //! * ASS currently covers planned row placement, simple subtitle rows, duet
 //!   colors and timed karaoke word sweeps. Role artwork, gradients, title,
 //!   readability backing and text/glyph countdown layers remain unported.
 //! * Scene image and decoration position/scale/alpha, logo effects and custom
-//!   image countdown overlays are supported. The GPUI export action and
-//!   NVENC fallback remain outside this slice.
+//!   image countdown overlays are supported. GPUI export runs on a worker
+//!   thread, reports FFmpeg progress and can be cancelled; NVENC fallback
+//!   remains outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.

@@ -168,6 +168,17 @@
 >   Integration test dựng thật bằng FFmpeg xác nhận ASS hợp lệ. Chưa nối writer
 >   vào action export GPUI; title/marker/gradient/countdown/readability backing
 >   chưa port. Workspace **104/104**, fmt/clippy/check/build app đều pass.
+> - Nối action **Xuất video** vào pipeline: chụp project + measured display plan
+>   trên UI thread, chọn file đích, lấy beat và media project, viết ASS vào
+>   thư mục tạm cạnh file đích, gọi FFmpeg ngoài UI thread, đọc tiến độ, cho
+>   phép hủy, xác minh bằng FFprobe rồi publish không ghi đè (hard link khi
+>   filesystem hỗ trợ, exclusive create + copy trên volume không hỗ trợ).
+>   Thêm Ctrl+Shift+E và báo lỗi FFmpeg theo log cuối. Test tích hợp của app đã
+>   dựng MP4 thật với lời “Xin chào”, xác minh audio/video/size/duration bằng
+>   FFprobe, kiểm tra tiến độ và xác nhận file đích cũ không bị ghi đè.
+>   Workspace **106/106**, fmt/clippy/check/build app đều pass. Chưa kiểm tra
+>   thao tác nút trên cửa sổ GPUI; title/marker/gradient/readability backing,
+>   glyph countdown, loudness normalization và đóng gói font vẫn chưa đạt parity.
 
 ## 1. Mục tiêu và phạm vi
 

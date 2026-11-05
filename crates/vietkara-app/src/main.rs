@@ -32,7 +32,9 @@ actions!(
         SeekForward,
         BeginTapping,
         ImportBeat,
-        ImportReference
+        ImportReference,
+        ExportVideo,
+        CancelExport
     ]
 );
 
@@ -68,6 +70,9 @@ struct Studio {
     path: Option<PathBuf>,
     recovery: Option<RecoveryCandidate>,
     saving: bool,
+    rendering: bool,
+    render_progress: f64,
+    render_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     dirty: bool,
     confirm_open: bool,
     confirm_close: bool,
@@ -108,6 +113,253 @@ fn workspace_size(viewport_width: f32) -> WorkspaceSize {
             right: 270.,
         }
     }
+}
+
+fn render_project(
+    project: Project,
+    plan: vietkara_render::layout::DisplayPlan,
+    project_path: &std::path::Path,
+    target: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    mut report_progress: impl FnMut(f64),
+) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+
+    let profile = vietkara_render::RenderProfile::from_project(&project);
+    let expected_extension = profile.output_name();
+    let expected_extension = std::path::Path::new(&expected_extension)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default();
+    if target
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_none_or(|extension| !extension.eq_ignore_ascii_case(expected_extension))
+    {
+        return Err(format!(
+            "Định dạng xuất trong project là .{expected_extension}; hãy chọn tên file đúng định dạng"
+        ));
+    }
+    if target.exists() {
+        return Err("File đích đã tồn tại; hãy chọn tên khác để tránh ghi đè".into());
+    }
+    let project_path = std::fs::canonicalize(project_path)
+        .map_err(|error| format!("Không mở được project để xuất video: {error}"))?;
+    let project_directory = project_path
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục project".to_owned())?;
+    let beat = project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("filename"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .filter(|path| path.file_name().and_then(|name| name.to_str()) == path.to_str())
+        .map(|name| project_directory.join(name))
+        .filter(|path| path.is_file())
+        .ok_or_else(|| "Không tìm thấy file beat cạnh project".to_owned())?;
+    let duration = project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("duration"))
+        .and_then(Value::as_f64)
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .ok_or_else(|| "Thời lượng beat không hợp lệ".to_owned())?;
+    let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+    let ffprobe = vietkara_media::find_binary("ffprobe").map_err(|error| error.to_string())?;
+    let target = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(target)
+    };
+    let output_directory = target
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục xuất video".to_owned())?;
+    if !output_directory.is_dir() {
+        return Err("Thư mục xuất video không tồn tại".into());
+    }
+    let file_name = target
+        .file_name()
+        .ok_or_else(|| "Tên file xuất không hợp lệ".to_owned())?;
+    let output_directory = std::fs::canonicalize(output_directory)
+        .map_err(|error| format!("Không mở được thư mục xuất: {error}"))?;
+    let target = output_directory.join(file_name);
+    let temporary_directory =
+        output_directory.join(format!(".vietkara-render-{}", vietkara_domain::new_id()));
+    std::fs::create_dir(&temporary_directory)
+        .map_err(|error| format!("Không tạo được thư mục render tạm: {error}"))?;
+
+    let result = (|| {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("Đã hủy xuất video".into());
+        }
+        std::fs::create_dir(temporary_directory.join("fonts"))
+            .map_err(|error| format!("Không tạo được thư mục font tạm: {error}"))?;
+        let mut inputs = vietkara_render::RenderInputs::new(beat, duration);
+        inputs.ffmpeg = ffmpeg;
+        inputs
+            .configure_background_from_project(&project, project_directory)
+            .map_err(|error| error.to_string())?;
+        inputs.configure_scenes_from_project(&project, project_directory);
+        let (width, height) = profile.frame_size();
+        inputs
+            .configure_overlays_from_project(&project, project_directory, width, height)
+            .map_err(|error| error.to_string())?;
+        if profile.audio_output == vietkara_render::AudioOutput::Guide {
+            inputs.vocals = project
+                .reference
+                .as_ref()
+                .and_then(|reference| reference.get("filename"))
+                .and_then(Value::as_str)
+                .map(PathBuf::from)
+                .filter(|path| path.file_name().and_then(|name| name.to_str()) == path.to_str())
+                .map(|name| project_directory.join(name));
+        }
+        inputs
+            .prepare_lyrics_ass(&project, &plan, temporary_directory.join("lyrics.ass"))
+            .map_err(|error| error.to_string())?;
+        inputs.ass_file = PathBuf::from("lyrics.ass");
+        inputs.fonts_dir = PathBuf::from("fonts");
+
+        let arguments = vietkara_render::ffmpeg_command(&profile, &inputs)
+            .map_err(|error| error.to_string())?;
+        let executable = arguments
+            .first()
+            .ok_or_else(|| "Lệnh FFmpeg rỗng".to_owned())?;
+        let stderr_path = temporary_directory.join("ffmpeg.stderr.log");
+        let stderr_file = std::fs::File::create(&stderr_path)
+            .map_err(|error| format!("Không tạo được log FFmpeg: {error}"))?;
+        let mut child = Command::new(executable)
+            .args(&arguments[1..])
+            .current_dir(&temporary_directory)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(stderr_file))
+            .spawn()
+            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Không đọc được tiến độ FFmpeg".to_owned())?;
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        let mut was_cancelled = false;
+        loop {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                was_cancelled = true;
+                let _ = child.kill();
+                break;
+            }
+            line.clear();
+            let bytes = std::io::BufRead::read_line(&mut reader, &mut line)
+                .map_err(|error| format!("Không đọc được tiến độ FFmpeg: {error}"))?;
+            if bytes == 0 {
+                break;
+            }
+            if let Some(time) = line.strip_prefix("out_time=").and_then(parse_ffmpeg_time) {
+                report_progress((time / duration).clamp(0.0, 0.99));
+            }
+        }
+        drop(reader);
+        let status = child
+            .wait()
+            .map_err(|error| format!("Không lấy được trạng thái FFmpeg: {error}"))?;
+        if was_cancelled || cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("Đã hủy xuất video".into());
+        }
+        if !status.success() {
+            let stderr = std::fs::read_to_string(&stderr_path).unwrap_or_default();
+            let detail = stderr
+                .chars()
+                .rev()
+                .take(1200)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>();
+            return Err(if detail.trim().is_empty() {
+                format!("FFmpeg kết thúc với mã {:?}", status.code())
+            } else {
+                format!("FFmpeg lỗi: {}", detail.trim())
+            });
+        }
+        let rendered = temporary_directory.join(profile.output_name());
+        vietkara_render::verify_output_with_ffprobe(&rendered, duration, width, height, &ffprobe)
+            .map_err(|error| format!("Video render chưa đạt kiểm tra: {error}"))?;
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("Đã hủy xuất video".into());
+        }
+        // A hard link publishes atomically and fails if another process created
+        // the destination after our initial existence check.
+        if let Err(link_error) = std::fs::hard_link(&rendered, &target) {
+            if link_error.kind() == std::io::ErrorKind::AlreadyExists {
+                return Err("File đích đã tồn tại; hãy chọn tên khác để tránh ghi đè".into());
+            }
+            // Some removable Windows volumes do not support hard links. Since
+            // rendering is complete, fall back to an exclusive create + copy.
+            let mut destination_created = false;
+            let copy_result: Result<(), String> = (|| {
+                use std::io::Write;
+                let mut destination = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&target)
+                    .map_err(|error| {
+                        if error.kind() == std::io::ErrorKind::AlreadyExists {
+                            "File đích đã tồn tại; hãy chọn tên khác để tránh ghi đè".to_owned()
+                        } else {
+                            format!("Không thể tạo file đích: {error}")
+                        }
+                    })?;
+                destination_created = true;
+                let mut source = std::fs::File::open(&rendered)
+                    .map_err(|error| format!("Không mở được video đã render: {error}"))?;
+                std::io::copy(&mut source, &mut destination)
+                    .map_err(|error| format!("Không chép được video vào file đích: {error}"))?;
+                destination
+                    .flush()
+                    .and_then(|()| destination.sync_all())
+                    .map_err(|error| format!("Không hoàn tất được file video: {error}"))?;
+                Ok(())
+            })();
+            if let Err(error) = copy_result {
+                if destination_created {
+                    let _ = std::fs::remove_file(&target);
+                }
+                return Err(format!(
+                    "Không thể publish file mà không ghi đè ({link_error}); {error}"
+                ));
+            }
+        }
+        report_progress(1.0);
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&temporary_directory);
+    result
+}
+
+fn parse_ffmpeg_time(value: &str) -> Option<f64> {
+    let mut parts = value.trim().split(':');
+    let hours = parts.next()?.parse::<f64>().ok()?;
+    let minutes = parts.next()?.parse::<f64>().ok()?;
+    let seconds = parts.next()?.parse::<f64>().ok()?;
+    if parts.next().is_some()
+        || !hours.is_finite()
+        || !minutes.is_finite()
+        || !seconds.is_finite()
+        || !(0.0..60.0).contains(&minutes)
+        || !(0.0..60.0).contains(&seconds)
+    {
+        return None;
+    }
+    Some(hours * 3600.0 + minutes * 60.0 + seconds)
+}
+
+enum ExportEvent {
+    Progress(f64),
+    Finished(Result<(), String>),
 }
 
 impl Studio {
@@ -1289,6 +1541,172 @@ impl Studio {
         })
         .detach();
     }
+
+    fn export_video(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.rendering
+            || self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(project_path) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi xuất video".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let has_valid_duration = project
+            .beat
+            .as_ref()
+            .and_then(|beat| beat.get("duration"))
+            .and_then(Value::as_f64)
+            .is_some_and(|duration| duration.is_finite() && duration > 0.0);
+        if !has_valid_duration {
+            self.edit_status = "Project chưa có beat hợp lệ để xuất video".into();
+            cx.notify();
+            return;
+        }
+        let beat_name = project
+            .beat
+            .as_ref()
+            .and_then(|beat| beat.get("filename"))
+            .and_then(Value::as_str)
+            .map(PathBuf::from);
+        let Some(beat_name) = beat_name
+            .filter(|name| name.file_name().and_then(|value| value.to_str()) == name.to_str())
+        else {
+            self.edit_status = "Không xác định được file beat trong project".into();
+            cx.notify();
+            return;
+        };
+        if !project_path
+            .parent()
+            .is_some_and(|directory| directory.join(&beat_name).is_file())
+        {
+            self.edit_status = "Không tìm thấy file beat cạnh project".into();
+            cx.notify();
+            return;
+        }
+        let profile = vietkara_render::RenderProfile::from_project(&project);
+        let suggested_name = profile.output_name();
+        let Some(directory) = project_path.parent().map(PathBuf::from) else {
+            self.edit_status = "Không xác định được thư mục project".into();
+            cx.notify();
+            return;
+        };
+        let plan = preview::cached_display_plan(
+            &mut self.preview_layout,
+            &project,
+            &project.words,
+            window.text_system(),
+        )
+        .clone();
+        let selection = cx.prompt_for_new_path(&directory, Some(&suggested_name));
+        self.rendering = true;
+        self.edit_status = "Đang xuất video…".into();
+        self.render_progress = 0.0;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(target))) => {
+                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    let worker_cancel = cancel.clone();
+                    if this
+                        .update(cx, |this, cx| {
+                            this.render_cancel = Some(cancel);
+                            cx.notify();
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let (sender, receiver) = std::sync::mpsc::channel();
+                    let worker_project_path = project_path.clone();
+                    let worker_target = target.clone();
+                    let thread = std::thread::Builder::new()
+                        .name("vietkara-render".into())
+                        .spawn(move || {
+                            let result = render_project(
+                                project,
+                                plan,
+                                &worker_project_path,
+                                &worker_target,
+                                &worker_cancel,
+                                |progress| {
+                                    let _ = sender.send(ExportEvent::Progress(progress));
+                                },
+                            );
+                            let _ = sender.send(ExportEvent::Finished(result));
+                        });
+                    match thread {
+                        Ok(_) => loop {
+                            Timer::after(std::time::Duration::from_millis(120)).await;
+                            let mut finished = None;
+                            loop {
+                                match receiver.try_recv() {
+                                    Ok(ExportEvent::Progress(progress)) => {
+                                        if this
+                                            .update(cx, |this, cx| {
+                                                this.render_progress = progress;
+                                                this.edit_status = format!(
+                                                    "Đang xuất video… {:.0}%",
+                                                    progress * 100.0
+                                                );
+                                                cx.notify();
+                                            })
+                                            .is_err()
+                                        {
+                                            return;
+                                        }
+                                    }
+                                    Ok(ExportEvent::Finished(result)) => {
+                                        finished = Some(result.map(|()| target.clone()));
+                                        break;
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                        finished =
+                                            Some(Err("Tác vụ render dừng bất thường".into()));
+                                        break;
+                                    }
+                                }
+                            }
+                            if let Some(result) = finished {
+                                break result;
+                            }
+                        },
+                        Err(error) => Err(format!("Không khởi chạy được tác vụ render: {error}")),
+                    }
+                }
+                Ok(Ok(None)) => Err("Đã hủy xuất video".to_owned()),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.rendering = false;
+                this.render_cancel = None;
+                this.edit_status = match result {
+                    Ok(path) => format!("Đã xuất video: {}", path.display()),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_export(&mut self, cx: &mut Context<Self>) {
+        if let Some(cancel) = &self.render_cancel {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.edit_status = "Đang dừng render…".into();
+            cx.notify();
+        }
+    }
     fn save_to(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
@@ -1778,6 +2196,8 @@ impl Render for Studio {
             .on_action(cx.listener(|this, _: &Redo, _, cx| this.history(true, cx)))
             .on_action(cx.listener(|this, _: &Save, _, cx| this.save(cx)))
             .on_action(cx.listener(|this, _: &SaveAs, _, cx| this.save_as(cx)))
+            .on_action(cx.listener(|this, _: &ExportVideo, window, cx| this.export_video(window, cx)))
+            .on_action(cx.listener(|this, _: &CancelExport, _, cx| this.cancel_export(cx)))
             .on_action(cx.listener(|this, _: &Open, _, cx| this.open(cx)))
             .on_action(cx.listener(|this, _: &ImportSrt, _, cx| this.import_srt(cx)))
             .on_action(cx.listener(|this, _: &ImportLyrics, _, cx| this.import_plain_lyrics(cx)))
@@ -1810,6 +2230,13 @@ impl Render for Studio {
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.import_srt(cx))))
                     .child(div().cursor_pointer().px_3().child("Mở project")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.open(cx))))
+                    .child(div().cursor_pointer().px_3().child(if self.rendering {
+                        format!("Hủy xuất ({:.0}%)", self.render_progress * 100.0)
+                    } else { "Xuất video".into() })
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| {
+                            if this.rendering { this.cancel_export(cx); }
+                            else { this.export_video(window,cx); }
+                        })))
                     .child(
                         div()
                             .cursor_pointer()
@@ -2246,6 +2673,7 @@ fn main() {
             KeyBinding::new("ctrl-o", Open, Some("Studio")),
             KeyBinding::new("ctrl-s", Save, Some("Studio")),
             KeyBinding::new("ctrl-shift-s", SaveAs, Some("Studio")),
+            KeyBinding::new("ctrl-shift-e", ExportVideo, Some("Studio")),
             KeyBinding::new("ctrl-z", Undo, Some("Studio")),
             KeyBinding::new("ctrl-y", Redo, Some("Studio")),
             KeyBinding::new("ctrl-shift-z", Redo, Some("Studio")),
@@ -2359,6 +2787,9 @@ fn main() {
                         path,
                         recovery,
                         saving: false,
+                        rendering: false,
+                        render_progress: 0.0,
+                        render_cancel: None,
                         dirty: false,
                         confirm_open: false,
                         confirm_close: false,
@@ -2438,5 +2869,94 @@ mod workspace_tests {
         assert_eq!(preview_alignment("justify", 7, &rows), "left");
         assert_eq!(preview_alignment("justify", 8, &rows), "right");
         assert_eq!(preview_alignment("center", 7, &rows), "center");
+    }
+
+    #[test]
+    fn ffmpeg_progress_time_parser_handles_hours_and_rejects_bad_fields() {
+        assert_eq!(parse_ffmpeg_time("00:01:02.500000\n"), Some(62.5));
+        assert_eq!(parse_ffmpeg_time("01:00:00.000000"), Some(3600.0));
+        assert_eq!(parse_ffmpeg_time("N/A"), None);
+        assert_eq!(parse_ffmpeg_time("00:61:00.000000"), None);
+    }
+
+    #[test]
+    fn export_pipeline_renders_measured_lyrics_and_refuses_to_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let project_directory = root.path().join("dự án");
+        let output_directory = root.path().join("bản xuất");
+        std::fs::create_dir(&project_directory).unwrap();
+        std::fs::create_dir(&output_directory).unwrap();
+        let ffmpeg = vietkara_media::find_binary("ffmpeg").unwrap();
+        let audio = std::process::Command::new(ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:sample_rate=44100",
+                "-t",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+            ])
+            .arg(project_directory.join("beat.wav"))
+            .output()
+            .unwrap();
+        assert!(
+            audio.status.success(),
+            "could not synthesize beat: {}",
+            String::from_utf8_lossy(&audio.stderr)
+        );
+
+        let mut project = Project::new("Export smoke test");
+        project.beat = Some(serde_json::json!({"filename":"beat.wav","duration":1.0}));
+        project.words.push(Word {
+            id: "word-1".into(),
+            text: "Xin chào".into(),
+            start: 0.0,
+            end: 0.8,
+            line_uid: "line-1".into(),
+            role: "all".into(),
+            line: 0,
+            estimated: false,
+            locked: None,
+            section: None,
+            section_name: None,
+            manual: None,
+            label_color: None,
+            row: None,
+            extra: Default::default(),
+        });
+        let project_path = project_directory.join("project.json");
+        std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+
+        struct TestMeasurer;
+        impl vietkara_render::layout::TextMeasurer for TestMeasurer {
+            fn width(&self, text: &str, _: &str, size: f64, _: bool) -> f64 {
+                text.chars().count() as f64 * size * 0.55
+            }
+        }
+        let plan = vietkara_render::layout::display_plan(&project, &TestMeasurer);
+        let target = output_directory.join("karaoke tiếng Việt.mp4");
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let mut progress: f64 = 0.0;
+        render_project(
+            project.clone(),
+            plan.clone(),
+            &project_path,
+            &target,
+            &cancel,
+            |value| progress = progress.max(value),
+        )
+        .unwrap();
+        assert!(target.is_file());
+        assert!(progress > 0.0);
+        let original_size = std::fs::metadata(&target).unwrap().len();
+        let error =
+            render_project(project, plan, &project_path, &target, &cancel, |_| {}).unwrap_err();
+        assert!(error.contains("đã tồn tại"));
+        assert_eq!(std::fs::metadata(&target).unwrap().len(), original_size);
     }
 }
