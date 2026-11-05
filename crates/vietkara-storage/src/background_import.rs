@@ -320,6 +320,199 @@ pub fn import_scene_image(
     result
 }
 
+/// Import or replace a scene decoration while preserving scene settings.
+pub fn import_scene_decoration(
+    project: &Project,
+    main: &Path,
+    source: &Path,
+    section: &str,
+) -> Result<ImportedBackground, String> {
+    if ![
+        "intro",
+        "verse",
+        "pre-chorus",
+        "chorus",
+        "bridge",
+        "outro",
+        "instrumental",
+    ]
+    .contains(&section)
+    {
+        return Err("Loại section scene không hợp lệ".into());
+    }
+    if !source
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp"
+            )
+        })
+    {
+        return Err("Ảnh trang trí chỉ hỗ trợ PNG, JPG hoặc WebP".into());
+    }
+    if !source.is_file() {
+        return Err("Không tìm thấy ảnh trang trí".into());
+    }
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = main
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let id = project
+        .scenes
+        .iter()
+        .find(|scene| {
+            scene
+                .get("section_name")
+                .and_then(serde_json::Value::as_str)
+                == Some(section)
+        })
+        .and_then(|scene| scene.get("id").and_then(serde_json::Value::as_str))
+        .filter(|id| vietkara_domain::is_hex32(id))
+        .map(str::to_owned)
+        .ok_or_else(|| "Hãy nạp ảnh nền scene trước khi thêm ảnh trang trí".to_owned())?;
+    let destination = directory.join(format!("scene_decoration_{id}.png"));
+    let temporary = directory.join(format!(
+        ".scene-decoration-{id}-{}.png",
+        vietkara_domain::new_id()
+    ));
+    let backup = directory.join(format!(
+        ".scene-decoration-backup-{id}-{}.png",
+        vietkara_domain::new_id()
+    ));
+    let result = (|| -> Result<ImportedBackground, String> {
+        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+        let output = Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-i"])
+            .arg(source)
+            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
+            .arg(&temporary)
+            .output()
+            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+        if !output.status.success()
+            || !temporary.is_file()
+            || std::fs::metadata(&temporary)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+                == 0
+        {
+            return Err(format!(
+                "Không chuyển được ảnh trang trí: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let mut candidate = project.clone();
+        let scene = candidate
+            .scenes
+            .iter_mut()
+            .find(|scene| scene.get("id").and_then(serde_json::Value::as_str) == Some(&id))
+            .unwrap();
+        scene
+            .as_object_mut()
+            .unwrap()
+            .entry("decoration_size")
+            .or_insert(serde_json::json!(28));
+        scene
+            .as_object_mut()
+            .unwrap()
+            .entry("decoration_keyframes")
+            .or_insert(serde_json::json!([
+                {"x":50,"y":50,"scale":100,"opacity":100}, {"x":50,"y":50,"scale":100,"opacity":100}
+            ]));
+        candidate.validate().map_err(|error| error.to_string())?;
+        let version = create_version(directory, project, "Trước thay ảnh trang trí")
+            .map_err(|error| error.to_string())?;
+        let had_destination = destination.is_file();
+        if had_destination {
+            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = std::fs::rename(&temporary, &destination) {
+            if had_destination {
+                std::fs::rename(&backup, &destination)
+                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
+            }
+            return Err(error.to_string());
+        }
+        if let Err(error) = save_project(&candidate, main) {
+            let cleanup = std::fs::remove_file(&destination).err();
+            let restore = if had_destination {
+                std::fs::rename(&backup, &destination).err()
+            } else {
+                None
+            };
+            if cleanup.is_some() || restore.is_some() {
+                return Err(format!(
+                    "{error}; rollback cleanup={cleanup:?}, restore={restore:?}; backup {}",
+                    backup.display()
+                ));
+            }
+            return Err(error.to_string());
+        }
+        if had_destination {
+            let _ = std::fs::remove_file(&backup);
+        }
+        Ok(ImportedBackground {
+            project: candidate,
+            version_id: version.id,
+        })
+    })();
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
+/// Remove a scene decoration after taking a project version snapshot.
+pub fn remove_scene_decoration(
+    project: &Project,
+    main: &Path,
+    section: &str,
+) -> Result<ImportedBackground, String> {
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = main
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut candidate = project.clone();
+    let scene = candidate
+        .scenes
+        .iter_mut()
+        .find(|scene| {
+            scene
+                .get("section_name")
+                .and_then(serde_json::Value::as_str)
+                == Some(section)
+        })
+        .ok_or_else(|| "Không tìm thấy scene của section".to_owned())?;
+    let id = scene
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| vietkara_domain::is_hex32(id))
+        .ok_or_else(|| "ID scene không hợp lệ".to_owned())?;
+    let path = directory.join(format!("scene_decoration_{id}.png"));
+    let temporary = directory.join(format!(
+        ".scene-decoration-remove-{}.png",
+        vietkara_domain::new_id()
+    ));
+    if !path.is_file() {
+        return Err("Section này chưa có ảnh trang trí".into());
+    }
+    let result = (|| {
+        let version = create_version(directory, project, "Trước bỏ ảnh trang trí")?;
+        std::fs::rename(&path, &temporary)?;
+        save_project(&candidate, main)?;
+        std::fs::remove_file(&temporary).map_err(crate::StorageError::from)?;
+        Ok::<_, crate::StorageError>(ImportedBackground {
+            project: candidate,
+            version_id: version.id,
+        })
+    })();
+    if result.is_err() {
+        let _ = std::fs::rename(&temporary, &path);
+    }
+    result.map_err(|error| error.to_string())
+}
+
 fn supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -914,6 +1107,58 @@ mod tests {
         assert_eq!(
             Project::load(&main).unwrap().scenes[0]["section_name"],
             "chorus"
+        );
+
+        let decoration_source = directory.path().join("decoration.png");
+        let generated = Command::new(&ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=yellow@0.5:s=32x24",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                "-f",
+                "image2",
+            ])
+            .arg(&decoration_source)
+            .output()
+            .unwrap();
+        assert!(generated.status.success());
+        let decorated =
+            import_scene_decoration(&replaced.project, &main, &decoration_source, "chorus")
+                .unwrap();
+        let decoration = directory.path().join(format!("scene_decoration_{id}.png"));
+        assert!(decoration.is_file());
+        assert_eq!(decorated.project.scenes[0]["decoration_size"], 28);
+        assert_eq!(
+            decorated.project.scenes[0]["decoration_keyframes"][0]["x"],
+            50
+        );
+        let removed = remove_scene_decoration(&decorated.project, &main, "chorus").unwrap();
+        assert!(!decoration.exists());
+        assert!(
+            directory
+                .path()
+                .join("versions")
+                .join(&removed.version_id)
+                .join("project.json")
+                .is_file()
+        );
+        let snapshot = directory
+            .path()
+            .join("versions")
+            .join(&removed.version_id)
+            .join("media")
+            .join(format!("scene_decoration_{id}.png"));
+        assert!(
+            snapshot.is_file(),
+            "pre-removal snapshot keeps decoration artwork"
         );
     }
 

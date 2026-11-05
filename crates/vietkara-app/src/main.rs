@@ -1136,6 +1136,301 @@ impl Studio {
         })
         .detach();
     }
+    fn choose_scene_decoration(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm ảnh trang trí".into();
+            cx.notify();
+            return;
+        };
+        let Some(section) = self
+            .selected_word
+            .as_deref()
+            .and_then(|id| {
+                self.editor
+                    .project()
+                    .words
+                    .iter()
+                    .find(|word| word.id == id)
+            })
+            .and_then(|word| word.section_name.clone())
+        else {
+            self.edit_status = "Chọn dòng thuộc section scene trước".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn ảnh trang trí (PNG, JPG hoặc WebP)".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang thêm ảnh trang trí và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_scene_decoration(
+                                    &project, &main, &source, &section,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã thêm ảnh trang trí • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn ảnh trang trí".into(),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn remove_scene_decoration(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.recovery.is_some() {
+            return;
+        }
+        let (Some(main), Some(section)) = (
+            self.path.clone(),
+            self.selected_word
+                .as_deref()
+                .and_then(|id| {
+                    self.editor
+                        .project()
+                        .words
+                        .iter()
+                        .find(|word| word.id == id)
+                })
+                .and_then(|word| word.section_name.clone()),
+        ) else {
+            return;
+        };
+        let project = self.editor.project().clone();
+        self.saving = true;
+        self.edit_status = "Đang bỏ ảnh trang trí và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    vietkara_storage::background_import::remove_scene_decoration(
+                        &project, &main, &section,
+                    )
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(imported) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã bỏ ảnh trang trí • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn adjust_selected_scene_number(
+        &mut self,
+        key: &'static str,
+        delta: f64,
+        minimum: f64,
+        maximum: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.autosaving || self.recovery.is_some() {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            return;
+        };
+        let Some(section) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.clone())
+        else {
+            return;
+        };
+        let mut scenes = self.editor.project().scenes.clone();
+        let Some(scene) = scenes
+            .iter_mut()
+            .find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(&section))
+        else {
+            return;
+        };
+        let default = if key == "decoration_size" {
+            28.0
+        } else {
+            100.0
+        };
+        let current = scene.get(key).and_then(Value::as_f64).unwrap_or(default);
+        scene[key] = serde_json::json!((current + delta).clamp(minimum, maximum));
+        self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật ảnh scene • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+    fn cycle_selected_scene_option(
+        &mut self,
+        key: &'static str,
+        options: &[&'static str],
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.autosaving || self.recovery.is_some() {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            return;
+        };
+        let Some(section) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.clone())
+        else {
+            return;
+        };
+        let mut scenes = self.editor.project().scenes.clone();
+        let Some(scene) = scenes
+            .iter_mut()
+            .find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(&section))
+        else {
+            return;
+        };
+        let current = scene.get(key).and_then(Value::as_str).unwrap_or(options[0]);
+        let next = options
+            .iter()
+            .position(|value| *value == current)
+            .map(|index| (index + 1) % options.len())
+            .unwrap_or(0);
+        scene[key] = serde_json::json!(options[next]);
+        if key == "transition" && options[next] == "cut" {
+            scene["transition_seconds"] = serde_json::json!(0.0);
+        }
+        if key == "transition" && options[next] == "fade" {
+            scene["transition_seconds"] = serde_json::json!(0.6);
+        }
+        self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật thiết lập scene • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+    fn adjust_selected_scene_frame(
+        &mut self,
+        key: &'static str,
+        delta: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.autosaving || self.recovery.is_some() {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            return;
+        };
+        let Some(section) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.clone())
+        else {
+            return;
+        };
+        let mut scenes = self.editor.project().scenes.clone();
+        let Some(scene) = scenes
+            .iter_mut()
+            .find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(&section))
+        else {
+            return;
+        };
+        if !scene.get("keyframes").is_some_and(Value::is_array) {
+            scene["keyframes"] = serde_json::json!([]);
+        }
+        let frames = scene["keyframes"].as_array_mut().unwrap();
+        while frames.len() < 2 {
+            frames.push(serde_json::json!({"x":0,"y":0,"scale":100,"opacity":100}));
+        }
+        let (min, max) = match key {
+            "x" | "y" => (-100.0, 100.0),
+            "scale" => (100.0, 200.0),
+            _ => (0.0, 100.0),
+        };
+        for frame in frames.iter_mut().take(2) {
+            let current = frame
+                .get(key)
+                .and_then(Value::as_f64)
+                .unwrap_or(if key == "x" || key == "y" { 0.0 } else { 100.0 });
+            frame[key] = serde_json::json!((current + delta).clamp(min, max));
+        }
+        self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật chuyển động scene • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
         {
@@ -2786,7 +3081,44 @@ impl Render for Studio {
                                 .unwrap_or(100.0)
                                 .clamp(0.0, 100.0) as f32
                                 / 100.0;
-                            (image, opacity)
+                            let decoration = scene
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .map(|id| directory.join(format!("scene_decoration_{id}.png")))
+                                .filter(|path| path.is_file())
+                                .map(|path| {
+                                    let size = scene
+                                        .get("decoration_size")
+                                        .and_then(Value::as_f64)
+                                        .unwrap_or(28.0)
+                                        .clamp(5.0, 80.0)
+                                        as f32;
+                                    let frame = scene
+                                        .get("decoration_keyframes")
+                                        .and_then(Value::as_array)
+                                        .and_then(|frames| frames.first());
+                                    let x = frame
+                                        .and_then(|frame| frame.get("x"))
+                                        .and_then(Value::as_f64)
+                                        .unwrap_or(50.0)
+                                        .clamp(0.0, 100.0)
+                                        as f32;
+                                    let y = frame
+                                        .and_then(|frame| frame.get("y"))
+                                        .and_then(Value::as_f64)
+                                        .unwrap_or(50.0)
+                                        .clamp(0.0, 100.0)
+                                        as f32;
+                                    let decoration_opacity = frame
+                                        .and_then(|frame| frame.get("opacity"))
+                                        .and_then(Value::as_f64)
+                                        .unwrap_or(100.0)
+                                        .clamp(0.0, 100.0)
+                                        as f32
+                                        / 100.0;
+                                    (path, size, x, y, decoration_opacity)
+                                });
+                            (image, opacity, decoration)
                         })
                 });
         let title_visible = layout
@@ -3286,9 +3618,16 @@ impl Render for Studio {
                                                             .bg(rgb(0x05080c)).opacity(0.32))
                                                 })
                                                 .when(scene_preview.is_some(), |frame| {
-                                                    let (path, opacity) = scene_preview.clone().unwrap();
+                                                    let (path, opacity, decoration) = scene_preview.clone().unwrap();
                                                     frame.child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                         .child(img(path).size_full().object_fit(ObjectFit::Cover).opacity(opacity)))
+                                                        .when(decoration.is_some(), |frame| {
+                                                            let (path, size, x, y, opacity) = decoration.unwrap();
+                                                            let width = preview_width * size / 100.0;
+                                                            frame.child(img(path).absolute().w(px(width)).h(px(width * 0.65)).object_fit(ObjectFit::Contain)
+                                                                .left(px(preview_width * x / 100.0 - width / 2.0))
+                                                                .top(px(preview_height * y / 100.0 - width * 0.325)).opacity(opacity))
+                                                        })
                                                 })
                                                 .child(div().absolute().left(px(8.)).top(px(6.)).text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
@@ -3396,6 +3735,36 @@ impl Render for Studio {
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2()
                                 .child(if selected_scene_exists {"Thay ảnh scene cho section"} else {"＋  Nạp ảnh scene cho section"})
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_scene_image(cx))))
+                            .when(selected_scene_exists, |panel| panel
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if self.editor.project().scenes.iter().find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())).and_then(|scene| scene.get("transition")).and_then(Value::as_str) == Some("cut") {"Chuyển cảnh: cắt thẳng"} else {"Chuyển cảnh: mờ 0,6 giây"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_scene_option("transition", &["fade","cut"],cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child("Đổi chế độ tương phản lời")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_scene_option("contrast_mode", &["auto","always","off"],cx))))
+                                .child(div().mt_2().child("Chuyển động ảnh scene")
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("− Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("scale",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("+ Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("scale",5.0,cx)))))
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("x",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("x",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("y",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("y",5.0,cx))))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2().child("＋  Nạp/thay ảnh trang trí")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_scene_decoration(cx))))
+                                .child(div().mt_2().flex().gap_2()
+                                    .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Trang trí −")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("decoration_size",-2.0,5.0,80.0,cx))))
+                                    .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Trang trí +")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("decoration_size",2.0,5.0,80.0,cx)))))
+                                .child(div().mt_2().flex().gap_2()
+                                    .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Scene mờ −")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("opacity",-5.0,0.0,100.0,cx))))
+                                    .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Scene mờ +")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("opacity",5.0,0.0,100.0,cx)))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x302020)).px_2().py_2().child("Bỏ ảnh trang trí")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.remove_scene_decoration(cx)))))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                 .child(if selected_is_section_start {"✓  Đây là đầu section"} else {"＋  Bắt đầu section tại dòng này"})
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.toggle_section_boundary(cx))))

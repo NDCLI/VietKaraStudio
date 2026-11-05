@@ -271,7 +271,15 @@
 >   Thay ảnh giữ nguyên transition/keyframe/decoration đã cấu hình; GPUI preview
 >   nạp ảnh scene theo section ở playback position và opacity. Storage tests
 >   cho import/replacement/giữ settings và từ chối section lạ pass; workspace
->   check/Clippy sạch. Scene decoration editor vẫn chưa triển khai.
+>   check/Clippy sạch.
+> - Nối artwork scene: nạp/thay/xóa ảnh decoration PNG/JPG/WebP, giữ file và
+>   metadata theo scene ID, tạo version snapshot, rollback khi thao tác lưu lỗi.
+>   Preview GPUI xếp lớp decoration trên scene image; inspector chỉnh opacity,
+>   transition cut/fade, contrast mode, size và keyframe vị trí/scale của ảnh
+>   nền, cùng size ảnh decoration. Storage **19/19**, app **10/10** (bỏ qua
+>   integration export phụ thuộc FFmpeg app packaging); workspace check/Clippy
+>   sạch. Chuyển động keyframe decoration, fade theo thời gian và đầy đủ controls
+>   cho transition duration/readability cần hoàn thiện để đạt parity.
 
 ## 1. Mục tiêu và phạm vi
 
