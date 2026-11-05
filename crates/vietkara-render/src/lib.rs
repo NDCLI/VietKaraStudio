@@ -28,8 +28,9 @@
 //!   Linux with different fonts, would produce different layout and
 //!   different golden ASS output. Do not try to port `display_plan`
 //!   here.
-//! * Scene keyframe motion/decorations, logo and countdown overlays, and
-//!   the NVENC fallback in `engine.render()` remain outside this slice.
+//! * Scene decoration position/alpha and scene-image motion are supported;
+//!   dynamic decoration scaling, logo/countdown overlays and NVENC fallback
+//!   remain outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -659,11 +660,19 @@ pub enum RenderBackground {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderScene {
-    pub image: PathBuf,
+    pub image: Option<PathBuf>,
     pub start: f64,
     pub end: f64,
     pub opacity: f64,
     pub fade_seconds: f64,
+    pub keyframes: [SceneKeyframe; 2],
+    pub decoration: Option<RenderSceneDecoration>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderSceneDecoration {
+    pub image: PathBuf,
+    pub size: f64,
     pub keyframes: [SceneKeyframe; 2],
 }
 
@@ -826,8 +835,11 @@ impl RenderInputs {
                 if !vietkara_domain::is_hex32(id) {
                     return None;
                 }
-                let image = directory.join(format!("scene_{id}.png"));
-                if !image.is_file() {
+                let image_path = directory.join(format!("scene_{id}.png"));
+                let image = image_path.is_file().then_some(image_path);
+                let decoration_path = directory.join(format!("scene_decoration_{id}.png"));
+                let decoration = decoration_path.is_file().then_some(decoration_path);
+                if image.is_none() && decoration.is_none() {
                     return None;
                 }
                 let number = |key: &str, default: f64| {
@@ -864,6 +876,45 @@ impl RenderInputs {
                     SceneKeyframe::default(),
                 );
                 let second = parse_frame(frames.and_then(|frames| frames.get(1)), first);
+                let decoration_frames = scene
+                    .get("decoration_keyframes")
+                    .and_then(serde_json::Value::as_array);
+                let center = SceneKeyframe {
+                    x: 50.0,
+                    y: 50.0,
+                    ..SceneKeyframe::default()
+                };
+                let parse_decoration_frame =
+                    |value: Option<&serde_json::Value>, fallback: SceneKeyframe| {
+                        let value = value.filter(|value| value.is_object());
+                        let frame_value = |key: &str, default: f64, min: f64, max: f64| {
+                            value
+                                .and_then(|frame| frame.get(key))
+                                .and_then(serde_json::Value::as_f64)
+                                .filter(|value| value.is_finite())
+                                .unwrap_or(default)
+                                .clamp(min, max)
+                        };
+                        SceneKeyframe {
+                            x: frame_value("x", fallback.x, 0.0, 100.0),
+                            y: frame_value("y", fallback.y, 0.0, 100.0),
+                            scale: frame_value("scale", fallback.scale, 100.0, 200.0),
+                            opacity: frame_value("opacity", fallback.opacity, 0.0, 100.0),
+                        }
+                    };
+                let decoration_first = parse_decoration_frame(
+                    decoration_frames.and_then(|frames| frames.first()),
+                    center,
+                );
+                let decoration_second = parse_decoration_frame(
+                    decoration_frames.and_then(|frames| frames.get(1)),
+                    decoration_first,
+                );
+                let decoration = decoration.map(|image| RenderSceneDecoration {
+                    image,
+                    size: number("decoration_size", 28.0).clamp(5.0, 80.0),
+                    keyframes: [decoration_first, decoration_second],
+                });
                 Some((
                     section.to_owned(),
                     image,
@@ -874,11 +925,14 @@ impl RenderInputs {
                         0.0
                     },
                     [first, second],
+                    decoration,
                 ))
             })
-            .map(|(section, image, opacity, transition, frames)| {
-                (section, (image, opacity, transition, frames))
-            })
+            .map(
+                |(section, image, opacity, transition, frames, decoration)| {
+                    (section, (image, opacity, transition, frames, decoration))
+                },
+            )
             .collect::<HashMap<_, _>>();
         if scenes.is_empty() || project.words.is_empty() {
             self.scenes.clear();
@@ -916,7 +970,9 @@ impl RenderInputs {
         let duration = self.duration.max(0.0);
         let mut resolved = Vec::new();
         for (index, (section, run_start, _)) in runs.iter().enumerate() {
-            let Some((image, opacity, base_transition, keyframes)) = scenes.get(section) else {
+            let Some((image, opacity, base_transition, keyframes, decoration)) =
+                scenes.get(section)
+            else {
                 continue;
             };
             let previous_has_scene = index > 0 && scenes.contains_key(&runs[index - 1].0);
@@ -952,6 +1008,7 @@ impl RenderInputs {
                     opacity: *opacity,
                     fade_seconds: transition.min((end - start) / 2.0).max(0.05),
                     keyframes: *keyframes,
+                    decoration: decoration.clone(),
                 });
             }
         }
@@ -1052,6 +1109,7 @@ pub fn ffmpeg_command(
         args.push(vocals.display().to_string());
     }
     let mut scene_inputs: Vec<(usize, &RenderScene)> = Vec::new();
+    let mut decoration_inputs: Vec<(usize, &RenderScene, &RenderSceneDecoration)> = Vec::new();
     let mut next_input = beat_input + 1 + usize::from(guide);
     for scene in &inputs.scenes {
         if !scene.start.is_finite()
@@ -1062,18 +1120,32 @@ pub fn ffmpeg_command(
         {
             continue;
         }
-        args.extend([
-            "-loop".into(),
-            "1".into(),
-            "-framerate".into(),
-            fps.clone(),
-            "-i".into(),
-            scene.image.display().to_string(),
-        ]);
-        scene_inputs.push((next_input, scene));
-        next_input += 1;
+        if let Some(image) = &scene.image {
+            args.extend([
+                "-loop".into(),
+                "1".into(),
+                "-framerate".into(),
+                fps.clone(),
+                "-i".into(),
+                image.display().to_string(),
+            ]);
+            scene_inputs.push((next_input, scene));
+            next_input += 1;
+        }
+        if let Some(decoration) = &scene.decoration {
+            args.extend([
+                "-loop".into(),
+                "1".into(),
+                "-framerate".into(),
+                fps.clone(),
+                "-i".into(),
+                decoration.image.display().to_string(),
+            ]);
+            decoration_inputs.push((next_input, scene, decoration));
+            next_input += 1;
+        }
     }
-    if guide || !scene_inputs.is_empty() {
+    if guide || !scene_inputs.is_empty() || !decoration_inputs.is_empty() {
         let mut graph = format!("[{background_input}:v:0]{visual_filter}[scene_base]");
         let mut last_background = "scene_base".to_owned();
         for (index, (input_index, scene)) in scene_inputs.iter().enumerate() {
@@ -1095,9 +1167,12 @@ pub fn ffmpeg_command(
             let scale = format!(
                 "max(1,{}/100)",
                 lerp(first.scale, last.scale, &local_progress)
-            );
+            )
+            .replace(',', "\\,");
             let x = lerp(first.x, last.x, &local_progress);
             let y = lerp(first.y, last.y, &local_progress);
+            let x = x.replace(',', "\\,");
+            let y = y.replace(',', "\\,");
             let mut layer = format!(
                 "[{input_index}:v:0]setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,zoompan=z='{scale}':x='iw/2-iw/zoom/2-({x})*(iw-iw/zoom)/100':y='ih/2-ih/zoom/2-({y})*(ih-ih/zoom)/100':d=1:s={width}x{height}:fps={fps},format=rgba"
             );
@@ -1107,9 +1182,10 @@ pub fn ffmpeg_command(
                     opacity * first.opacity / 100.0
                 ));
             } else {
-                let opacity_curve = lerp(first.opacity, last.opacity, &alpha_progress);
+                let opacity_curve =
+                    lerp(first.opacity, last.opacity, &alpha_progress).replace(',', "\\,");
                 layer.push_str(&format!(
-                    ",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({opacity:.4}*{opacity_curve}/100)/100'"
+                    ",geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*({opacity:.4}*{opacity_curve}/100)/100'"
                 ));
             }
             if fade >= 0.05 {
@@ -1126,9 +1202,56 @@ pub fn ffmpeg_command(
             graph.push(';');
             graph.push_str(&layer);
             graph.push_str(&format!(
-                ";[{last_background}][scene_layer{index}]overlay=x=0:y=0:eof_action=pass:shortest=0:enable='between(t,{start:.3},{end:.3})'[scene_bg{index}]"
+                ";[{last_background}][scene_layer{index}]overlay=x=0:y=0:eof_action=pass:shortest=0:enable='between(t\\,{start:.3}\\,{end:.3})'[scene_bg{index}]"
             ));
             last_background = format!("scene_bg{index}");
+        }
+        for (index, (input_index, scene, decoration)) in decoration_inputs.iter().enumerate() {
+            let start = scene.start.max(0.0);
+            let end = scene.end.min(inputs.duration);
+            if end <= start {
+                continue;
+            }
+            let duration = end - start;
+            let fade = scene.fade_seconds.min(duration / 2.0).max(0.0);
+            let [first, last] = decoration.keyframes;
+            let alpha_progress = format!("min(max(T/{duration:.6},0),1)");
+            let lerp =
+                |a: f64, b: f64, progress: &str| format!("({a:.4}+({:.4})*{progress})", b - a);
+            // `scale=eval=frame` crashes the bundled Windows FFmpeg build
+            // when scaling a still-image overlay. Keep a deterministic
+            // first-keyframe size while animating position and alpha.
+            let width_expr = format!(
+                "max(1,{width}*{:.4}/100*{:.4}/100)",
+                decoration.size, first.scale
+            );
+            let mut layer = format!(
+                "[{input_index}:v:0]setpts=PTS-STARTPTS,format=rgba,scale=w='{width_expr}':h=-1"
+            );
+            let opacity_expr =
+                lerp(first.opacity, last.opacity, &alpha_progress).replace(',', "\\,");
+            layer.push_str(&format!(
+                ",geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*({opacity_expr})/100'"
+            ));
+            if fade >= 0.05 {
+                layer.push_str(&format!(",fade=t=in:st=0:d={fade:.3}:alpha=1"));
+                layer.push_str(&format!(
+                    ",fade=t=out:st={:.3}:d={fade:.3}:alpha=1",
+                    (duration - fade).max(0.0)
+                ));
+            }
+            layer.push_str(&format!(
+                ",trim=duration={duration:.3},setpts=PTS-STARTPTS+{start:.3}/TB[scene_decoration{index}]"
+            ));
+            let position_progress = format!("min(max((t-{start:.6})/{duration:.6},0),1)");
+            let x = lerp(first.x, last.x, &position_progress).replace(',', "\\,");
+            let y = lerp(first.y, last.y, &position_progress).replace(',', "\\,");
+            graph.push(';');
+            graph.push_str(&layer);
+            graph.push_str(&format!(
+                ";[{last_background}][scene_decoration{index}]overlay=x='W*({x})/100-w/2':y='H*({y})/100-h/2':eof_action=pass:shortest=0:enable='between(t\\,{start:.3}\\,{end:.3})'[scene_decor{index}]"
+            ));
+            last_background = format!("scene_decor{index}");
         }
         graph.push_str(&format!(
             ";[{last_background}]ass={}:fontsdir={}[base]",
@@ -1708,6 +1831,10 @@ mod tests {
         let scene_id = "0123456789abcdef0123456789abcdef";
         let image = directory.path().join(format!("scene_{scene_id}.png"));
         std::fs::write(&image, b"png").unwrap();
+        let decoration_image = directory
+            .path()
+            .join(format!("scene_decoration_{scene_id}.png"));
+        std::fs::write(&decoration_image, b"png").unwrap();
         let mut project = vietkara_domain::Project::new("scene");
         project.scenes.push(serde_json::json!({
             "id": scene_id,
@@ -1715,9 +1842,14 @@ mod tests {
             "opacity": 75,
             "transition": "fade",
             "transition_seconds": 0.8,
+            "decoration_size": 30,
             "keyframes": [
                 {"x":-50,"y":20,"scale":100,"opacity":100},
                 {"x":50,"y":-20,"scale":150,"opacity":40}
+            ],
+            "decoration_keyframes": [
+                {"x":30,"y":40,"scale":100,"opacity":100},
+                {"x":70,"y":60,"scale":150,"opacity":40}
             ]
         }));
         project.words.push(
@@ -1736,7 +1868,11 @@ mod tests {
         let mut inputs = RenderInputs::new("beat.wav", 10.0);
         inputs.configure_scenes_from_project(&project, directory.path());
         assert_eq!(inputs.scenes.len(), 1);
-        assert_eq!(inputs.scenes[0].image, image);
+        assert_eq!(inputs.scenes[0].image, Some(image));
+        let decoration = inputs.scenes[0].decoration.as_ref().unwrap();
+        assert_eq!(decoration.image, decoration_image);
+        assert_eq!(decoration.size, 30.0);
+        assert_eq!(decoration.keyframes[1].x, 70.0);
         assert_eq!(inputs.scenes[0].start, 2.0);
         assert_eq!(inputs.scenes[0].end, 10.0);
         assert_eq!(inputs.scenes[0].opacity, 0.75);
@@ -1751,14 +1887,14 @@ mod tests {
             .unwrap();
         let graph = &command[graph_index + 1];
         assert!(graph.contains("[2:v:0]"));
-        assert!(
-            graph.contains(
-                "zoompan=z='max(1,(100.0000+(50.0000)*min(max(on/240.000000,0),1))/100)'"
-            )
-        );
-        assert!(graph.contains("geq=r='r(X,Y)'"));
+        assert!(graph.contains(
+            "zoompan=z='max(1\\,(100.0000+(50.0000)*min(max(on/240.000000\\,0)\\,1))/100)'"
+        ));
+        assert!(graph.contains("geq=r='r(X\\,Y)'"));
         assert!(graph.contains("overlay=x=0:y=0"));
         assert!(graph.contains("ass=lyrics.ass:fontsdir=fonts[base]"));
+        assert!(graph.contains("[3:v:0]setpts=PTS-STARTPTS,format=rgba,scale=w='"));
+        assert!(graph.contains("scene_decoration0"));
         assert_eq!(
             &command[graph_index + 2..graph_index + 6],
             ["-map", "[base]", "-map", "1:a:0"]
@@ -2004,9 +2140,29 @@ mod tests {
             .output()
             .unwrap();
         assert!(image.status.success(), "scene image generation failed");
+        let decoration_image = root.join("scene_decoration.png");
+        let decoration = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=yellow@0.7:s=32x32:d=1,format=rgba",
+                "-frames:v",
+                "1",
+            ])
+            .arg(&decoration_image)
+            .output()
+            .unwrap();
+        assert!(
+            decoration.status.success(),
+            "decoration image generation failed"
+        );
         let mut scene_inputs = RenderInputs::new("beat.wav", 2.0);
         scene_inputs.scenes.push(RenderScene {
-            image: scene_image,
+            image: Some(scene_image),
             start: 0.25,
             end: 1.75,
             opacity: 0.6,
@@ -2020,6 +2176,23 @@ mod tests {
                     opacity: 35.0,
                 },
             ],
+            decoration: Some(RenderSceneDecoration {
+                image: decoration_image,
+                size: 28.0,
+                keyframes: [
+                    SceneKeyframe {
+                        x: 25.0,
+                        y: 40.0,
+                        ..SceneKeyframe::default()
+                    },
+                    SceneKeyframe {
+                        x: 75.0,
+                        y: 60.0,
+                        scale: 160.0,
+                        ..SceneKeyframe::default()
+                    },
+                ],
+            }),
         });
         let argv = ffmpeg_command(&profile, &scene_inputs).unwrap();
         let render = std::process::Command::new(&argv[0])
@@ -2029,8 +2202,14 @@ mod tests {
             .unwrap();
         assert!(
             render.status.success(),
-            "scene render failed: {}",
-            String::from_utf8_lossy(&render.stderr)
+            "scene render failed ({:?}): {}\n{}",
+            render.status.code(),
+            String::from_utf8_lossy(&render.stderr),
+            argv.iter()
+                .position(|arg| arg == "-filter_complex")
+                .and_then(|index| argv.get(index + 1))
+                .map(String::as_str)
+                .unwrap_or("")
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
     }

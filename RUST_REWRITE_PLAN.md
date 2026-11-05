@@ -144,6 +144,9 @@
 >   Workspace hiện **94/94**; fmt/clippy/check/build pass.
 > - Port tiếp keyframe đầu/cuối cho pan, zoom và alpha của scene image; test
 >   integration chạy FFmpeg với chuyển động và alpha thay đổi theo thời gian.
+> - Nối thêm ảnh decoration của scene, cùng timeline, vị trí/alpha keyframe
+>   và fade. Scale decoration hiện lấy keyframe đầu cố định vì `scale=eval=frame`
+>   làm crash FFmpeg bundled trên Windows; scene background vẫn có zoom keyframe.
 
 ## 1. Mục tiêu và phạm vi
 
