@@ -2960,11 +2960,7 @@ impl Render for Studio {
             display_words,
             window.text_system(),
         );
-        let active_plan_rows = if display_mode == "karaoke" {
-            preview::visible_plan_rows(layout, self.play_position, display_mode)
-        } else {
-            Vec::new()
-        };
+        let active_plan_rows = preview::visible_plan_rows(layout, self.play_position, display_mode);
         let active_lines = if display_mode == "karaoke" {
             active_plan_rows
                 .iter()
