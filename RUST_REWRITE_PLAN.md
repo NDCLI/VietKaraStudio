@@ -154,6 +154,9 @@
 >   Integration test FFmpeg dựng scene + decoration + countdown + logo pulse
 >   và float. Workspace **95/95**; fmt/clippy/check/build pass. Countdown dạng
 >   glyph/ASS và nút/job export GPUI vẫn chưa có.
+> - Đồng bộ invariant hai lane giữa preview GPUI và renderer: role `voice_c`…
+>   `voice_f` cùng mọi `row` legacy được gập vào slot 0/1; karaoke luôn dùng
+>   hai vị trí dọc. Thêm test bao phủ cả role lẫn row ngoài phạm vi 0/1.
 
 ## 1. Mục tiêu và phạm vi
 

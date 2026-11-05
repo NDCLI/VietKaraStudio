@@ -66,6 +66,18 @@ def test_manual_rows_sections_and_overlap_warning():
     assert grouped[2]['section'] is True
 
 
+def test_duet_roles_and_legacy_rows_are_folded_into_two_karaoke_lanes():
+    roles = ['male', 'female', 'voice_c', 'voice_d', 'voice_e', 'voice_f']
+    items = [
+        {'text': role, 'start': i * 2 + 1, 'end': i * 2 + 1.5,
+         'line': i, 'row': i + 4, 'role': role}
+        for i, role in enumerate(roles)
+    ]
+    plan = layout.display_plan({'words': items, 'settings': {'singing_mode': 'duet'}})
+    assert [row['slot'] for row in plan['rows']] == [0, 1, 0, 1, 0, 1]
+    assert len({row['y'] for row in plan['rows']}) == 2
+
+
 def test_intro_silence_trim_and_bad_alignment_guard():
     sr=16000
     rng=np.random.default_rng(4)
