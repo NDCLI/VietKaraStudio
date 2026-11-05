@@ -11,5 +11,6 @@ pub const TEXT: u32 = 0xe8e9ed;
 pub const TEXT_MUTED: u32 = 0x9aa7b7;
 pub const TEXT_SUBTLE: u32 = 0x748297;
 pub const ACCENT_SURFACE: u32 = 0x34465b;
+pub const ACCENT: u32 = 0x5b9cff;
 pub const SUCCESS: u32 = 0x183226;
 pub const SUCCESS_ACTIVE: u32 = 0x255348;

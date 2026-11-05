@@ -89,6 +89,8 @@ struct Studio {
     _autosave_task: Task<()>,
     left_tab_media: bool,
     inspector_design: bool,
+    workspace_layout: Option<WorkspaceSize>,
+    workspace_resize: Option<WorkspaceResize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,6 +98,54 @@ struct WorkspaceSize {
     left: f32,
     preview: f32,
     right: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceEdge {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct WorkspaceResize {
+    edge: WorkspaceEdge,
+    origin_x: f32,
+    initial: WorkspaceSize,
+    viewport_width: f32,
+}
+
+fn resize_workspace(
+    initial: WorkspaceSize,
+    edge: WorkspaceEdge,
+    delta_x: f32,
+    viewport_width: f32,
+) -> WorkspaceSize {
+    let mut next = initial;
+    match edge {
+        WorkspaceEdge::Left => {
+            let max_left = (viewport_width - initial.right - 392.0).clamp(170.0, 420.0);
+            next.left = (initial.left + delta_x).clamp(170.0, max_left);
+        }
+        WorkspaceEdge::Right => {
+            let max_right = (viewport_width - initial.left - 392.0).clamp(204.0, 460.0);
+            next.right = (initial.right - delta_x).clamp(204.0, max_right);
+        }
+    }
+    fit_workspace(next, viewport_width)
+}
+
+fn fit_workspace(mut layout: WorkspaceSize, viewport_width: f32) -> WorkspaceSize {
+    let max_panel_width = (viewport_width - 392.0).max(374.0);
+    let left_extra = (layout.left - 170.0).max(0.0);
+    let right_extra = (layout.right - 204.0).max(0.0);
+    let extra_budget = max_panel_width - 374.0;
+    let extra_total = left_extra + right_extra;
+    if extra_total > extra_budget && extra_total > 0.0 {
+        let left_share = left_extra / extra_total;
+        layout.left = 170.0 + extra_budget * left_share;
+        layout.right = 204.0 + extra_budget * (1.0 - left_share);
+    }
+    layout
 }
 
 fn workspace_size(viewport_width: f32) -> WorkspaceSize {
@@ -369,6 +419,49 @@ enum ExportEvent {
 }
 
 impl Studio {
+    fn start_workspace_resize(
+        &mut self,
+        edge: WorkspaceEdge,
+        x: f32,
+        viewport_width: f32,
+        cx: &mut Context<Self>,
+    ) {
+        if self.timeline_drag.is_some() || self.workspace_resize.is_some() {
+            return;
+        }
+        let initial = self
+            .workspace_layout
+            .unwrap_or_else(|| workspace_size(viewport_width));
+        let initial = fit_workspace(initial, viewport_width);
+        self.workspace_resize = Some(WorkspaceResize {
+            edge,
+            origin_x: x,
+            initial,
+            viewport_width,
+        });
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    fn move_workspace_resize(&mut self, x: f32, cx: &mut Context<Self>) {
+        let Some(drag) = self.workspace_resize else {
+            return;
+        };
+        self.workspace_layout = Some(resize_workspace(
+            drag.initial,
+            drag.edge,
+            x - drag.origin_x,
+            drag.viewport_width,
+        ));
+        cx.notify();
+    }
+
+    fn finish_workspace_resize(&mut self, cx: &mut Context<Self>) {
+        if self.workspace_resize.take().is_some() {
+            cx.notify();
+        }
+    }
+
     pub(crate) fn set_word_input(&mut self, value: &str, cx: &mut Context<Self>) {
         self.word_input.update(cx, |input, cx| {
             input.set_value(value);
@@ -2667,7 +2760,11 @@ impl Render for Studio {
                 cx.notify();
             });
         }
-        let workspace = workspace_size(f32::from(window.viewport_size().width));
+        let viewport_width = f32::from(window.viewport_size().width);
+        let workspace = self
+            .workspace_layout
+            .unwrap_or_else(|| workspace_size(viewport_width));
+        let workspace = fit_workspace(workspace, viewport_width);
         let portrait_width = (workspace.preview * 9. / 16.).min(210.);
         let preview_height = if self.editor.project().settings.aspect
             == vietkara_domain::settings::Aspect::Portrait
@@ -3473,9 +3570,19 @@ impl Render for Studio {
 
         div()
             .key_context("Studio")
-            .on_mouse_move(cx.listener(|this,event:&gpui::MouseMoveEvent,_,cx|this.move_resize(f32::from(event.position.x),cx)))
-            .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx|this.finish_resize(cx)))
-            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx|this.finish_resize(cx)))
+            .on_mouse_move(cx.listener(|this,event:&gpui::MouseMoveEvent,_,cx|{
+                let x=f32::from(event.position.x);
+                this.move_workspace_resize(x,cx);
+                this.move_resize(x,cx);
+            }))
+            .on_mouse_up(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                this.finish_workspace_resize(cx);
+                this.finish_resize(cx);
+            }))
+            .on_mouse_up_out(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                this.finish_workspace_resize(cx);
+                this.finish_resize(cx);
+            }))
             .on_key_down(cx.listener(|this,event,_,cx|this.tap_down(event,cx)))
             .on_key_up(cx.listener(|this,event,_,cx|this.tap_up(event,cx)))
             .on_action(cx.listener(|this,_:&BeginTapping,_,cx|this.begin_tapping(cx)))
@@ -3708,6 +3815,19 @@ impl Render for Studio {
                     )
                     .child(
                         div()
+                            .id("resize-lyrics-divider")
+                            .w(px(6.))
+                            .flex_shrink_0()
+                            .h_full()
+                            .rounded_sm()
+                            .bg(rgb(theme::BORDER))
+                            .hover(|style| style.bg(rgb(theme::ACCENT)))
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this,event:&gpui::MouseDownEvent,window,cx|{
+                                this.start_workspace_resize(WorkspaceEdge::Left,f32::from(event.position.x),f32::from(window.viewport_size().width),cx);
+                            })),
+                    )
+                    .child(
+                        div()
                             .flex()
                             .flex_col()
                             .flex_1()
@@ -3810,6 +3930,19 @@ impl Render for Studio {
                                             .child(if self.editor.project().settings.timeline_linked {"Mốc liên kết"}else{"Mốc độc lập"})
                                             .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx))))),
                             ),
+                    )
+                    .child(
+                        div()
+                            .id("resize-inspector-divider")
+                            .w(px(6.))
+                            .flex_shrink_0()
+                            .h_full()
+                            .rounded_sm()
+                            .bg(rgb(theme::BORDER))
+                            .hover(|style| style.bg(rgb(theme::ACCENT)))
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this,event:&gpui::MouseDownEvent,window,cx|{
+                                this.start_workspace_resize(WorkspaceEdge::Right,f32::from(event.position.x),f32::from(window.viewport_size().width),cx);
+                            })),
                     )
                     .child(
                         div()
@@ -4824,6 +4957,8 @@ fn main() {
                         _autosave_task: task,
                         left_tab_media: false,
                         inspector_design: false,
+                        workspace_layout: None,
+                        workspace_resize: None,
                         playing: false,
                         selected_word: None,
                         selected_anchor: None,
@@ -4928,6 +5063,34 @@ mod workspace_tests {
                 right: 270.,
             }
         );
+    }
+
+    #[test]
+    fn workspace_splitters_resize_the_intended_column_and_respect_minimums() {
+        let initial = workspace_size(1440.);
+        let left_drag = resize_workspace(initial, WorkspaceEdge::Left, 80., 1440.);
+        assert_eq!(left_drag.left, 320.);
+        assert_eq!(left_drag.right, initial.right);
+        assert_eq!(left_drag.preview, initial.preview);
+
+        let right_drag = resize_workspace(initial, WorkspaceEdge::Right, -60., 1440.);
+        assert_eq!(right_drag.right, 330.);
+        assert_eq!(right_drag.left, initial.left);
+
+        let narrow = resize_workspace(initial, WorkspaceEdge::Left, -500., 800.);
+        assert_eq!(narrow.left, 170.);
+        assert!(narrow.left + narrow.right + 392. <= 800.);
+
+        let fitted = fit_workspace(
+            WorkspaceSize {
+                left: 420.,
+                preview: 520.,
+                right: 460.,
+            },
+            800.,
+        );
+        assert!(fitted.left + fitted.right + 392. <= 800.);
+        assert_eq!(fitted.preview, 520.);
     }
 
     #[test]
