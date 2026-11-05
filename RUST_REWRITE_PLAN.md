@@ -46,6 +46,13 @@
 > - Kiểm chứng Linux: `cargo test` 6 crate **62/62 pass**; `cargo fmt
 >   --check` và `cargo clippy -- -D warnings` sạch; Python
 >   `test_timing.py` 4/4, JS tapping/timeline 14/14.
+>
+> **Kế hoạch còn lại — làm trên Windows:** xem `docs/windows-plan.md`
+> (điểm xuất phát commit `df1a652`). Tài liệu đó liệt kê theo thứ tự:
+> W1 chuẩn bị máy + kiểm chứng lại 62 test, W2 spike GPUI + quyết định
+> go/no-go, W3 undo/redo + autosave, W4 vertical slice MVP, W5 full ASS
+> layout + render parity, W6 worker JSONL + AI + batch, W7 đóng gói +
+> rollout — kèm lệnh kiểm chứng, cách ghi kết quả và push.
 
 > **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 

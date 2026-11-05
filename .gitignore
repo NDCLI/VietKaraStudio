@@ -18,3 +18,4 @@ docs/*
 !docs/RELEASE.md
 !docs/compatibility-matrix.md
 !docs/windows-spike.md
+!docs/windows-plan.md
