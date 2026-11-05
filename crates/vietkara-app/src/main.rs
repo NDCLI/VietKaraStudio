@@ -2772,6 +2772,16 @@ impl Render for Studio {
             .get("subtitle_box_radius")
             .and_then(Value::as_f64)
             .unwrap_or(8.0);
+        let sweep_feather = settings
+            .extra
+            .get("sweep_feather")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let sweep_glow = settings
+            .extra
+            .get("sweep_glow")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
         let singing_mode = settings
             .extra
             .get("singing_mode")
@@ -3900,6 +3910,18 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(format!("Căn lề: {align_label}"))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("align",&["center","left","right","justify"],cx))))
+                                .when(display_mode == "karaoke", |panel| panel
+                                    .child(div().mt_4().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("HIỆU ỨNG QUÉT CHỮ"))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(theme::CANVAS)).px_2().py_2()
+                                        .child(format!("Mềm mép: {sweep_feather:.0}"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("sweep_feather",-2.0,0.0,40.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("sweep_feather",2.0,0.0,40.0,cx))))))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(theme::CANVAS)).px_2().py_2()
+                                        .child(format!("Ánh sáng quét: {sweep_glow:.0}"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("sweep_glow",-10.0,0.0,200.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("sweep_glow",10.0,0.0,200.0,cx)))))))
                                 .child(div().mt_4().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("DUET · ROLE MARKER"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(if singing_mode == "duet" {"✓  Hai lane duet"} else {"Solo · một lane"})

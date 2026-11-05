@@ -100,6 +100,8 @@ struct AssStyle<'a> {
     outline_unsung_opacity: u8,
     outline_sung_opacity: u8,
     shadow: f64,
+    sweep_feather: f64,
+    sweep_glow: f64,
     horizontal_scale: f64,
 }
 
@@ -113,6 +115,23 @@ fn paint(hex: &str, outline: &str, outline_opacity: u8, size: f64, style: &AssSt
         ass_color(style.shadow_color, 100),
         style.outline_width,
         style.shadow,
+    )
+}
+
+fn paint_with_opacity(
+    hex: &str,
+    outline: &str,
+    outline_opacity: u8,
+    opacity: u8,
+    size: f64,
+    style: &AssStyle<'_>,
+) -> String {
+    let alpha = (255.0 * (1.0 - f64::from(opacity) / 100.0)).round_ties_even() as u8;
+    let outline_alpha = (255.0 * (1.0 - f64::from(outline_opacity) * f64::from(opacity) / 10_000.0))
+        .round_ties_even() as u8;
+    format!(
+        "{}\\1a&H{alpha:02X}&\\3a&H{outline_alpha:02X}&\\shad0",
+        paint(hex, outline, outline_opacity, size, style)
     )
 }
 
@@ -553,15 +572,57 @@ fn word_event(
     opts: &AnimOpts,
     style: &AssStyle<'_>,
     sung_bands: &[(f64, f64, String)],
+    frame_height: f64,
 ) -> Vec<String> {
-    let mut output = Vec::with_capacity(2);
+    let mut output = Vec::with_capacity(8);
     let mut anim = row_anim(row);
     anim.x = word.x;
     let motion = animation(&anim, opts);
-    let unsung = paint(
+    let text = literal(&word.display_text);
+
+    if style.shadow > 0.0 {
+        let mut shadow_row = anim.clone();
+        shadow_row.x += style.shadow;
+        shadow_row.y += style.shadow;
+        let shadow_tags = format!(
+            "{}\\fs{:.3}\\shad0\\1c{}\\3c{}\\1a&H00&\\3a&H00&",
+            animation(&shadow_row, opts),
+            row.font_size,
+            ass_color(style.shadow_color, 100),
+            ass_color(style.shadow_color, 100),
+        );
+        if let Some(event) = dialogue(0, row.show_start, row.show_end, &shadow_tags, &text) {
+            output.push(event);
+        }
+    }
+
+    let start = word.start.max(row.show_start);
+    let end = word.end.min(row.show_end);
+    let a = ((word.start - row.show_start) * 1000.0)
+        .round_ties_even()
+        .max(0.0);
+    let b = ((word.end - row.show_start) * 1000.0)
+        .round_ties_even()
+        .max(a + 10.0);
+    let left = word.x - (style.outline_width + row.font_size * 0.18 + style.shadow + 3.0);
+    let right =
+        word.x + word.width + (style.outline_width + row.font_size * 0.18 + style.shadow + 3.0);
+    let feather = (style.sweep_feather / 3.0).min((word.width * 0.25).max(0.0));
+    let clip =
+        |x1: f64, y1: f64, x2: f64, y2: f64| format!("\\clip({x1:.2},{y1:.2},{x2:.2},{y2:.2})");
+    let moving = |x1: f64, y1: f64, x2: f64, y2: f64, end_x1: f64, end_x2: f64| {
+        format!(
+            "{}\\t({a:.0},{b:.0},{})",
+            clip(x1, y1, x2, y2),
+            clip(end_x1, y1, end_x2, y2)
+        )
+    };
+
+    let unsung = paint_with_opacity(
         style.unsung,
         style.outline_unsung,
         style.outline_unsung_opacity,
+        100,
         row.font_size,
         style,
     );
@@ -569,36 +630,94 @@ fn word_event(
         1,
         row.show_start,
         row.show_end,
-        &format!("{motion}{unsung}"),
-        &literal(&word.display_text),
+        &format!(
+            "{motion}{unsung}{}",
+            moving(
+                left + feather / 2.0,
+                0.0,
+                right + feather,
+                frame_height,
+                right + feather / 2.0,
+                right + feather,
+            )
+        ),
+        &text,
     ) {
         output.push(event);
     }
 
-    let start = word.start.max(row.show_start);
-    let end = word.end.min(row.show_end);
     if end > start {
-        let duration = ((end - start) * 1000.0).round_ties_even().max(1.0);
-        let left = word.x;
-        let right = word.x + word.width;
         for (top, bottom, hex_color) in sung_bands {
-            let clip = format!(
-                "\\clip({left:.2},{top:.2},{left:.2},{bottom:.2})\\t(0,{duration:.0},\\clip({left:.2},{top:.2},{right:.2},{bottom:.2}))"
-            );
-            let sung = paint(
+            let sung = paint_with_opacity(
                 hex_color,
                 style.outline_sung,
                 style.outline_sung_opacity,
+                100,
                 row.font_size,
                 style,
             );
+            let sweep = moving(left, *top, left, *bottom, right - feather / 2.0, right);
             if let Some(event) = dialogue(
-                2,
-                start,
-                end,
-                &format!("{motion}{sung}{clip}"),
-                &literal(&word.display_text),
+                3,
+                row.show_start,
+                row.show_end,
+                &format!("{motion}{sung}{sweep}"),
+                &text,
             ) {
+                output.push(event);
+            }
+            if feather > 0.0 {
+                for index in 0..4 {
+                    let offset = -feather / 2.0 + feather * index as f64 / 4.0;
+                    let alpha =
+                        (100.0 * (1.0 - (index as f64 + 0.5) / 4.0)).round_ties_even() as u8;
+                    let tags = paint_with_opacity(
+                        hex_color,
+                        style.outline_sung,
+                        style.outline_sung_opacity,
+                        alpha,
+                        row.font_size,
+                        style,
+                    );
+                    let sweep = moving(
+                        left + offset,
+                        *top,
+                        left + offset + feather / 4.0,
+                        *bottom,
+                        right + offset,
+                        right + offset + feather / 4.0,
+                    );
+                    if let Some(event) = dialogue(
+                        4,
+                        row.show_start,
+                        row.show_end,
+                        &format!("{motion}{tags}{sweep}"),
+                        &text,
+                    ) {
+                        output.push(event);
+                    }
+                }
+            }
+        }
+        if style.sweep_glow > 0.0 {
+            let band = 2.0_f64.max((word.width * 0.2).min(feather + row.font_size * 0.07));
+            let glow_alpha =
+                (255.0 * (1.0 - (style.sweep_glow / 150.0).min(1.0))).round_ties_even() as u8;
+            let blur = 1.0 + style.sweep_feather / 12.0 + style.sweep_glow / 100.0;
+            let glow_tags = format!(
+                "\\an7\\pos({:.2},{:.2})\\fs{:.3}\\bord0\\shad0\\1c&HFFFFFF&\\1a&H{glow_alpha:02X}&\\blur{blur:.2}",
+                word.x, row.y, row.font_size,
+            );
+            let glow_clip = moving(
+                left - band,
+                0.0,
+                left + band,
+                frame_height,
+                right - band,
+                right + band,
+            );
+            if let Some(event) = dialogue(5, start, end, &format!("{glow_tags}{glow_clip}"), &text)
+            {
                 output.push(event);
             }
         }
@@ -648,6 +767,8 @@ pub fn build_lyrics_ass_with_scenes(
         outline_unsung_opacity,
         outline_sung_opacity,
         shadow,
+        sweep_feather: number(settings, "sweep_feather", 0.0).clamp(0.0, 40.0),
+        sweep_glow: number(settings, "sweep_glow", 0.0).clamp(0.0, 200.0),
         horizontal_scale: hscale,
     };
     let style = format!(
@@ -774,7 +895,14 @@ pub fn build_lyrics_ass_with_scenes(
         let row_style = base_style;
         let bands = gradient_bands(row, settings, &sung_color, plan.height);
         for word in &row.words {
-            lines.extend(word_event(row, word, &options, &row_style, &bands));
+            lines.extend(word_event(
+                row,
+                word,
+                &options,
+                &row_style,
+                &bands,
+                f64::from(plan.height),
+            ));
         }
     }
     if let Some(title) = &plan.title {
@@ -893,11 +1021,51 @@ mod tests {
             "\\pos({:.2},{:.2})",
             plan.rows[0].words[0].x, plan.rows[0].y
         )));
-        assert!(ass.contains("0:00:01.00,0:00:01.50"));
+        assert!(ass.contains("0:00:00.00,0:00:02.60"));
         assert!(ass.contains("\\clip("));
-        assert!(ass.contains("\\t(0,500,\\clip("));
+        assert!(ass.contains("\\t(1000,1500,\\clip("));
         assert!(ass.contains("\\fad("));
         assert!(ass.ends_with("\n"));
+    }
+
+    #[test]
+    fn karaoke_sweep_feather_glow_and_shadow_follow_word_progress() {
+        let mut project = project();
+        project.settings.extra.extend([
+            ("sweep_feather".into(), Value::from(12)),
+            ("sweep_glow".into(), Value::from(90)),
+        ]);
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        let events = ass
+            .lines()
+            .filter(|line| line.starts_with("Dialogue:"))
+            .collect::<Vec<_>>();
+        assert_eq!(events.len(), 16);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|line| line.starts_with("Dialogue: 4,"))
+                .count(),
+            8
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|line| line.starts_with("Dialogue: 5,"))
+                .count(),
+            2
+        );
+        assert!(ass.contains("\\blur2.90"));
+        assert!(ass.contains("\\1a&H1F&"));
+        assert!(ass.contains("\\t(1000,1500,\\clip("));
     }
 
     #[test]
@@ -1038,13 +1206,17 @@ mod tests {
         let ass = build_lyrics_ass_with_scenes(&project, &plan, &[scene.clone()]);
         assert_eq!(
             ass.lines()
-                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .filter(|line| {
+                    line.starts_with("Dialogue: 0,") && line.contains("\\p1\\bord0\\shad0")
+                })
                 .count(),
             1
         );
         assert!(
             ass.lines()
-                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .filter(|line| {
+                    line.starts_with("Dialogue: 0,") && line.contains("\\p1\\bord0\\shad0")
+                })
                 .all(|line| line.contains("0:00:00.00,0:00:02.60"))
         );
         scene.backing_opacity = 48;
@@ -1061,7 +1233,9 @@ mod tests {
         let ass = build_lyrics_ass_with_scenes(&subtitle, &subtitle_plan, &[scene]);
         assert_eq!(
             ass.lines()
-                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .filter(|line| {
+                    line.starts_with("Dialogue: 0,") && line.contains("\\p1\\bord0\\shad0")
+                })
                 .count(),
             1
         );
@@ -1084,7 +1258,7 @@ mod tests {
         let ass = build_lyrics_ass(&project, &plan);
         let sung = ass
             .lines()
-            .filter(|line| line.starts_with("Dialogue: 2,"))
+            .filter(|line| line.starts_with("Dialogue: 3,"))
             .collect::<Vec<_>>();
         assert_eq!(sung.len(), 20);
         assert!(sung.iter().all(|line| line.contains("\\clip(")));

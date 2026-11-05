@@ -293,6 +293,12 @@
 >   màu câu chính và gradient; regression test xác minh số event và opacity.
 >   `vietkara-render` **40/40** test không cần FFmpeg pass (2 integration render
 >   thật đã lọc do thiếu binary); workspace test khả dụng và clippy pass.
+> - Port hiệu ứng sweep karaoke từ Python vào ASS: unsung base clip chạy theo
+>   start/end của từng từ, lớp shadow, feather 4 dải và glow mask tùy chọn;
+>   thêm điều khiển `sweep_feather` / `sweep_glow` trong inspector. Regression
+>   test kiểm tra timing, layer count, alpha và blur. `vietkara-render` **41/41**
+>   test non-FFmpeg, `vietkara-app` **14/14**, fmt/check/workspace clippy pass.
+>   GPUI preview vẫn chưa vẽ feather/glow như ASS.
 
 ## 1. Mục tiêu và phạm vi
 
