@@ -4230,24 +4230,26 @@ fn sweep_preview_geometry(
     let feather_segments = if feather > 0.0 {
         let segment_width = feather / 4.0;
         (0..4)
-            .map(|segment| {
-                (
-                    edge - feather * 0.5 + segment_width * segment as f32,
-                    segment_width,
-                    1.0 - (segment as f32 + 0.5) / 4.0,
-                )
+            .filter_map(|segment| {
+                let raw_start = edge - feather * 0.5 + segment_width * segment as f32;
+                let start = raw_start.clamp(0.0, width);
+                let end = (raw_start + segment_width).clamp(0.0, width);
+                (end > start).then_some((start, end - start, 1.0 - (segment as f32 + 0.5) / 4.0))
             })
             .collect()
     } else {
         Vec::new()
     };
-    let glow_band = (glow > 0.0 && progress > 0.0 && progress < 1.0).then(|| {
+    let glow_band = if glow > 0.0 && progress > 0.0 && progress < 1.0 {
         let band = (width * 0.2)
             .min(feather + font_size * 0.07)
             .max(min_glow_band);
-        let width = band * 2.0;
-        (edge - band, width, (glow / 150.0).clamp(0.0, 1.0))
-    });
+        let left = (edge - band).clamp(0.0, width);
+        let right = (edge + band).clamp(0.0, width);
+        (right > left).then_some((left, right - left, (glow / 150.0).clamp(0.0, 1.0)))
+    } else {
+        None
+    };
     SweepPreviewGeometry {
         solid_width,
         feather_segments,
@@ -4821,6 +4823,20 @@ mod workspace_tests {
                 .glow_band
                 .is_none()
         );
+        for progress in [0.01, 0.05, 0.95, 0.99] {
+            let edge_geometry = sweep_preview_geometry(100.0, progress, 12.0, 90.0, 20.0, 2.0);
+            assert!(
+                edge_geometry
+                    .feather_segments
+                    .iter()
+                    .all(|(left, segment_width, _)| *left >= 0.0
+                        && *segment_width > 0.0
+                        && *left + *segment_width <= 100.0)
+            );
+            if let Some((left, band_width, _)) = edge_geometry.glow_band {
+                assert!(left >= 0.0 && left + band_width <= 100.0);
+            }
+        }
         assert_eq!(
             sweep_preview_geometry(100.0, 0.5, 0.0, 0.0, 20.0, 2.0).solid_width,
             50.0
