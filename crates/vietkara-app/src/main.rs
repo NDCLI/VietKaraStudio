@@ -2055,7 +2055,7 @@ impl Render for Studio {
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{let v=!this.editor.project().settings.extra.get("italic").and_then(Value::as_bool).unwrap_or(false);this.update_setting("italic",Value::Bool(v),cx);})))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("NỀN KHUNG HÌNH"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
-                                    .child(if background_type == "image" {"Đang dùng ảnh nền"} else {"Đang dùng nền màu"})
+                                    .child(match background_type {"image"=>"Đang dùng ảnh nền","video"=>"Đang dùng video nền",_=>"Đang dùng nền màu"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("background_type",&["color","image"],cx))))
                                 .child(div().mt_2().flex().gap_2()
                                     .children([("Xanh đêm","#101d2b"),("Đen","#090c12"),("Tím","#221c35")].into_iter().map(|(label,color)|

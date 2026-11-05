@@ -105,10 +105,7 @@
 > - Kiểm tra sau cập nhật preview: Rust **81/81**, fmt/clippy/check/build pass;
 >   Python **167/167**, Node **17/17** pass.
 > - Preview hỗ trợ nền màu và ảnh `background.jpg`; import ảnh chuẩn hóa JPG,
->   tạo version snapshot và rollback nếu lưu project lỗi. Nền video/original,
->   scene, logo và layout ASS dùng chung vẫn còn thiếu.
-> - Lát này vẫn chưa đạt parity đầy đủ: scene/nền video và các panel/công cụ
->   nâng cao còn thiếu.
+>   tạo version snapshot và rollback nếu lưu project lỗi.
 > - Bố cục ba cột và preview co theo logical viewport GPUI, giữ tỷ lệ 16:9/9:16;
 >   tham khảo pattern Tabs/Toolbar/Resizable của GPUI Kit nhưng chưa thêm Kit
 >   dependency vì version hiện tại yêu cầu snapshot GPUI mới hơn bản app đang ghim.
@@ -120,6 +117,17 @@
 >   Node **17/17** pass. App khởi chạy với fixture schema 2. Accessibility
 >   tree của cửa sổ GPUI không đọc được trong công cụ desktop, nên thao tác gõ
 >   IME trực tiếp trên input sản phẩm vẫn cần kiểm tra thủ công.
+
+> **Tiến độ 2026-11-06 — nhập và preview nền video:**
+> - Thêm nhập MP4/MOV/MKV/WebM/AVI/M4V: lưu nguồn trong project, tạo proxy
+>   H.264 960px/24fps, trích frame đầu, lưu metadata và checkpoint phiên bản.
+>   Publish file có rollback nếu lưu project thất bại.
+> - Preview GPUI cập nhật frame từ proxy theo playback position (mỗi 0,5 giây)
+>   trong khi phát hoặc tua; cache frame tạm giới hạn 16 ảnh. Không phát audio
+>   nền video; soundtrack vẫn theo beat.
+> - `cargo test --workspace` **88/88**, workspace fmt/clippy/check và app build
+>   pass. Chưa có phát video liên tục, original-video source, scene/logo/
+>   countdown compositing hoặc layout ASS dùng chung.
 
 ## 1. Mục tiêu và phạm vi
 
