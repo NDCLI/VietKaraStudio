@@ -157,6 +157,12 @@
 > - Đồng bộ invariant hai lane giữa preview GPUI và renderer: role `voice_c`…
 >   `voice_f` cùng mọi `row` legacy được gập vào slot 0/1; karaoke luôn dùng
 >   hai vị trí dọc. Thêm test bao phủ cả role lẫn row ngoài phạm vi 0/1.
+> - Bắt đầu port lyric layout vào `vietkara-render::layout`: plan dùng một
+>   `TextMeasurer` được inject để tính wrap/tọa độ từ cùng font metrics, map
+>   beat anchors, show windows, alignment và word positions; invariant hai
+>   lane được giữ. Hiện chưa nối planner này vào GPUI preview hoặc sinh ASS;
+>   adapter đo font và phần marker/title/gradient/countdown vẫn còn.
+>   Workspace **97/97**, fmt/clippy/check/build app đều pass trên Windows.
 
 ## 1. Mục tiêu và phạm vi
 

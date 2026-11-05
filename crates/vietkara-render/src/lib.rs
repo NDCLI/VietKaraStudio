@@ -43,6 +43,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+pub mod layout;
+
 // ---------------------------------------------------------------------------
 // Python-compatible numeric formatting
 // ---------------------------------------------------------------------------
