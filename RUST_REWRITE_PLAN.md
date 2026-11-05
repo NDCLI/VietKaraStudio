@@ -233,6 +233,10 @@
 >   khoảng thời gian, và palette màu title; text inputs riêng cho title/credit
 >   đồng bộ lại khi settings thay đổi. App fmt/check/Clippy sạch, unit tests
 >   **8/8** pass (integration export cần FFmpeg được bỏ qua).
+> - Inspector bổ sung mode solo/duet, bật/tắt role markers cho duet và chọn
+>   countdown vector (mic/star/heart/note/moon) cùng thời lượng 1–8 giây. Các
+>   giá trị dùng settings renderer sẵn có; app check/Clippy sạch và unit tests
+>   **8/8** pass.
 
 ## 1. Mục tiêu và phạm vi
 

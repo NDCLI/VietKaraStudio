@@ -1971,6 +1971,26 @@ impl Render for Studio {
             .get("title_color")
             .and_then(Value::as_str)
             .unwrap_or("#ffffff");
+        let singing_mode = settings
+            .extra
+            .get("singing_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("solo");
+        let role_icons = settings
+            .extra
+            .get("role_icons")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let countdown = settings
+            .extra
+            .get("countdown")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        let countdown_seconds = settings
+            .extra
+            .get("countdown_seconds")
+            .and_then(Value::as_f64)
+            .unwrap_or(4.0);
         let background_type = settings
             .extra
             .get("background_type")
@@ -2808,6 +2828,25 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Căn lề: {align_label}"))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("align",&["center","left","right","justify"],cx))))
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("DUET · ROLE MARKER"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if singing_mode == "duet" {"✓  Hai lane duet"} else {"Solo · một lane"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("singing_mode",&["solo","duet"],cx))))
+                                .when(singing_mode == "duet",|panel|panel.child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if role_icons {"✓  Hiện biểu tượng vai hát"} else {"Ẩn biểu tượng vai hát"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        let enabled=this.editor.project().settings.extra.get("role_icons").and_then(Value::as_bool).unwrap_or(true);
+                                        this.update_setting("role_icons",Value::Bool(!enabled),cx);
+                                    }))))
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("COUNTDOWN TRƯỚC LỜI"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Biểu tượng: {countdown}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("countdown",&["none","mic","star","heart","note","moon"],cx))))
+                                .when(countdown != "none",|panel|panel.child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Đếm ngược: {countdown_seconds:.0} giây"))
+                                    .child(div().flex().gap_3()
+                                        .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("countdown_seconds",-1.0,1.0,8.0,cx))))
+                                        .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("countdown_seconds",1.0,1.0,8.0,cx)))))))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("MÀU CHỮ ĐÃ HÁT"))
                                 .child(div().mt_2().flex().gap_2()
                                     .children([("Xanh ngọc","#52efb9"),("Vàng","#f4cf72"),("Hồng","#ff87b7")].into_iter().map(|(label,color)|
