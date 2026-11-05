@@ -221,6 +221,11 @@
 >   góc và opacity; title text dùng màu/font settings, chuyển động fade/slide/
 >   zoom/flip được nội suy theo thời gian playback giống ASS. Test riêng kiểm
 >   tra pha vào/giữ/ra; app clippy và build pass.
+> - Port mã hoá font legacy VNI/TCVN3 theo bảng baseline, NFC-normalize input
+>   trước khi map, áp dụng đồng nhất khi đo layout, GPUI preview, title và ASS
+>   export; Unicode gốc vẫn được giữ trong Project. Tests cho VNI, TCVN3, chữ
+>   hoa và input decomposed pass; lookup tables được cache một lần để không
+>   tạo bảng mới mỗi lần đo glyph. Workspace clippy và app build pass.
 
 ## 1. Mục tiêu và phạm vi
 

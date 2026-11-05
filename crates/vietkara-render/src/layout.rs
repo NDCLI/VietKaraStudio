@@ -5,9 +5,91 @@
 //! This module owns the timing, wrapping, lane, alignment and positioning rules.
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use serde_json::Value;
+use unicode_normalization::UnicodeNormalization;
 use vietkara_domain::{Project, Word, timing::map_time};
+
+/// Encode Unicode text for the legacy VNI/TCVN3 font families supported by
+/// the Python baseline. Unknown families keep Unicode text unchanged.
+pub fn font_text(text: &str, family: &str) -> String {
+    let normalized = text.nfc().collect::<String>();
+    let family = family.trim().to_lowercase();
+    let encoding = if family.starts_with("vni") || family == "vinhan" {
+        "vni"
+    } else if family.starts_with(".vn") {
+        "tcvn3"
+    } else {
+        return normalized;
+    };
+    static VNI_TABLE: OnceLock<std::collections::HashMap<char, String>> = OnceLock::new();
+    static TCVN3_TABLE: OnceLock<std::collections::HashMap<char, String>> = OnceLock::new();
+    let table = if encoding == "vni" {
+        VNI_TABLE.get_or_init(|| {
+            let mut table = std::collections::HashMap::<char, String>::new();
+            let rows = [
+                ("aáàảãạ", "a|aù|aø|aû|aõ|aï"),
+                ("âấầẩẫậ", "aâ|aá|aà|aå|aã|aä"),
+                ("ăắằẳẵặ", "aê|aé|aè|aú|aü|aë"),
+                ("eéèẻẽẹ", "e|eù|eø|eû|eõ|eï"),
+                ("êếềểễệ", "eâ|eá|eà|eå|eã|eä"),
+                ("iíìỉĩị", "i|í|ì|æ|ó|ò"),
+                ("oóòỏõọ", "o|où|oø|oû|oõ|oï"),
+                ("ôốồổỗộ", "oâ|oá|oà|oå|oã|oä"),
+                ("ơớờởỡợ", "ô|ôù|ôø|ôû|ôõ|ôï"),
+                ("uúùủũụ", "u|uù|uø|uû|uõ|uï"),
+                ("ưứừửữự", "ö|öù|öø|öû|öõ|öï"),
+                ("yýỳỷỹỵ", "y|yù|yø|yû|yõ|î"),
+                ("đ", "ñ"),
+            ];
+            for (letters, mapped) in rows {
+                for (letter, value) in letters.chars().zip(mapped.split('|')) {
+                    table.insert(letter, value.to_owned());
+                    table.insert(
+                        letter.to_uppercase().next().unwrap_or(letter),
+                        value.to_uppercase(),
+                    );
+                }
+            }
+            table
+        })
+    } else {
+        TCVN3_TABLE.get_or_init(|| {
+            let mut table = std::collections::HashMap::<char, String>::new();
+            let letters = "áàảãạâấầẩẫậăắằẳẵặéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵđ";
+            let values = "¸µ¶·¹©ÊÇÈÉË¨¾»¼½ÆÐÌÎÏÑªÕÒÓÔÖÝ×ØÜÞãßáâä«èåæçé¬íêëìîóïñòô\u{AD}øõö÷ùýúûüþ®";
+            for (letter, value) in letters.chars().zip(values.chars()) {
+                table.insert(letter, value.to_string());
+                table.insert(
+                    letter.to_uppercase().next().unwrap_or(letter),
+                    value.to_uppercase().collect(),
+                );
+            }
+            for (letter, value) in [
+                ('Â', '¢'),
+                ('Ă', '¡'),
+                ('Ê', '£'),
+                ('Ô', '¤'),
+                ('Ơ', '¥'),
+                ('Ư', '¦'),
+                ('Đ', '§'),
+            ] {
+                table.insert(letter, value.to_string());
+            }
+            table
+        })
+    };
+    normalized
+        .chars()
+        .map(|character| {
+            table
+                .get(&character)
+                .cloned()
+                .unwrap_or_else(|| character.to_string())
+        })
+        .collect()
+}
 
 /// Font metrics at the requested logical frame size. Implementations should
 /// shape the complete string (including Vietnamese combining marks) and return
@@ -20,6 +102,7 @@ pub trait TextMeasurer {
 pub struct PlannedWord {
     pub source_index: usize,
     pub word: Word,
+    pub display_text: String,
     pub start: f64,
     pub end: f64,
     pub x: f64,
@@ -71,6 +154,7 @@ pub struct DisplayPlan {
 #[derive(Debug, Clone)]
 pub struct TitleRow {
     pub text: String,
+    pub display_text: String,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -162,7 +246,11 @@ fn text_width<M: TextMeasurer>(
     italic: bool,
     horizontal_scale: f64,
 ) -> f64 {
-    measure.width(text, font, size, italic).max(0.0) * horizontal_scale / 100.0
+    measure
+        .width(&font_text(text, font), font, size, italic)
+        .max(0.0)
+        * horizontal_scale
+        / 100.0
 }
 
 fn setting_color(settings: &serde_json::Map<String, Value>, key: &str, default: &str) -> String {
@@ -285,9 +373,11 @@ fn title_layout<M: TextMeasurer>(
             continue;
         }
         let size = title_size * factor;
-        let measured = measure.width(text, &font, size, italic).max(0.0);
+        let display_text = font_text(text, &font);
+        let measured = measure.width(&display_text, &font, size, italic).max(0.0);
         rows.push(TitleRow {
             text: text.to_owned(),
+            display_text,
             x: 0.0,
             y,
             width: measured,
@@ -654,6 +744,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             positioned.push(PlannedWord {
                 source_index: item.source_index,
                 word: item.word.clone(),
+                display_text: font_text(&item.word.text, font),
                 start: item.start,
                 end: item.end,
                 x: x + marker_width + prefix_width * shrink,
@@ -707,6 +798,16 @@ mod tests {
         fn width(&self, text: &str, _family: &str, size: f64, _italic: bool) -> f64 {
             text.chars().count() as f64 * size * 0.5
         }
+    }
+
+    #[test]
+    fn legacy_vietnamese_font_encodings_match_baseline_tables() {
+        assert_eq!(font_text("Xin chào", "VNI-Avo"), "Xin chaøo");
+        assert_eq!(font_text("Xin chào", ".VnArialH"), "Xin chµo");
+        assert_eq!(font_text("Á Â Đ", ".VnArialH"), "¸ ¢ §");
+        assert_eq!(font_text("A\u{301}", "VNI-Times"), "AÙ");
+        assert_eq!(font_text("Xin chào", "Arial"), "Xin chào");
+        assert_eq!(font_text("íìỉĩịóòỏõọ", ".VnArialH"), "Ý×ØÜÞãßáâä");
     }
 
     fn word(text: &str, line: u32, start: f64, role: &str, row: Option<u8>) -> Word {

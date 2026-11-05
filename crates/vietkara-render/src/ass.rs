@@ -410,7 +410,7 @@ fn title_events(layout: &TitleLayout) -> Vec<String> {
             layout.outline_width,
             layout.shadow
         );
-        if let Some(event) = dialogue(10, layout.start, split, &tags, &literal(&row.text)) {
+        if let Some(event) = dialogue(10, layout.start, split, &tags, &literal(&row.display_text)) {
             output.push(event);
         }
         let tags = format!(
@@ -426,7 +426,7 @@ fn title_events(layout: &TitleLayout) -> Vec<String> {
             layout.outline_width,
             layout.shadow
         );
-        if let Some(event) = dialogue(10, split, layout.end, &tags, &literal(&row.text)) {
+        if let Some(event) = dialogue(10, split, layout.end, &tags, &literal(&row.display_text)) {
             output.push(event);
         }
     }
@@ -494,7 +494,7 @@ fn word_event(
         row.show_start,
         row.show_end,
         &format!("{motion}{unsung}"),
-        &literal(&word.word.text),
+        &literal(&word.display_text),
     ) {
         output.push(event);
     }
@@ -521,7 +521,7 @@ fn word_event(
                 start,
                 end,
                 &format!("{motion}{sung}{clip}"),
-                &literal(&word.word.text),
+                &literal(&word.display_text),
             ) {
                 output.push(event);
             }
@@ -659,7 +659,7 @@ pub fn build_lyrics_ass_with_scenes(
                     row.show_start,
                     row.show_end,
                     &format!("{row_tags}{clip}"),
-                    &literal(&row.text),
+                    &literal(&crate::layout::font_text(&row.text, &plan.font)),
                 ) {
                     lines.push(event);
                 }
@@ -933,6 +933,21 @@ mod tests {
             ass.lines()
                 .any(|line| line.starts_with("Dialogue: 4,") && line.contains("\\p1"))
         );
+    }
+
+    #[test]
+    fn ass_encodes_vietnamese_for_legacy_font_families() {
+        let mut project = project();
+        project.settings.font = "VNI-Times".into();
+        project.words[0].text = "Xin chào".into();
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        assert!(ass.contains("Xin chaøo"));
+
+        project.settings.font = ".VnArialH".into();
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        assert!(ass.contains("Xin chµo"));
     }
 
     #[test]

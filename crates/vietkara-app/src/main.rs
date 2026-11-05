@@ -2027,7 +2027,10 @@ impl Render for Studio {
                                 .text_size(px(size))
                                 .text_color(rgb(color))
                                 .when(italic, |text| text.italic())
-                                .child(word.text.clone())
+                                .child(vietkara_render::layout::font_text(
+                                    &word.text,
+                                    &settings.font,
+                                ))
                         }),
                 )
         };
@@ -2194,7 +2197,7 @@ impl Render for Studio {
                                 .text_size(px(row.font_size as f32 * preview_scale))
                                 .text_color(rgb(color))
                                 .when(italic, |text| text.italic())
-                                .child(planned.word.text.clone())
+                                .child(planned.display_text.clone())
                         })
                     })
                     .collect()
@@ -2283,7 +2286,7 @@ impl Render for Studio {
                         .font_weight(gpui::FontWeight::BOLD)
                         .when(title.italic, |text| text.italic())
                         .opacity(motion_opacity)
-                        .child(row.text.clone()),
+                        .child(row.display_text.clone()),
                 );
             }
         }

@@ -14,4 +14,5 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+unicode-normalization = "0.1"
 
