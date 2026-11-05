@@ -3188,43 +3188,123 @@ impl Render for Studio {
                     .get("subtitle_box")
                     .and_then(Value::as_bool)
                     .unwrap_or(true));
-        let mut current_preview: Vec<_> =
-            if display_mode == "karaoke" && !active_plan_rows.is_empty() {
-                active_plan_rows
-                    .iter()
-                    .flat_map(|&row_index| {
-                        let row = &layout.rows[row_index];
-                        let line_color = role_color(row.line);
-                        row.words.iter().map(move |planned| {
-                            let active =
-                                preview_position >= planned.start && preview_position < planned.end;
-                            let sung = preview_position >= planned.end;
-                            let color = if active || sung {
-                                line_color
-                            } else if Some(planned.word.id.as_str()) == selected_id {
-                                0xffdf79
-                            } else {
-                                0xffffff
-                            };
+        let mut current_preview: Vec<_> = if display_mode == "karaoke"
+            && !active_plan_rows.is_empty()
+        {
+            active_plan_rows
+                .iter()
+                .flat_map(|&row_index| {
+                    let row = &layout.rows[row_index];
+                    let line_color = role_color(row.line);
+                    row.words.iter().flat_map(move |planned| {
+                        let active =
+                            preview_position >= planned.start && preview_position < planned.end;
+                        let sung = preview_position >= planned.end;
+                        let color = if sung {
+                            line_color
+                        } else if active {
+                            unsung_color
+                        } else if Some(planned.word.id.as_str()) == selected_id {
+                            0xffdf79
+                        } else {
+                            0xffffff
+                        };
+                        let x = planned.x as f32 * preview_scale;
+                        let y = row.y as f32 * preview_scale;
+                        let width = planned.width as f32 * preview_scale;
+                        let height = row.height as f32 * preview_scale;
+                        let font_px = row.font_size as f32 * preview_scale;
+                        let text = planned.display_text.clone();
+                        let make_text = |color| {
                             div()
-                                .absolute()
-                                .left(px(planned.x as f32 * preview_scale))
-                                .top(px(row.y as f32 * preview_scale))
-                                .text_size(px(row.font_size as f32 * preview_scale))
+                                .text_size(px(font_px))
                                 .text_color(rgb(color))
                                 .when(italic, |text| text.italic())
-                                .child(planned.display_text.clone())
-                        })
+                                .child(text.clone())
+                        };
+                        let mut elements = vec![
+                            div()
+                                .absolute()
+                                .left(px(x))
+                                .top(px(y))
+                                .child(make_text(color)),
+                        ];
+                        if active {
+                            let progress = ((preview_position - planned.start)
+                                / (planned.end - planned.start).max(0.001))
+                            .clamp(0.0, 1.0) as f32;
+                            let geometry = sweep_preview_geometry(
+                                width,
+                                progress,
+                                sweep_feather as f32 / 3.0 * preview_scale,
+                                sweep_glow as f32,
+                                font_px,
+                                2.0 * preview_scale,
+                            );
+                            if geometry.solid_width > 0.0 {
+                                elements.push(
+                                    div()
+                                        .absolute()
+                                        .left(px(x))
+                                        .top(px(y))
+                                        .w(px(geometry.solid_width))
+                                        .h(px(height))
+                                        .overflow_hidden()
+                                        .child(make_text(line_color)),
+                                );
+                            }
+                            for (segment_left, segment_width, opacity) in geometry.feather_segments
+                            {
+                                elements.push(
+                                    div()
+                                        .absolute()
+                                        .left(px(x + segment_left))
+                                        .top(px(y))
+                                        .w(px(segment_width))
+                                        .h(px(height))
+                                        .relative()
+                                        .overflow_hidden()
+                                        .child(
+                                            make_text(line_color)
+                                                .absolute()
+                                                .left(px(-segment_left))
+                                                .top(px(0.))
+                                                .opacity(opacity),
+                                        ),
+                                );
+                            }
+                            if let Some((left, band_width, opacity)) = geometry.glow_band {
+                                elements.push(
+                                    div()
+                                        .absolute()
+                                        .left(px(x + left))
+                                        .top(px(y))
+                                        .w(px(band_width))
+                                        .h(px(height))
+                                        .relative()
+                                        .overflow_hidden()
+                                        .child(
+                                            make_text(0xffffff)
+                                                .absolute()
+                                                .left(px(-left))
+                                                .top(px(0.))
+                                                .opacity(opacity),
+                                        ),
+                                );
+                            }
+                        }
+                        elements
                     })
-                    .collect()
-            } else {
-                preview_rows
-                    .iter()
-                    .map(|(line, size, subdued, color)| {
-                        preview_line_element(*line, *size, *subdued, *color)
-                    })
-                    .collect()
-            };
+                })
+                .collect()
+        } else {
+            preview_rows
+                .iter()
+                .map(|(line, size, subdued, color)| {
+                    preview_line_element(*line, *size, *subdued, *color)
+                })
+                .collect()
+        };
         if display_mode == "subtitle" && subtitle_box && !active_plan_rows.is_empty() {
             let row = &layout.rows[active_plan_rows[0]];
             let color = preview_hex_color(subtitle_box_color);
@@ -4112,6 +4192,53 @@ fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
 }
 
+#[derive(Debug, PartialEq)]
+struct SweepPreviewGeometry {
+    solid_width: f32,
+    feather_segments: Vec<(f32, f32, f32)>,
+    glow_band: Option<(f32, f32, f32)>,
+}
+
+fn sweep_preview_geometry(
+    width: f32,
+    progress: f32,
+    requested_feather: f32,
+    glow: f32,
+    font_size: f32,
+    min_glow_band: f32,
+) -> SweepPreviewGeometry {
+    let progress = progress.clamp(0.0, 1.0);
+    let feather = requested_feather.min(width * 0.25).max(0.0);
+    let edge = width * progress;
+    let solid_width = (edge - feather * 0.5).clamp(0.0, width);
+    let feather_segments = if feather > 0.0 {
+        let segment_width = feather / 4.0;
+        (0..4)
+            .map(|segment| {
+                (
+                    edge - feather * 0.5 + segment_width * segment as f32,
+                    segment_width,
+                    1.0 - (segment as f32 + 0.5) / 4.0,
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let glow_band = (glow > 0.0 && progress > 0.0 && progress < 1.0).then(|| {
+        let band = (width * 0.2)
+            .min(feather + font_size * 0.07)
+            .max(min_glow_band);
+        let width = band * 2.0;
+        (edge - band, width, (glow / 150.0).clamp(0.0, 1.0))
+    });
+    SweepPreviewGeometry {
+        solid_width,
+        feather_segments,
+        glow_band,
+    }
+}
+
 fn interpolate_scene_keyframes(frames: &Value, key: &str, progress: f64, default: f64) -> f64 {
     let read = |index: usize| {
         frames
@@ -4658,6 +4785,29 @@ fn main() {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn preview_sweep_geometry_tracks_partial_fill_feather_and_glow() {
+        let geometry = sweep_preview_geometry(100.0, 0.5, 12.0, 90.0, 20.0, 2.0);
+        assert!((geometry.solid_width - 44.0).abs() < 0.001);
+        assert_eq!(geometry.feather_segments.len(), 4);
+        assert!((geometry.feather_segments[0].0 - 44.0).abs() < 0.001);
+        assert!((geometry.feather_segments[0].2 - 0.875).abs() < 0.001);
+        let (glow_left, glow_width, glow_opacity) = geometry.glow_band.unwrap();
+        assert!((glow_left - 36.6).abs() < 0.001);
+        assert!((glow_width - 26.8).abs() < 0.001);
+        assert!((glow_opacity - 0.6).abs() < 0.001);
+
+        assert!(
+            sweep_preview_geometry(100.0, 0.0, 12.0, 90.0, 20.0, 2.0)
+                .glow_band
+                .is_none()
+        );
+        assert_eq!(
+            sweep_preview_geometry(100.0, 0.5, 0.0, 0.0, 20.0, 2.0).solid_width,
+            50.0
+        );
+    }
 
     #[test]
     fn workspace_columns_shrink_with_logical_viewport_width() {

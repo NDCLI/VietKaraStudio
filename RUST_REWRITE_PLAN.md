@@ -298,7 +298,11 @@
 >   thêm điều khiển `sweep_feather` / `sweep_glow` trong inspector. Regression
 >   test kiểm tra timing, layer count, alpha và blur. `vietkara-render` **41/41**
 >   test non-FFmpeg, `vietkara-app` **14/14**, fmt/check/workspace clippy pass.
->   GPUI preview vẫn chưa vẽ feather/glow như ASS.
+> - Đồng bộ thêm GPUI karaoke preview: màu hát được clip theo tiến độ bên trong
+>   từ, feather dựng từ 4 dải alpha và glow band bám theo mép; tỉ lệ hình học
+>   scale theo preview viewport. Thêm test cho fill, segment, opacity và glow.
+>   Workspace test khả dụng pass; 6 test tích hợp cần FFmpeg/FFprobe tiếp tục
+>   được lọc do binary không có trên PATH.
 
 ## 1. Mục tiêu và phạm vi
 
