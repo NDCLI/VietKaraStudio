@@ -1304,10 +1304,10 @@ impl Studio {
         else {
             return;
         };
-        let default = if key == "decoration_size" {
-            28.0
-        } else {
-            100.0
+        let default = match key {
+            "decoration_size" => 28.0,
+            "transition_seconds" => 0.6,
+            _ => 100.0,
         };
         let current = scene.get(key).and_then(Value::as_f64).unwrap_or(default);
         scene[key] = serde_json::json!((current + delta).clamp(minimum, maximum));
@@ -2695,6 +2695,28 @@ impl Render for Studio {
         let selected_scene_exists = self.editor.project().scenes.iter().any(|scene| {
             scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())
         });
+        let selected_scene_contrast = self
+            .editor
+            .project()
+            .scenes
+            .iter()
+            .find(|scene| {
+                scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())
+            })
+            .and_then(|scene| scene.get("contrast_mode"))
+            .and_then(Value::as_str)
+            .unwrap_or("auto");
+        let selected_scene_transition_seconds = self
+            .editor
+            .project()
+            .scenes
+            .iter()
+            .find(|scene| {
+                scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())
+            })
+            .and_then(|scene| scene.get("transition_seconds"))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.6);
         let settings = &self.editor.project().settings;
         let display_mode = settings
             .extra
@@ -3151,6 +3173,19 @@ impl Render for Studio {
                             } else {
                                 0.0
                             };
+                            let scene_duration = (end - start).max(0.0);
+                            let fade_seconds =
+                                if scene.get("transition").and_then(Value::as_str) == Some("cut") {
+                                    0.05
+                                } else {
+                                    scene
+                                        .get("transition_seconds")
+                                        .and_then(Value::as_f64)
+                                        .unwrap_or(0.6)
+                                        .clamp(0.05, 3.0)
+                                };
+                            let fade_opacity =
+                                scene_fade_opacity(progress, scene_duration, fade_seconds);
                             let image_keyframes = scene.get("keyframes").unwrap_or(&Value::Null);
                             let main_scale = interpolate_scene_keyframes(
                                 image_keyframes,
@@ -3185,6 +3220,7 @@ impl Render for Studio {
                                 main_y,
                                 main_frame_opacity,
                                 progress,
+                                fade_opacity,
                             ))
                         })
                         .map(
@@ -3196,6 +3232,7 @@ impl Render for Studio {
                                 main_y,
                                 main_frame_opacity,
                                 progress,
+                                fade_opacity,
                             )| {
                                 let opacity = scene
                                     .get("opacity")
@@ -3230,12 +3267,13 @@ impl Render for Studio {
                                         let x = lerp("x", 50.0).clamp(0.0, 100.0) as f32;
                                         let y = lerp("y", 50.0).clamp(0.0, 100.0) as f32;
                                         let decoration_opacity =
-                                            lerp("opacity", 100.0).clamp(0.0, 100.0) as f32 / 100.0;
+                                            lerp("opacity", 100.0).clamp(0.0, 100.0) as f32 / 100.0
+                                                * fade_opacity;
                                         (path, size, x, y, decoration_opacity)
                                     });
                                 (
                                     image,
-                                    opacity * main_frame_opacity,
+                                    opacity * main_frame_opacity * fade_opacity,
                                     decoration,
                                     main_scale,
                                     main_x,
@@ -3869,6 +3907,12 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child("Đổi chế độ tương phản lời")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_scene_option("contrast_mode", &["auto","always","off"],cx))))
+                                .child(div().mt_1().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child(match selected_scene_contrast {"always"=>"Tương phản: luôn bật", "off"=>"Tương phản: tắt", _=>"Tương phản: tự động theo ảnh"}))
+                                .when(self.editor.project().scenes.iter().find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())).and_then(|scene| scene.get("transition")).and_then(Value::as_str) != Some("cut"), |panel| panel
+                                    .child(div().mt_2().child(format!("Thời lượng mờ: {:.1}s",selected_scene_transition_seconds))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("transition_seconds",-0.2,0.0,3.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("transition_seconds",0.2,0.0,3.0,cx)))))))
                                 .child(div().mt_2().child("Keyframe đầu")
                                     .child(div().flex().gap_2()
                                         .child(div().flex_1().cursor_pointer().child("− Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"scale",-5.0,cx))))
@@ -4220,6 +4264,21 @@ fn interpolate_scene_keyframes(frames: &Value, key: &str, progress: f64, default
             .unwrap_or(default)
     };
     read(0) + (read(1) - read(0)) * progress.clamp(0.0, 1.0)
+}
+
+fn scene_fade_opacity(progress: f64, duration: f64, fade_seconds: f64) -> f32 {
+    if !duration.is_finite() || duration <= 0.0 || !fade_seconds.is_finite() || fade_seconds <= 0.0
+    {
+        return 1.0;
+    }
+    let fade = fade_seconds.min(duration / 2.0).max(0.0);
+    if fade == 0.0 {
+        return 1.0;
+    }
+    let time = progress.clamp(0.0, 1.0) * duration;
+    (time / fade)
+        .clamp(0.0, 1.0)
+        .min(((duration - time) / fade).clamp(0.0, 1.0)) as f32
 }
 
 fn set_section_name_on_line(words: &mut [Word], line: u32, name: &str) {
@@ -4589,6 +4648,16 @@ mod workspace_tests {
             interpolate_scene_keyframes(&Value::Null, "x", 0.5, 42.0),
             42.0
         );
+    }
+
+    #[test]
+    fn scene_fades_in_and_out_over_configured_duration() {
+        assert_eq!(scene_fade_opacity(0.0, 10.0, 2.0), 0.0);
+        assert_eq!(scene_fade_opacity(0.1, 10.0, 2.0), 0.5);
+        assert_eq!(scene_fade_opacity(0.5, 10.0, 2.0), 1.0);
+        assert_eq!(scene_fade_opacity(0.9, 10.0, 2.0), 0.5);
+        assert_eq!(scene_fade_opacity(1.0, 10.0, 2.0), 0.0);
+        assert_eq!(scene_fade_opacity(0.5, 0.0, 2.0), 1.0);
     }
 
     #[test]
