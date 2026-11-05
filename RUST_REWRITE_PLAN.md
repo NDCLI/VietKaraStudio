@@ -319,6 +319,10 @@
 >   phần trước mốc 0; độ dài timeline lấy max giữa duration beat/reference và
 >   lời. Regression test kiểm tra khoảng bin sau drift, clipping và beat giữ
 >   nguyên tọa độ.
+> - Timeline cho phép thêm anchor tại playhead và kéo anchor trên trục beat.
+>   Preview waveform/lời cập nhật tạm trong lúc kéo; khi thả, `SetAnchors` đi
+>   qua editor transaction nên giữ validation, undo/redo và autosave hiện có.
+>   Test kiểm tra vị trí reference được nội suy và từ chối anchor gần trùng.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -48,7 +48,34 @@ fn waveform_timeline_interval(
     (end > start).then_some((start, end))
 }
 
-pub(super) fn project_timeline_duration(project: &Project, playback_duration: f64) -> f64 {
+fn insert_anchor_at_beat(
+    beat: f64,
+    anchors: &[vietkara_domain::Anchor],
+) -> Result<Vec<vietkara_domain::Anchor>, String> {
+    if !beat.is_finite() || beat < 0.0 {
+        return Err("Playhead không hợp lệ để thêm anchor".into());
+    }
+    let reference = vietkara_domain::timing::map_time(beat, anchors, true).max(0.0);
+    if anchors
+        .iter()
+        .any(|anchor| (anchor.beat - beat).abs() < 0.02 || (anchor.r#ref - reference).abs() < 0.02)
+    {
+        return Err("Đã có anchor quá gần playhead".into());
+    }
+    let mut candidate = anchors.to_vec();
+    candidate.push(vietkara_domain::Anchor {
+        r#ref: reference,
+        beat,
+    });
+    candidate.sort_by(|left, right| left.r#ref.total_cmp(&right.r#ref));
+    Ok(candidate)
+}
+
+pub(super) fn project_timeline_duration(
+    project: &Project,
+    playback_duration: f64,
+    anchors: &[vietkara_domain::Anchor],
+) -> f64 {
     let media_duration = [
         (AudioSlot::Reference, project.reference.as_ref()),
         (AudioSlot::Beat, project.beat.as_ref()),
@@ -56,13 +83,13 @@ pub(super) fn project_timeline_duration(project: &Project, playback_duration: f6
     .into_iter()
     .filter_map(|(slot, metadata)| {
         let duration = metadata?.get("duration")?.as_f64()?;
-        Some(track_to_timeline_time(slot, duration, &project.anchors).max(0.0))
+        Some(track_to_timeline_time(slot, duration, anchors).max(0.0))
     })
     .fold(0.0_f64, f64::max);
     let word_duration = project
         .words
         .iter()
-        .map(|word| vietkara_domain::timing::map_time(word.end, &project.anchors, false))
+        .map(|word| vietkara_domain::timing::map_time(word.end, anchors, false))
         .fold(0.0_f64, f64::max);
     playback_duration
         .max(media_duration)
@@ -73,18 +100,57 @@ pub(super) fn project_timeline_duration(project: &Project, playback_duration: f6
 pub(super) struct TimelineDrag {
     index: usize,
     edge: vietkara_domain::timeline::Edge,
+    anchor_index: Option<usize>,
+    anchor_origin: f64,
     origin: f32,
     scroll: f32,
     command: Option<Command>,
     pub(super) words: Vec<Word>,
+    pub(super) anchors: Vec<vietkara_domain::Anchor>,
 }
 impl Studio {
+    pub(super) fn add_anchor_at_playhead(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+        {
+            return;
+        }
+        let project = self.editor.project();
+        if project.reference.is_none() || project.beat.is_none() {
+            self.edit_status = "Cần cả bản hát và beat để thêm anchor".into();
+            cx.notify();
+            return;
+        }
+        let candidate = match insert_anchor_at_beat(self.play_position, &project.anchors) {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                self.edit_status = error;
+                cx.notify();
+                return;
+            }
+        };
+        self.edit_status = match self.editor.execute(Command::SetAnchors(candidate)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã thêm anchor tại playhead • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
     pub(super) fn seek_timeline(&mut self, position: f64, cx: &mut Context<Self>) {
         if self.tapping.is_some() || self.timeline_drag.is_some() {
             return;
         }
         let project = self.editor.project();
-        let duration = project_timeline_duration(project, self.play_duration);
+        let duration = project_timeline_duration(project, self.play_duration, &project.anchors);
         let position = clamp_seek_position(position, duration);
         #[cfg(windows)]
         if let Some(worker) = &self.playback
@@ -129,14 +195,45 @@ impl Studio {
         self.timeline_drag = Some(TimelineDrag {
             index,
             edge,
+            anchor_index: None,
+            anchor_origin: 0.0,
             origin: x,
             scroll: f32::from(self.timeline_scroll.offset().x),
             command: None,
             words: self.editor.project().words.clone(),
+            anchors: self.editor.project().anchors.clone(),
         });
         cx.stop_propagation();
         cx.notify();
     }
+
+    pub(super) fn start_anchor_move(&mut self, index: usize, x: f32, cx: &mut Context<Self>) {
+        if self.saving
+            || self.tapping.is_some()
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+        {
+            return;
+        }
+        let Some(anchor) = self.editor.project().anchors.get(index) else {
+            return;
+        };
+        self.timeline_drag = Some(TimelineDrag {
+            index: 0,
+            edge: vietkara_domain::timeline::Edge::Start,
+            anchor_index: Some(index),
+            anchor_origin: anchor.beat,
+            origin: x,
+            scroll: f32::from(self.timeline_scroll.offset().x),
+            command: None,
+            words: self.editor.project().words.clone(),
+            anchors: self.editor.project().anchors.clone(),
+        });
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     pub(super) fn move_resize(&mut self, x: f32, cx: &mut Context<Self>) {
         let Some(drag) = &mut self.timeline_drag else {
             return;
@@ -145,6 +242,20 @@ impl Studio {
             as f64
             / self.timeline_zoom as f64;
         let project = self.editor.project();
+        if let Some(anchor_index) = drag.anchor_index {
+            let mut anchors = project.anchors.clone();
+            if let Some(anchor) = anchors.get_mut(anchor_index) {
+                anchor.beat = (drag.anchor_origin + delta).max(0.0);
+                if let Ok(mut preview) = Editor::new(project.clone())
+                    && preview.execute(Command::SetAnchors(anchors)).is_ok()
+                {
+                    drag.anchors = preview.project().anchors.clone();
+                    drag.command = Some(Command::SetAnchors(drag.anchors.clone()));
+                }
+            }
+            cx.notify();
+            return;
+        }
         let duration = project
             .words
             .iter()
@@ -170,11 +281,16 @@ impl Studio {
             return;
         };
         if let Some(command) = drag.command {
+            let is_anchor = drag.anchor_index.is_some();
             self.edit_status = match self.editor.execute(command) {
                 Ok(_) => {
                     self.dirty = true;
                     self.autosave_pending = true;
-                    "Đã kéo mốc • chưa lưu".into()
+                    if is_anchor {
+                        "Đã căn anchor • chưa lưu".into()
+                    } else {
+                        "Đã kéo mốc • chưa lưu".into()
+                    }
                 }
                 Err(error) => error.to_string(),
             };
@@ -184,14 +300,19 @@ impl Studio {
 
     pub(super) fn timeline_view(&self, cx: &mut Context<Self>) -> Div {
         let project = self.editor.project();
+        let anchors = self
+            .timeline_drag
+            .as_ref()
+            .map(|drag| drag.anchors.as_slice())
+            .unwrap_or(&project.anchors);
         let words = self
             .timeline_drag
             .as_ref()
             .map(|s| s.words.as_slice())
             .or_else(|| self.tapping.as_ref().map(|s| s.words.as_slice()))
             .unwrap_or(&project.words);
-        let map = |t| vietkara_domain::timing::map_time(t, &project.anchors, false);
-        let duration = project_timeline_duration(project, self.play_duration);
+        let map = |t| vietkara_domain::timing::map_time(t, anchors, false);
+        let duration = project_timeline_duration(project, self.play_duration, anchors);
         let width = (duration as f32 * self.timeline_zoom).max(800.);
         let zoom = self.timeline_zoom;
         let mut content = div().relative().w(px(width)).h(px(178.)).bg(rgb(0x151820));
@@ -243,7 +364,7 @@ impl Studio {
                             index + stride,
                             peaks.len(),
                             length,
-                            &project.anchors,
+                            anchors,
                         ) else {
                             continue;
                         };
@@ -267,6 +388,25 @@ impl Studio {
                         .child("Chưa nạp media"),
                 );
             }
+        }
+        for (index, anchor) in anchors.iter().enumerate() {
+            content = content.child(
+                div()
+                    .absolute()
+                    .left(px(anchor.beat as f32 * zoom - 3.))
+                    .top(px(18.))
+                    .w(px(6.))
+                    .h(px(84.))
+                    .rounded_full()
+                    .bg(rgb(0xffbe55))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                            this.start_anchor_move(index, f32::from(event.position.x), cx)
+                        }),
+                    ),
+            );
         }
         for (index, word) in words.iter().enumerate() {
             let id = word.id.clone();
@@ -348,6 +488,19 @@ impl Studio {
                         }),
                     ))
                     .child(format!("{zoom:.0} px/s"))
+                    .child(format!("{} anchor", anchors.len()))
+                    .child(
+                        div()
+                            .cursor_pointer()
+                            .rounded_sm()
+                            .bg(rgb(theme::ACCENT_SURFACE))
+                            .px_2()
+                            .child("+ Anchor tại playhead")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| this.add_anchor_at_playhead(cx)),
+                            ),
+                    )
                     .child(div().cursor_pointer().child("Zoom +").on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
@@ -373,7 +526,7 @@ impl Studio {
 mod tests {
     use super::super::AudioSlot;
     use super::{
-        clamp_seek_position, timeline_to_track_time, track_to_timeline_time,
+        clamp_seek_position, insert_anchor_at_beat, timeline_to_track_time, track_to_timeline_time,
         waveform_timeline_interval,
     };
     use vietkara_domain::Anchor;
@@ -442,5 +595,24 @@ mod tests {
             waveform_timeline_interval(AudioSlot::Beat, 2, 2, 4, 20.0, &anchors),
             None
         );
+    }
+
+    #[test]
+    fn anchor_insert_preserves_alignment_and_rejects_near_duplicates() {
+        let anchors = vec![
+            Anchor {
+                r#ref: 10.0,
+                beat: 12.0,
+            },
+            Anchor {
+                r#ref: 20.0,
+                beat: 32.0,
+            },
+        ];
+        let inserted = insert_anchor_at_beat(22.0, &anchors).unwrap();
+        assert_eq!(inserted.len(), 3);
+        assert_eq!(inserted[1].r#ref, 15.0);
+        assert_eq!(inserted[1].beat, 22.0);
+        assert!(insert_anchor_at_beat(22.01, &inserted).is_err());
     }
 }
