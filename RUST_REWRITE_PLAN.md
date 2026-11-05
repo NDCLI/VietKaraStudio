@@ -23,6 +23,29 @@
 > - **Chưa xong:** spike GPUI/Windows/IME/playback (Giai đoạn 1) — cần máy
 >   Windows 10/11; `cargo test --workspace` (gồm `vietkara-app`/GPUI)
 >   chưa chạy được trên Linux. Xem §9.
+>
+> **Tiến độ 2026-11-05 (tiếp) — các phần làm được trên Linux, Giai đoạn 3–5
+> (phần headless, không GUI/thiết bị):**
+> - `vietkara-jobs`: lifecycle/cancel/persist/recover như `engine.Job`,
+>   batch queue (`first_pending`, retry trừ `failed`).
+> - `vietkara-media`: FFprobe JSON + fallback `ffmpeg -i`, WAV reader,
+>   waveform (peak = max tuyệt đối trên **mọi** kênh, như Python),
+>   audio metrics, playback abstraction với fake clock (`NullPlayer`).
+> - `vietkara-render`: helper ASS (`stamp`/`color`/`literal`/`blend`/
+>   `animation`/`rounded_box`) đối chiếu Python, render profile,
+>   builder lệnh FFmpeg (nền màu + beat gốc / guide `amix`),
+>   `verify_output` bằng ffprobe. **Chưa port** full `build_ass` /
+>   `display_plan` (cần đo font) — Giai đoạn 4 sau khi layout contract
+>   ổn định.
+> - `vietkara-ai-bridge`: protocol JSON Lines v1, spawn/timeout/cancel/
+>   crash recovery. **Lưu ý:** `worker.py` hiện tại chưa nói protocol
+>   này (nó dùng request file + `OBS_PROGRESS`); cần một entry point
+>   worker mới trước khi AI thật chạy qua crate này.
+> - Runbook Windows: `docs/windows-spike.md` +
+>   `scripts/windows-spike-check.ps1` (Giai đoạn 1, chạy trên Windows).
+> - Kiểm chứng Linux: `cargo test` 6 crate **62/62 pass**; `cargo fmt
+>   --check` và `cargo clippy -- -D warnings` sạch; Python
+>   `test_timing.py` 4/4, JS tapping/timeline 14/14.
 
 > **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 
@@ -281,7 +304,9 @@ Không gọi một giai đoạn là hoàn tất chỉ vì compile thành công; 
 
 1. ✅ Bổ sung fixture project v1/v2, fixture archive và golden ASS/FFmpeg output từ baseline Python. — *2026-11-05: fixture v1/v2 và fixture archive/bundle trong test của `vietkara-storage` đã xong; golden ASS/FFmpeg output vẫn còn (thuộc Giai đoạn 4, làm sau khi layout contract ổn định).*
 2. ✅ Hoàn thiện `vietkara-domain` validation/migration contract và tạo `vietkara-storage`.
-3. ⏳ Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock. — *Bước tiếp theo; cần máy Windows, chưa làm được trên Linux.*
+3. ⏳ Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock. — *Cần máy Windows, chưa làm được trên Linux. Runbook + script tự động đã chuẩn bị sẵn: `docs/windows-spike.md`, `scripts/windows-spike-check.ps1`.*
+4. ✅ Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync. — *2026-11-05: `vietkara-jobs` và `vietkara-media` đã xong phần headless trên Linux; vertical slice có UI/tap-sync thật vẫn cần spike Windows (Giai đoạn 1) và `vietkara-app`.*
+5. ⏳ Chỉ sau khi luồng save/reopen ổn định mới port preview/export. — *Save/reopen đã ổn định (domain + storage, 14 test). Phần headless của render đã làm xong (`vietkara-render`: helper ASS, FFmpeg command, verify_output); full `build_ass`/layout vẫn còn.*
 4. Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync.
 5. Chỉ sau khi luồng save/reopen ổn định mới port preview/export.
 6. Chỉ sau khi MVP đạt mới đưa AI bridge và batch render vào Rust.

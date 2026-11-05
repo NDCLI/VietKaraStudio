@@ -21,10 +21,25 @@
 - Version snapshot dùng hard link cho media (như Python `os.link`):
   media chỉ được thay bằng rename (atomic), không được ghi đè/truncate
   tại chỗ, nếu không snapshot sẽ bị hỏng theo.
-- Kết quả Rust 2026-11-05: `cargo test -p vietkara-domain
+- Kết quả Rust 2026-11-05 (đợt 1): `cargo test -p vietkara-domain
   -p vietkara-storage` 14/14 pass; `cargo fmt --check` và
   `cargo clippy -p vietkara-domain -p vietkara-storage --all-targets
   -- -D warnings` sạch.
+- Kết quả Rust 2026-11-05 (đợt 2, phần headless): 6 crate, `cargo test`
+  **62/62 pass** — domain 8, storage 6, jobs 5, media 14, render 18,
+  ai-bridge 11; `cargo fmt --check` và `cargo clippy` (6 crate,
+  `-- -D warnings`) sạch. FFmpeg/ffprobe 8.1.2 có sẵn trên máy Linux
+  kiểm chứng, nên probe/render thật đã được test bằng file fixture
+  sinh bằng ffmpeg.
+
+## Crate mới (đợt 2, headless — không GUI, không thiết bị)
+
+| Crate | Port từ Python | Trạng thái |
+|---|---|---|
+| `vietkara-jobs` | `engine.Job`, `app.py::persist_job`/`recover_jobs`, `batch_render.py` (record state machine) | ✅ lifecycle/cancel/persist/recover, batch `first_pending`/retry |
+| `vietkara-media` | `media_tools.probe_video`, `engine.waveform`/`convert`, `render_info._audio_metrics`/`fps_value` | ✅ ffprobe JSON + fallback `ffmpeg -i`, WAV PCM/float, waveform peak = max tuyệt đối trên mọi kênh (đã sửa để khớp Python; mono mix sẽ triệt tiêu stereo ngược pha), metrics, `NullPlayer` + fake clock. Không có thiết bị audio thật. |
+| `vietkara-render` | `subtitles.py` (helper), `render_info` (`fps_value`/`encoding_options`/`verify_output`), `engine.render` (lệnh FFmpeg, trường hợp đơn giản) | ✅ helper ASS đối chiếu Python, render profile, builder lệnh FFmpeg nền màu + beat/guide, verify_output. ❌ Chưa port full `build_ass`/`display_plan` (cần đo font). |
+| `vietkara-ai-bridge` | `worker.py` (protocol), plan §3.4/Phase 5 | ✅ JSON Lines v1, spawn/timeout/cancel/crash recovery. ⚠️ `worker.py` hiện tại chưa nói protocol này — cần entry point worker mới trước khi AI thật chạy qua crate này. |
 
 ## Fixture
 
@@ -73,8 +88,8 @@ số thập phân, từ trống bị bỏ), không assert ID cụ thể.
 
 ```bash
 cargo fmt --check
-cargo test -p vietkara-domain -p vietkara-storage
-cargo clippy -p vietkara-domain -p vietkara-storage --all-targets -- -D warnings
+cargo test -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge
+cargo clippy -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge --all-targets -- -D warnings
 python3 -m pytest tests/test_timing.py tests/test_app.py -q
 node --test tests/tapping.test.js tests/timeline_edit.test.js
 ```

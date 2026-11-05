@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/vietkara-app", "crates/vietkara-domain", "crates/vietkara-storage"]
+members = ["crates/vietkara-app", "crates/vietkara-domain", "crates/vietkara-storage", "crates/vietkara-jobs", "crates/vietkara-media", "crates/vietkara-render", "crates/vietkara-ai-bridge"]
 resolver = "2"
 
 [workspace.package]
