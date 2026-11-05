@@ -2,6 +2,7 @@ mod preview;
 mod text_input;
 mod theme;
 mod timeline;
+mod ui_preferences;
 use gpui::{
     App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
     MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window,
@@ -145,6 +146,9 @@ fn fit_workspace(mut layout: WorkspaceSize, viewport_width: f32) -> WorkspaceSiz
         layout.left = 170.0 + extra_budget * left_share;
         layout.right = 204.0 + extra_budget * (1.0 - left_share);
     }
+    layout.preview = layout
+        .preview
+        .min((viewport_width - layout.left - layout.right - 112.0).max(240.0));
     layout
 }
 
@@ -458,6 +462,11 @@ impl Studio {
 
     fn finish_workspace_resize(&mut self, cx: &mut Context<Self>) {
         if self.workspace_resize.take().is_some() {
+            if let Some(layout) = self.workspace_layout
+                && let Err(error) = ui_preferences::save_workspace_layout(layout)
+            {
+                self.edit_status = format!("Không lưu được bố cục giao diện: {error}");
+            }
             cx.notify();
         }
     }
@@ -4957,7 +4966,7 @@ fn main() {
                         _autosave_task: task,
                         left_tab_media: false,
                         inspector_design: false,
-                        workspace_layout: None,
+                        workspace_layout: ui_preferences::load_workspace_layout(),
                         workspace_resize: None,
                         playing: false,
                         selected_word: None,
@@ -5090,7 +5099,7 @@ mod workspace_tests {
             800.,
         );
         assert!(fitted.left + fitted.right + 392. <= 800.);
-        assert_eq!(fitted.preview, 520.);
+        assert!(fitted.preview <= 800. - fitted.left - fitted.right - 112.);
     }
 
     #[test]
