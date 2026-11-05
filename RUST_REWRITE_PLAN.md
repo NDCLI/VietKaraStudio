@@ -123,8 +123,9 @@
 >   H.264 960px/24fps, trích frame đầu, lưu metadata và checkpoint phiên bản.
 >   Publish file có rollback nếu lưu project thất bại.
 > - Preview GPUI cập nhật frame từ proxy theo playback position (mỗi 0,5 giây)
->   trong khi phát hoặc tua; cache frame tạm giới hạn 16 ảnh. Không phát audio
->   nền video; soundtrack vẫn theo beat.
+>   trong khi phát hoặc tua; nếu project cũ thiếu proxy thì fallback về nguồn.
+>   Frame extraction không dùng audio nền; soundtrack vẫn theo beat. Cache frame
+>   tạm giới hạn 16 ảnh.
 > - `cargo test --workspace` **88/88**, workspace fmt/clippy/check và app build
 >   pass. Chưa có phát video liên tục, original-video source hoặc layout ASS
 >   dùng chung.
@@ -276,13 +277,16 @@
 >   metadata theo scene ID, tạo version snapshot, rollback khi thao tác lưu lỗi.
 >   Preview GPUI xếp lớp decoration trên scene image, nội suy keyframe ảnh nền
 >   và decoration theo playback, crossfade đồng thời các section liền kề theo
->   cùng timeline overlap của renderer, áp fade in/out theo transition duration;
+>   cùng timeline overlap của renderer trên nền màu/ảnh/video, áp fade in/out
+>   theo transition duration; video preview lấy frame từ proxy an toàn, fallback
+>   về nguồn nếu thiếu proxy;
 >   inspector chỉnh opacity, transition cut/fade/duration, contrast mode, size
 >   và keyframe riêng đầu/cuối cho ảnh nền lẫn decoration. Regression tests
->   interpolation, fade và scene crossfade pass. Storage **19/19**, app **13/13** (bỏ qua
+>   interpolation, fade, scene crossfade và ưu tiên proxy/fallback/path traversal
+>   pass. Storage **19/19**, app **14/14** (bỏ qua
 >   integration export phụ thuộc FFmpeg app packaging); workspace check/Clippy
->   sạch. Chưa có preview transition cho video background; đây là phần parity
->   riêng, ngoài timeline scene ảnh tĩnh.
+>   sạch. Video background vẫn là ảnh frame cập nhật theo bước 0,5 giây, chưa
+>   phát liên tục trong canvas preview.
 
 ## 1. Mục tiêu và phạm vi
 

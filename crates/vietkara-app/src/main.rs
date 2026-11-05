@@ -1958,30 +1958,18 @@ impl Studio {
         {
             return;
         }
-        let (Some(main), Some(video_name)) = (
-            self.path.as_ref(),
-            project
-                .extra
-                .get("background_video")
-                .and_then(|video| video.get("source_file"))
-                .and_then(Value::as_str),
-        ) else {
+        let Some(main) = self.path.as_ref() else {
             return;
         };
-        if PathBuf::from(video_name)
-            .file_name()
-            .and_then(|name| name.to_str())
-            != Some(video_name)
-        {
+        let Some(metadata) = project.extra.get("background_video") else {
             return;
-        }
+        };
         let Some(directory) = main.parent() else {
             return;
         };
-        let video = directory.join(video_name);
-        if !video.is_file() {
+        let Some(video) = background_video_preview_path(directory, metadata) else {
             return;
-        }
+        };
         let position = self.play_position.max(0.0);
         let cache_dir = std::env::temp_dir().join(format!("vietkara-preview-{}", project.id));
         let output = cache_dir.join(format!("frame-{}.jpg", (position * 1000.0) as u64));
@@ -4133,6 +4121,17 @@ fn scene_fade_opacity(progress: f64, duration: f64, fade_seconds: f64) -> f32 {
         .min(((duration - time) / fade).clamp(0.0, 1.0)) as f32
 }
 
+fn background_video_preview_path(directory: &std::path::Path, metadata: &Value) -> Option<PathBuf> {
+    ["preview_file", "source_file"].into_iter().find_map(|key| {
+        let name = metadata.get(key)?.as_str()?;
+        if PathBuf::from(name).file_name()?.to_str()? != name {
+            return None;
+        }
+        let path = directory.join(name);
+        path.is_file().then_some(path)
+    })
+}
+
 #[derive(Clone)]
 struct ScenePreviewLayer {
     image: Option<PathBuf>,
@@ -4748,6 +4747,26 @@ mod workspace_tests {
             layers[1].image.as_ref().unwrap().file_name().unwrap(),
             std::ffi::OsStr::new(&format!("scene_{chorus_id}.png"))
         );
+    }
+
+    #[test]
+    fn video_preview_prefers_proxy_and_falls_back_to_safe_source() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("source.mp4"), b"source").unwrap();
+        std::fs::write(directory.path().join("proxy.mp4"), b"proxy").unwrap();
+        let metadata = serde_json::json!({"preview_file":"proxy.mp4","source_file":"source.mp4"});
+        assert_eq!(
+            background_video_preview_path(directory.path(), &metadata).unwrap(),
+            directory.path().join("proxy.mp4")
+        );
+        std::fs::remove_file(directory.path().join("proxy.mp4")).unwrap();
+        assert_eq!(
+            background_video_preview_path(directory.path(), &metadata).unwrap(),
+            directory.path().join("source.mp4")
+        );
+        let unsafe_metadata =
+            serde_json::json!({"preview_file":"..\\outside.mp4","source_file":"..\\outside.mp4"});
+        assert!(background_video_preview_path(directory.path(), &unsafe_metadata).is_none());
     }
 
     #[test]
