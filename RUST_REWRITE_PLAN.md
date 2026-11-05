@@ -79,7 +79,7 @@
 
 > **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 
-> **Tiến độ 2026-11-06 — tiếp tục lát giao diện W3 (đang chờ kiểm chứng):**
+> **Tiến độ 2026-11-06 — lát giao diện/lyrics W3 (đã kiểm tra tự động):**
 > - Bố cục GPUI đã chuyển gần cấu trúc editor cũ: danh sách lời / nguồn media
 >   bên trái, preview theo khung 16:9 hoặc 9:16 và timeline ở giữa, inspector
 >   từ / thiết kế bên phải.
@@ -89,8 +89,13 @@
 > - Thêm nhập TXT mỗi dòng một câu, ước lượng mốc theo độ dài beat theo quy tắc
 >   `timing.estimate_words`, giữ xác nhận trước khi thay toàn bộ lời; thêm test
 >   domain cho số từ, ranh giới dòng và dữ liệu lỗi.
+> - Kiểm tra sau thay đổi: `cargo fmt --check`, `cargo test --workspace`
+>   **77/77**, workspace clippy với `-D warnings`, workspace check và
+>   `cargo build -p vietkara-app` đều pass; Python baseline **167/167** và
+>   Node **17/17** cũng pass.
 > - Đây mới là lát giao diện/lyrics đầu tiên, chưa đạt parity thiết kế đầy đủ;
->   thay đổi này đang chờ batch build/test và kiểm tra trực tiếp trên Windows.
+>   giao diện mới chưa được kiểm tra trực tiếp bằng ảnh runtime, và preview
+>   hiện vẫn là khung demo chứ chưa phải preview renderer thật.
 
 ## 1. Mục tiêu và phạm vi
 
