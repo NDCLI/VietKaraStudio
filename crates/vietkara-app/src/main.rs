@@ -3120,168 +3120,19 @@ impl Render for Studio {
         };
         let preview_scale = preview_width / layout.width as f32;
         let preview_position = self.play_position;
-        let scene_preview =
-            self.path
-                .as_ref()
-                .and_then(|path| path.parent())
-                .and_then(|directory| {
-                    let active_section = display_words
-                        .iter()
-                        .find(|word| {
-                            let start = vietkara_domain::timing::map_time(
-                                word.start,
-                                &self.editor.project().anchors,
-                                false,
-                            );
-                            let end = vietkara_domain::timing::map_time(
-                                word.end,
-                                &self.editor.project().anchors,
-                                false,
-                            );
-                            start <= preview_position && preview_position < end
-                        })
-                        .and_then(|word| word.section_name.as_deref())
-                        .unwrap_or(&selected_section);
-                    self.editor
-                        .project()
-                        .scenes
-                        .iter()
-                        .find(|scene| {
-                            scene.get("section_name").and_then(Value::as_str)
-                                == Some(active_section)
-                        })
-                        .and_then(|scene| {
-                            let (start, end) = display_words
-                                .iter()
-                                .filter(|word| word.section_name.as_deref() == Some(active_section))
-                                .fold((f64::INFINITY, f64::NEG_INFINITY), |(start, end), word| {
-                                    (
-                                        start.min(vietkara_domain::timing::map_time(
-                                            word.start,
-                                            &self.editor.project().anchors,
-                                            false,
-                                        )),
-                                        end.max(vietkara_domain::timing::map_time(
-                                            word.end,
-                                            &self.editor.project().anchors,
-                                            false,
-                                        )),
-                                    )
-                                });
-                            let progress = if end > start {
-                                ((preview_position - start) / (end - start)).clamp(0.0, 1.0)
-                            } else {
-                                0.0
-                            };
-                            let scene_duration = (end - start).max(0.0);
-                            let fade_seconds =
-                                if scene.get("transition").and_then(Value::as_str) == Some("cut") {
-                                    0.05
-                                } else {
-                                    scene
-                                        .get("transition_seconds")
-                                        .and_then(Value::as_f64)
-                                        .unwrap_or(0.6)
-                                        .clamp(0.05, 3.0)
-                                };
-                            let fade_opacity =
-                                scene_fade_opacity(progress, scene_duration, fade_seconds);
-                            let image_keyframes = scene.get("keyframes").unwrap_or(&Value::Null);
-                            let main_scale = interpolate_scene_keyframes(
-                                image_keyframes,
-                                "scale",
-                                progress,
-                                100.0,
-                            )
-                            .clamp(100.0, 200.0)
-                                as f32;
-                            let main_x =
-                                interpolate_scene_keyframes(image_keyframes, "x", progress, 0.0)
-                                    .clamp(-100.0, 100.0) as f32;
-                            let main_y =
-                                interpolate_scene_keyframes(image_keyframes, "y", progress, 0.0)
-                                    .clamp(-100.0, 100.0) as f32;
-                            let main_frame_opacity = interpolate_scene_keyframes(
-                                image_keyframes,
-                                "opacity",
-                                progress,
-                                100.0,
-                            )
-                            .clamp(0.0, 100.0)
-                                as f32
-                                / 100.0;
-                            let id = scene.get("id").and_then(Value::as_str)?;
-                            let image = directory.join(format!("scene_{id}.png"));
-                            image.is_file().then_some((
-                                image,
-                                scene,
-                                main_scale,
-                                main_x,
-                                main_y,
-                                main_frame_opacity,
-                                progress,
-                                fade_opacity,
-                            ))
-                        })
-                        .map(
-                            |(
-                                image,
-                                scene,
-                                main_scale,
-                                main_x,
-                                main_y,
-                                main_frame_opacity,
-                                progress,
-                                fade_opacity,
-                            )| {
-                                let opacity = scene
-                                    .get("opacity")
-                                    .and_then(Value::as_f64)
-                                    .unwrap_or(100.0)
-                                    .clamp(0.0, 100.0)
-                                    as f32
-                                    / 100.0;
-                                let decoration = scene
-                                    .get("id")
-                                    .and_then(Value::as_str)
-                                    .map(|id| directory.join(format!("scene_decoration_{id}.png")))
-                                    .filter(|path| path.is_file())
-                                    .map(|path| {
-                                        let base_size = scene
-                                            .get("decoration_size")
-                                            .and_then(Value::as_f64)
-                                            .unwrap_or(28.0)
-                                            .clamp(5.0, 80.0)
-                                            as f32;
-                                        let keyframes = scene
-                                            .get("decoration_keyframes")
-                                            .unwrap_or(&Value::Null);
-                                        let lerp = |key: &str, default: f64| {
-                                            interpolate_scene_keyframes(
-                                                keyframes, key, progress, default,
-                                            )
-                                        };
-                                        let size = base_size
-                                            * lerp("scale", 100.0).clamp(100.0, 200.0) as f32
-                                            / 100.0;
-                                        let x = lerp("x", 50.0).clamp(0.0, 100.0) as f32;
-                                        let y = lerp("y", 50.0).clamp(0.0, 100.0) as f32;
-                                        let decoration_opacity =
-                                            lerp("opacity", 100.0).clamp(0.0, 100.0) as f32 / 100.0
-                                                * fade_opacity;
-                                        (path, size, x, y, decoration_opacity)
-                                    });
-                                (
-                                    image,
-                                    opacity * main_frame_opacity * fade_opacity,
-                                    decoration,
-                                    main_scale,
-                                    main_x,
-                                    main_y,
-                                )
-                            },
-                        )
-                });
+        let scene_preview = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|directory| {
+                scene_preview_layers(
+                    self.editor.project(),
+                    directory,
+                    preview_position,
+                    self.play_duration,
+                )
+            })
+            .unwrap_or_default();
         let title_visible = layout
             .title
             .as_ref()
@@ -3778,22 +3629,23 @@ impl Render for Studio {
                                                         .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                             .bg(rgb(0x05080c)).opacity(0.32))
                                                 })
-                                                .when(scene_preview.is_some(), |frame| {
-                                                    let (path, opacity, decoration, scale, x, y) = scene_preview.clone().unwrap();
-                                                    let image_width = preview_width * scale / 100.0;
-                                                    let image_height = preview_height * scale / 100.0;
-                                                    let image_left = (preview_width-image_width)/2.0 + x*(image_width-preview_width)/100.0;
-                                                    let image_top = (preview_height-image_height)/2.0 + y*(image_height-preview_height)/100.0;
-                                                    frame.child(img(path).absolute().w(px(image_width)).h(px(image_height)).object_fit(ObjectFit::Cover)
-                                                        .left(px(image_left)).top(px(image_top)).opacity(opacity))
-                                                        .when(decoration.is_some(), |frame| {
-                                                            let (path, size, x, y, opacity) = decoration.unwrap();
+                                                .when(!scene_preview.is_empty(), |frame| frame.children(scene_preview.clone().into_iter().map(|layer| {
+                                                    let image_width = preview_width * layer.scale / 100.0;
+                                                    let image_height = preview_height * layer.scale / 100.0;
+                                                    let image_left = (preview_width-image_width)/2.0 + layer.x*(image_width-preview_width)/100.0;
+                                                    let image_top = (preview_height-image_height)/2.0 + layer.y*(image_height-preview_height)/100.0;
+                                                    div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
+                                                        .when(layer.image.is_some(), |container| container.child(img(layer.image.clone().unwrap()).absolute()
+                                                            .w(px(image_width)).h(px(image_height)).object_fit(ObjectFit::Cover)
+                                                            .left(px(image_left)).top(px(image_top)).opacity(layer.image_opacity)))
+                                                        .when(layer.decoration.is_some(), |container| {
+                                                            let (path,size,x,y,opacity) = layer.decoration.clone().unwrap();
                                                             let width = preview_width * size / 100.0;
-                                                            frame.child(img(path).absolute().w(px(width)).h(px(width * 0.65)).object_fit(ObjectFit::Contain)
-                                                                .left(px(preview_width * x / 100.0 - width / 2.0))
-                                                                .top(px(preview_height * y / 100.0 - width * 0.325)).opacity(opacity))
+                                                            container.child(img(path).absolute().w(px(width)).h(px(width*0.65)).object_fit(ObjectFit::Contain)
+                                                                .left(px(preview_width*x/100.0-width/2.0))
+                                                                .top(px(preview_height*y/100.0-width*0.325)).opacity(opacity))
                                                         })
-                                                })
+                                                })))
                                                 .child(div().absolute().left(px(8.)).top(px(6.)).text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                     .flex().flex_col().gap_2()
@@ -4281,6 +4133,206 @@ fn scene_fade_opacity(progress: f64, duration: f64, fade_seconds: f64) -> f32 {
         .min(((duration - time) / fade).clamp(0.0, 1.0)) as f32
 }
 
+#[derive(Clone)]
+struct ScenePreviewLayer {
+    image: Option<PathBuf>,
+    image_opacity: f32,
+    scale: f32,
+    x: f32,
+    y: f32,
+    decoration: Option<(PathBuf, f32, f32, f32, f32)>,
+}
+
+fn scene_preview_layers(
+    project: &Project,
+    directory: &std::path::Path,
+    time: f64,
+    total_duration: f64,
+) -> Vec<ScenePreviewLayer> {
+    use std::collections::BTreeMap;
+    let total_duration = if total_duration.is_finite() && total_duration > 0.0 {
+        total_duration
+    } else {
+        project
+            .words
+            .iter()
+            .map(|word| vietkara_domain::timing::map_time(word.end, &project.anchors, false))
+            .fold(0.0_f64, f64::max)
+    };
+    let scenes = project
+        .scenes
+        .iter()
+        .filter_map(|scene| {
+            let section = scene.get("section_name")?.as_str()?.trim();
+            if ![
+                "intro",
+                "verse",
+                "pre-chorus",
+                "chorus",
+                "bridge",
+                "outro",
+                "instrumental",
+            ]
+            .contains(&section)
+            {
+                return None;
+            }
+            let id = scene.get("id")?.as_str()?;
+            if !vietkara_domain::is_hex32(id) {
+                return None;
+            }
+            let image = directory.join(format!("scene_{id}.png"));
+            let image = image.is_file().then_some(image);
+            let decoration = directory.join(format!("scene_decoration_{id}.png"));
+            let decoration = decoration.is_file().then_some(decoration);
+            if image.is_none() && decoration.is_none() {
+                return None;
+            }
+            let transition = if scene
+                .get("transition")
+                .and_then(Value::as_str)
+                .unwrap_or("fade")
+                == "fade"
+            {
+                scene
+                    .get("transition_seconds")
+                    .and_then(Value::as_f64)
+                    .filter(|v| v.is_finite())
+                    .unwrap_or(0.6)
+                    .clamp(0.0, 3.0)
+            } else {
+                0.0
+            };
+            Some((
+                section.to_owned(),
+                (scene.clone(), image, decoration, transition),
+            ))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    if scenes.is_empty() || project.words.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines: BTreeMap<u32, (usize, f64, f64, String)> = BTreeMap::new();
+    for (index, word) in project.words.iter().enumerate() {
+        let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
+        let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
+        let row = lines
+            .entry(word.line)
+            .or_insert((index, start, end, String::new()));
+        row.0 = row.0.min(index);
+        row.1 = row.1.min(start);
+        row.2 = row.2.max(end);
+        if row.3.is_empty() {
+            row.3 = word.section_name.as_deref().unwrap_or("").trim().to_owned();
+        }
+    }
+    let mut ordered = lines.into_values().collect::<Vec<_>>();
+    ordered.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    let mut runs: Vec<(String, f64, f64)> = Vec::new();
+    for (_, start, end, section) in ordered {
+        let section = if scenes.contains_key(&section) {
+            section
+        } else {
+            String::new()
+        };
+        if let Some(last) = runs.last_mut().filter(|last| last.0 == section) {
+            last.2 = last.2.max(end);
+        } else {
+            runs.push((section, start, end));
+        }
+    }
+
+    let mut layers = Vec::new();
+    for (index, (section, run_start, _)) in runs.iter().enumerate() {
+        let Some((scene, image, decoration, base_transition)) = scenes.get(section) else {
+            continue;
+        };
+        let previous_has_scene = index > 0 && scenes.contains_key(&runs[index - 1].0);
+        let next_index = index + 1;
+        let following_has_scene =
+            next_index < runs.len() && scenes.contains_key(&runs[next_index].0);
+        let mut transition = *base_transition;
+        if previous_has_scene {
+            transition = transition.min(((run_start - runs[index - 1].1) / 2.0).max(0.0));
+        }
+        if following_has_scene {
+            transition = transition.min(((runs[next_index].1 - run_start) / 2.0).max(0.0));
+        }
+        let start = (if previous_has_scene {
+            run_start - transition / 2.0
+        } else {
+            *run_start
+        })
+        .max(0.0);
+        let end = (if following_has_scene {
+            runs[next_index].1 + transition / 2.0
+        } else if next_index < runs.len() {
+            runs[next_index].1
+        } else {
+            total_duration
+        })
+        .min(total_duration);
+        if end <= start || time < start || time > end {
+            continue;
+        }
+        let duration = end - start;
+        let progress = ((time - start) / duration).clamp(0.0, 1.0);
+        let fade = transition.min(duration / 2.0).max(0.05);
+        let fade_opacity = scene_fade_opacity(progress, duration, fade);
+        let keyframes = scene.get("keyframes").unwrap_or(&Value::Null);
+        let scale = interpolate_scene_keyframes(keyframes, "scale", progress, 100.0)
+            .clamp(100.0, 200.0) as f32;
+        let x =
+            interpolate_scene_keyframes(keyframes, "x", progress, 0.0).clamp(-100.0, 100.0) as f32;
+        let y =
+            interpolate_scene_keyframes(keyframes, "y", progress, 0.0).clamp(-100.0, 100.0) as f32;
+        let frame_opacity = interpolate_scene_keyframes(keyframes, "opacity", progress, 100.0)
+            .clamp(0.0, 100.0) as f32
+            / 100.0;
+        let image_opacity = scene
+            .get("opacity")
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+            .unwrap_or(100.0)
+            .clamp(0.0, 100.0) as f32
+            / 100.0
+            * frame_opacity
+            * fade_opacity;
+        let decoration = decoration.as_ref().map(|path| {
+            let base_size = scene
+                .get("decoration_size")
+                .and_then(Value::as_f64)
+                .filter(|v| v.is_finite())
+                .unwrap_or(28.0)
+                .clamp(5.0, 80.0) as f32;
+            let keyframes = scene.get("decoration_keyframes").unwrap_or(&Value::Null);
+            let size = base_size
+                * interpolate_scene_keyframes(keyframes, "scale", progress, 100.0)
+                    .clamp(100.0, 200.0) as f32
+                / 100.0;
+            let x = interpolate_scene_keyframes(keyframes, "x", progress, 50.0).clamp(0.0, 100.0)
+                as f32;
+            let y = interpolate_scene_keyframes(keyframes, "y", progress, 50.0).clamp(0.0, 100.0)
+                as f32;
+            let opacity = interpolate_scene_keyframes(keyframes, "opacity", progress, 100.0)
+                .clamp(0.0, 100.0) as f32
+                / 100.0
+                * fade_opacity;
+            (path.clone(), size, x, y, opacity)
+        });
+        layers.push(ScenePreviewLayer {
+            image: image.clone(),
+            image_opacity,
+            scale,
+            x,
+            y,
+            decoration,
+        });
+    }
+    layers
+}
+
 fn set_section_name_on_line(words: &mut [Word], line: u32, name: &str) {
     let cleaned = name
         .trim()
@@ -4658,6 +4710,44 @@ mod workspace_tests {
         assert_eq!(scene_fade_opacity(0.9, 10.0, 2.0), 0.5);
         assert_eq!(scene_fade_opacity(1.0, 10.0, 2.0), 0.0);
         assert_eq!(scene_fade_opacity(0.5, 0.0, 2.0), 1.0);
+    }
+
+    #[test]
+    fn adjacent_scene_sections_are_both_present_during_crossfade() {
+        let directory = tempfile::tempdir().unwrap();
+        let intro_id = "0123456789abcdef0123456789abcdef";
+        let chorus_id = "abcdef0123456789abcdef0123456789";
+        std::fs::write(
+            directory.path().join(format!("scene_{intro_id}.png")),
+            b"intro",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join(format!("scene_{chorus_id}.png")),
+            b"chorus",
+        )
+        .unwrap();
+        let mut project = Project::new("fixture");
+        project.scenes = vec![
+            serde_json::json!({"id":intro_id,"section_name":"intro","transition":"fade","transition_seconds":0.8}),
+            serde_json::json!({"id":chorus_id,"section_name":"chorus","transition":"fade","transition_seconds":0.8}),
+        ];
+        project.words = vec![
+            serde_json::from_value(serde_json::json!({"id":"w1","text":"Xin","line":0,"start":0.0,"end":2.0,"section_name":"intro"})).unwrap(),
+            serde_json::from_value(serde_json::json!({"id":"w2","text":"chào","line":1,"start":2.0,"end":4.0,"section_name":"chorus"})).unwrap(),
+        ];
+        let layers = scene_preview_layers(&project, directory.path(), 2.0, 4.0);
+        assert_eq!(layers.len(), 2);
+        assert!((layers[0].image_opacity - 0.5).abs() < 0.001);
+        assert!((layers[1].image_opacity - 0.5).abs() < 0.001);
+        assert_eq!(
+            layers[0].image.as_ref().unwrap().file_name().unwrap(),
+            std::ffi::OsStr::new(&format!("scene_{intro_id}.png"))
+        );
+        assert_eq!(
+            layers[1].image.as_ref().unwrap().file_name().unwrap(),
+            std::ffi::OsStr::new(&format!("scene_{chorus_id}.png"))
+        );
     }
 
     #[test]

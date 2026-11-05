@@ -275,13 +275,14 @@
 > - Nối artwork scene: nạp/thay/xóa ảnh decoration PNG/JPG/WebP, giữ file và
 >   metadata theo scene ID, tạo version snapshot, rollback khi thao tác lưu lỗi.
 >   Preview GPUI xếp lớp decoration trên scene image, nội suy keyframe ảnh nền
->   và decoration theo playback, áp fade in/out theo transition duration;
+>   và decoration theo playback, crossfade đồng thời các section liền kề theo
+>   cùng timeline overlap của renderer, áp fade in/out theo transition duration;
 >   inspector chỉnh opacity, transition cut/fade/duration, contrast mode, size
 >   và keyframe riêng đầu/cuối cho ảnh nền lẫn decoration. Regression tests
->   interpolation và fade pass. Storage **19/19**, app **12/12** (bỏ qua
+>   interpolation, fade và scene crossfade pass. Storage **19/19**, app **13/13** (bỏ qua
 >   integration export phụ thuộc FFmpeg app packaging); workspace check/Clippy
->   sạch. Preview chưa crossfade đồng thời hai scene qua ranh giới section như
->   FFmpeg renderer; phần này vẫn cần parity work.
+>   sạch. Chưa có preview transition cho video background; đây là phần parity
+>   riêng, ngoài timeline scene ảnh tĩnh.
 
 ## 1. Mục tiêu và phạm vi
 
