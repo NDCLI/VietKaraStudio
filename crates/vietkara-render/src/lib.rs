@@ -25,9 +25,10 @@
 //! * `TextMeasurer` is injected so preview/export can use the same actual font
 //!   face. GPUI supplies the Windows preview measurer and passes its cached
 //!   `DisplayPlan` to `prepare_lyrics_ass` in the export action.
-//! * ASS currently covers planned row placement, subtitle backing, duet colors,
-//!   timed karaoke word sweeps, gradients, title cards and vector countdown.
-//!   Role artwork, scene-aware readability backing and bundled fonts remain open.
+//! * ASS covers planned row placement, subtitle backing, duet colors and vector
+//!   role markers, timed karaoke sweeps, gradients, title cards, scene-aware
+//!   readability backing and vector countdown icons. VNI/TCVN3 text mapping is
+//!   supported; bundled fonts and custom bitmap role artwork remain open.
 //! * Scene image and decoration position/scale/alpha, logo effects and custom
 //!   image countdown overlays are supported. GPUI export runs on a worker
 //!   thread, reports FFmpeg progress and can be cancelled; NVENC fallback

@@ -226,6 +226,10 @@
 >   export; Unicode gốc vẫn được giữ trong Project. Tests cho VNI, TCVN3, chữ
 >   hoa và input decomposed pass; lookup tables được cache một lần để không
 >   tạo bảng mới mỗi lần đo glyph. Workspace clippy và app build pass.
+> - Thêm nhóm TITLE CARD vào inspector GPUI: bật/tắt, lần bật đầu lấy tên
+>   project nếu title trống, chọn template và hiệu ứng vào/ra. Settings đi qua
+>   `SetSettings`, giữ dirty/autosave hiện có. Text custom, credit, thời gian,
+>   màu và cỡ title chưa có control trong inspector.
 
 ## 1. Mục tiêu và phạm vi
 

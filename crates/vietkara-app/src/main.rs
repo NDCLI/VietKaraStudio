@@ -1875,6 +1875,21 @@ impl Render for Studio {
             .get("display_mode")
             .and_then(Value::as_str)
             .unwrap_or("karaoke");
+        let title_enabled = settings
+            .extra
+            .get("title_enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let title_template = settings
+            .extra
+            .get("title_template")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        let title_text = settings
+            .extra
+            .get("title_text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let background_type = settings
             .extra
             .get("background_type")
@@ -2710,7 +2725,31 @@ impl Render for Studio {
                                                 .child(div().w(px(10.)).h(px(10.)).rounded_sm().bg(rgb(match color {"#f4cf72"=>0xf4cf72,"#ff87b7"=>0xff87b7,_=>0x52efb9})))
                                                 .child(label))
                                             .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("sung",Value::String(color.into()),cx))))))
-                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x748297)).child("Các tùy chỉnh nâng cao sẽ được bổ sung tiếp theo."))),
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("TITLE CARD"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if title_enabled {"✓  Title card đang bật"} else {"＋  Dùng tên project làm title"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        let enabled=this.editor.project().settings.extra.get("title_enabled").and_then(Value::as_bool).unwrap_or(false);
+                                        if !enabled && this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").trim().is_empty() {
+                                            let project_name=this.editor.project().name.clone();
+                                            this.update_setting("title_text",Value::String(project_name),cx);
+                                        }
+                                        this.update_setting("title_enabled",Value::Bool(!enabled),cx);
+                                    })))
+                                .when(title_enabled,|panel|panel
+                                    .child(div().mt_1().text_size(px(11.)).text_color(rgb(0x748297)).child(if title_text.is_empty(){"Chưa có nội dung title".to_owned()}else{title_text.to_owned()}))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Template: {title_template}"))
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("title_template",&["none","gradient","midnight","crystal","neon","retro","pastel"],cx))))
+                                    .child(div().mt_2().flex().gap_2()
+                                        .children([("Vào","title_enter"),("Ra","title_exit")].into_iter().map(|(label,key)|{
+                                            let current=this_setting_label(settings,key);
+                                            div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                                .child(format!("{label}: {current}"))
+                                                .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.cycle_setting(key,&["none","fade","slide_up","slide_down","slide_left","slide_right","zoom","flip"],cx)))
+                                        })))
+                                )
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x748297)).child("Cài đặt được lưu cùng project."))),
                     ),
             )
             .child(
@@ -2743,6 +2782,24 @@ fn setting_color(settings: &vietkara_domain::settings::Settings, key: &str, fall
         .and_then(|value| value.strip_prefix('#'))
         .and_then(|value| u32::from_str_radix(value, 16).ok())
         .unwrap_or(fallback)
+}
+
+fn this_setting_label(settings: &vietkara_domain::settings::Settings, key: &str) -> &'static str {
+    match settings
+        .extra
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("fade")
+    {
+        "none" => "Không",
+        "slide_up" => "Trượt lên",
+        "slide_down" => "Trượt xuống",
+        "slide_left" => "Trượt trái",
+        "slide_right" => "Trượt phải",
+        "zoom" => "Thu/phóng",
+        "flip" => "Lật",
+        _ => "Mờ dần",
+    }
 }
 
 fn preview_alignment(
