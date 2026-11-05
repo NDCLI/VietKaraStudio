@@ -1,11 +1,134 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 use vietkara_domain::{Anchor, Word, timing::map_time};
+use vietkara_render::layout::{DisplayPlan, TextMeasurer};
+
+#[derive(Default)]
+pub(super) struct PreviewLayoutCache {
+    key: Option<u64>,
+    plan: Option<DisplayPlan>,
+}
+
+struct GpuiTextMeasurer<'a>(&'a gpui::WindowTextSystem);
+
+impl TextMeasurer for GpuiTextMeasurer<'_> {
+    fn width(&self, text: &str, family: &str, size: f64, italic: bool) -> f64 {
+        let font = gpui::font(family.to_owned());
+        let font = if italic { font.italic() } else { font };
+        let run = gpui::TextRun {
+            len: text.len(),
+            font,
+            color: gpui::hsla(0.0, 0.0, 0.0, 1.0),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let shaped = self
+            .0
+            .shape_line(text.to_owned().into(), gpui::px(size as f32), &[run], None);
+        f64::from(shaped.width)
+    }
+}
+
+fn layout_key(project: &vietkara_domain::Project, words: &[Word]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    project.settings.font.hash(&mut hasher);
+    project.settings.font_size.to_bits().hash(&mut hasher);
+    serde_json::to_string(&project.settings.extra)
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    for anchor in &project.anchors {
+        anchor.r#ref.to_bits().hash(&mut hasher);
+        anchor.beat.to_bits().hash(&mut hasher);
+    }
+    project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("duration"))
+        .and_then(serde_json::Value::as_f64)
+        .map(f64::to_bits)
+        .hash(&mut hasher);
+    for word in words {
+        word.text.hash(&mut hasher);
+        word.start.to_bits().hash(&mut hasher);
+        word.end.to_bits().hash(&mut hasher);
+        word.line.hash(&mut hasher);
+        word.role.hash(&mut hasher);
+        word.row.hash(&mut hasher);
+        word.section.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+pub(super) fn cached_display_plan<'a>(
+    cache: &'a mut PreviewLayoutCache,
+    project: &vietkara_domain::Project,
+    words: &[Word],
+    text_system: &gpui::WindowTextSystem,
+) -> &'a DisplayPlan {
+    let key = layout_key(project, words);
+    if cache.key != Some(key) {
+        let mut snapshot = project.clone();
+        snapshot.words = words.to_vec();
+        cache.plan = Some(vietkara_render::layout::display_plan(
+            &snapshot,
+            &GpuiTextMeasurer(text_system),
+        ));
+        cache.key = Some(key);
+    }
+    cache
+        .plan
+        .as_ref()
+        .expect("layout cache was just populated")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VisibleLine {
     pub(super) line: u32,
     pub(super) slot: u8,
+}
+
+/// Select preview rows using the shared measured plan's show windows.
+pub(super) fn visible_plan_rows(plan: &DisplayPlan, beat_time: f64, mode: &str) -> Vec<usize> {
+    if mode == "karaoke" {
+        let mut visible = Vec::new();
+        for slot in 0..2 {
+            let candidates = plan
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| {
+                    row.slot == slot && beat_time >= row.show_start && beat_time <= row.show_end
+                })
+                .collect::<Vec<_>>();
+            let singing = candidates
+                .iter()
+                .copied()
+                .filter(|(_, row)| beat_time >= row.start && beat_time <= row.end)
+                .max_by(|a, b| a.1.start.total_cmp(&b.1.start));
+            if let Some(row) = singing.or_else(|| {
+                candidates
+                    .into_iter()
+                    .max_by(|a, b| a.1.start.total_cmp(&b.1.start))
+            }) && !visible
+                .iter()
+                .any(|&index: &usize| plan.rows[index].line == row.1.line)
+            {
+                visible.push(row.0);
+            }
+        }
+        visible
+    } else {
+        plan.rows
+            .iter()
+            .enumerate()
+            .find(|(_, row)| beat_time >= row.show_start && beat_time <= row.show_end)
+            .map(|(index, _)| vec![index])
+            .unwrap_or_default()
+    }
 }
 
 struct Row<'a> {
@@ -193,6 +316,44 @@ mod tests {
             "role": "all"
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn shared_plan_selects_one_visible_row_per_lane() {
+        let row = |index, line, slot, start, end, show_start, show_end| {
+            vietkara_render::layout::DisplayRow {
+                index,
+                line,
+                slot,
+                start,
+                end,
+                show_start,
+                show_end,
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 24.0,
+                font_size: 20.0,
+                align: "center".into(),
+                role: "all".into(),
+                text: "line".into(),
+                section_start: false,
+                section_end: false,
+                words: Vec::new(),
+            }
+        };
+        let plan = DisplayPlan {
+            width: 1920,
+            height: 1080,
+            font: "Arial".into(),
+            rows: vec![
+                row(0, 0, 0, 1.0, 2.0, 0.0, 2.6),
+                row(1, 1, 1, 2.0, 3.0, 0.5, 3.6),
+                row(2, 2, 0, 3.0, 4.0, 2.1, 4.6),
+            ],
+        };
+        assert_eq!(visible_plan_rows(&plan, 3.5, "karaoke"), vec![2, 1]);
+        assert_eq!(visible_plan_rows(&plan, 3.5, "subtitle"), vec![1]);
     }
 
     #[test]

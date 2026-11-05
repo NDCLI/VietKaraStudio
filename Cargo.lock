@@ -6325,6 +6325,7 @@ dependencies = [
  "unicode-segmentation",
  "vietkara-domain",
  "vietkara-media",
+ "vietkara-render",
  "vietkara-storage",
 ]
 

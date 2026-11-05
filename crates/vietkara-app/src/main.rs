@@ -54,6 +54,7 @@ struct Studio {
     timeline_zoom: f32,
     timeline_drag: Option<timeline::TimelineDrag>,
     timeline_scroll: ScrollHandle,
+    preview_layout: preview::PreviewLayoutCache,
     tapping: Option<TapSession>,
     play_position: f64,
     play_duration: f64,
@@ -1545,13 +1546,34 @@ impl Render for Studio {
             &self.editor.project().anchors,
             true,
         );
-        let active_lines = preview::visible_lines(
+        let layout = preview::cached_display_plan(
+            &mut self.preview_layout,
+            self.editor.project(),
             display_words,
-            &self.editor.project().anchors,
-            self.play_position,
-            display_mode,
-            duet,
+            window.text_system(),
         );
+        let active_plan_rows = if display_mode == "karaoke" {
+            preview::visible_plan_rows(layout, self.play_position, display_mode)
+        } else {
+            Vec::new()
+        };
+        let active_lines = if display_mode == "karaoke" {
+            active_plan_rows
+                .iter()
+                .map(|&index| preview::VisibleLine {
+                    line: layout.rows[index].line,
+                    slot: layout.rows[index].slot,
+                })
+                .collect()
+        } else {
+            preview::visible_lines(
+                display_words,
+                &self.editor.project().anchors,
+                self.play_position,
+                display_mode,
+                duet,
+            )
+        };
         let selected_id = self.selected_word.as_deref();
         let preview_line_element = |line: u32, size: f32, subdued: bool, line_color: u32| {
             let line_align = preview_alignment(display_align, line, &active_lines);
@@ -1669,12 +1691,49 @@ impl Render for Studio {
                 preview_rows = stack;
             }
         }
-        let current_preview: Vec<_> = preview_rows
-            .iter()
-            .map(|(line, size, subdued, color)| {
-                preview_line_element(*line, *size, *subdued, *color)
-            })
-            .collect();
+        let preview_width = if is_portrait {
+            portrait_width
+        } else {
+            workspace.preview
+        };
+        let preview_scale = preview_width / layout.width as f32;
+        let preview_position = self.play_position;
+        let current_preview: Vec<_> = if display_mode == "karaoke" && !active_plan_rows.is_empty() {
+            active_plan_rows
+                .iter()
+                .flat_map(|&row_index| {
+                    let row = &layout.rows[row_index];
+                    let line_color = role_color(row.line);
+                    row.words.iter().map(move |planned| {
+                        let active =
+                            preview_position >= planned.start && preview_position < planned.end;
+                        let sung = preview_position >= planned.end;
+                        let color = if active || sung {
+                            line_color
+                        } else if Some(planned.word.id.as_str()) == selected_id {
+                            0xffdf79
+                        } else {
+                            0xffffff
+                        };
+                        div()
+                            .absolute()
+                            .left(px(planned.x as f32 * preview_scale))
+                            .top(px(row.y as f32 * preview_scale))
+                            .text_size(px(row.font_size as f32 * preview_scale))
+                            .text_color(rgb(color))
+                            .when(italic, |text| text.italic())
+                            .child(planned.word.text.clone())
+                    })
+                })
+                .collect()
+        } else {
+            preview_rows
+                .iter()
+                .map(|(line, size, subdued, color)| {
+                    preview_line_element(*line, *size, *subdued, *color)
+                })
+                .collect()
+        };
         let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {
             let id = line.id.clone();
@@ -1968,8 +2027,15 @@ impl Render for Studio {
                                                         .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                             .bg(rgb(0x05080c)).opacity(0.32))
                                                 })
-                                                .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
-                                                .child(div().flex().flex_col().gap_2().mt_4()
+                                                .child(div().absolute().left(px(8.)).top(px(6.)).text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
+                                                .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
+                                                    .flex().flex_col().gap_2()
+                                                    .when(display_position == "top", |rows| rows.justify_start())
+                                                    .when(display_position == "center", |rows| rows.justify_center())
+                                                    .when(display_position != "top" && display_position != "center", |rows| rows.justify_end())
+                                                    .when(display_align == "left", |rows| rows.items_start())
+                                                    .when(display_align == "center" || display_align == "justify", |rows| rows.items_center())
+                                                    .when(display_align == "right", |rows| rows.items_end())
                                                     .children(current_preview)
                                                     .when(preview_rows.is_empty(),|empty|empty
                                                         .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
@@ -2309,6 +2375,7 @@ fn main() {
                         timeline_zoom: 80.,
                         timeline_drag: None,
                         timeline_scroll: ScrollHandle::new(),
+                        preview_layout: preview::PreviewLayoutCache::default(),
                         tapping: None,
                         play_position: 0.,
                         play_duration: 0.,

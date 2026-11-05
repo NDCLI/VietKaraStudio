@@ -160,9 +160,11 @@
 > - Bắt đầu port lyric layout vào `vietkara-render::layout`: plan dùng một
 >   `TextMeasurer` được inject để tính wrap/tọa độ từ cùng font metrics, map
 >   beat anchors, show windows, alignment và word positions; invariant hai
->   lane được giữ. Hiện chưa nối planner này vào GPUI preview hoặc sinh ASS;
->   adapter đo font và phần marker/title/gradient/countdown vẫn còn.
->   Workspace **97/97**, fmt/clippy/check/build app đều pass trên Windows.
+>   lane được giữ. GPUI preview karaoke đã gọi planner, đo glyph tiếng Việt
+>   bằng `WindowTextSystem::shape_line`, cache plan theo nội dung/settings và
+>   đặt từng từ theo tọa độ/cỡ chữ trong canvas. ASS export chưa dùng planner;
+>   adapter đo font bên renderer và marker/title/gradient/countdown vẫn còn.
+>   Workspace **98/98**, fmt/clippy/check/build app đều pass trên Windows.
 
 ## 1. Mục tiêu và phạm vi
 
