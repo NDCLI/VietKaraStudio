@@ -741,6 +741,70 @@ impl Studio {
         })
         .detach();
     }
+    fn choose_logo(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm logo".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn logo PNG".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang thêm logo và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_logo(
+                                    &project, &main, &source,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!("Đã thêm logo • phiên bản trước: {}", imported.version_id)
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn logo".into(),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
         {
@@ -2023,6 +2087,49 @@ impl Render for Studio {
         } else {
             None
         };
+        let logo_path = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|directory| {
+                let name = settings
+                    .extra
+                    .get("logo_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("logo.png");
+                directory.join(name)
+            })
+            .filter(|path| path.is_file());
+        let logo_enabled = settings
+            .extra
+            .get("logo_enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let logo_size = settings
+            .extra
+            .get("logo_size")
+            .and_then(Value::as_f64)
+            .unwrap_or(12.0);
+        let logo_x = settings
+            .extra
+            .get("logo_x")
+            .and_then(Value::as_f64)
+            .unwrap_or(96.0);
+        let logo_y = settings
+            .extra
+            .get("logo_y")
+            .and_then(Value::as_f64)
+            .unwrap_or(4.0);
+        let logo_opacity = settings
+            .extra
+            .get("logo_opacity")
+            .and_then(Value::as_f64)
+            .unwrap_or(100.0);
+        let logo_effect = settings
+            .extra
+            .get("logo_effect")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
         let background_color = setting_color(settings, "background", 0x101d2b);
         let display_position = settings
             .extra
@@ -2718,6 +2825,17 @@ impl Render for Studio {
                                                     .when(display_align == "center" || display_align == "justify", |rows| rows.items_center())
                                                     .when(display_align == "right", |rows| rows.items_end())
                                                     .children(current_preview)
+                                                    .when(logo_enabled && logo_path.is_some(), |rows| {
+                                                        let side = (workspace.preview * (logo_size as f32 / 100.0)).clamp(18.0, workspace.preview * 0.4);
+                                                        let float_offset = if logo_effect == "float" { 8.0 * (std::f64::consts::PI * preview_position / 2.0).sin() as f32 } else { 0.0 };
+                                                        let pulse = if logo_effect == "pulse" { 0.8 + 0.2 * (std::f64::consts::PI * preview_position / 2.0).sin().abs() as f32 } else { 1.0 };
+                                                        let fade = if logo_effect == "fade" { (preview_position / 1.0).clamp(0.0,1.0) as f32 } else { 1.0 };
+                                                        rows.child(img(logo_path.clone().unwrap()).absolute()
+                                                            .w(px(side)).h(px(side * 0.65)).object_fit(ObjectFit::Contain)
+                                                            .left(px((workspace.preview - side) * logo_x as f32 / 100.0))
+                                                            .top(px((preview_height * logo_y as f32 / 100.0 + float_offset).clamp(0.0,preview_height - side * 0.65)))
+                                                            .opacity((logo_opacity / 100.0) as f32 * pulse * fade))
+                                                    })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
                                                         .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
                                     ),
@@ -2821,6 +2939,37 @@ impl Render for Studio {
                                                 .child(div().w(px(10.)).h(px(10.)).rounded_sm().bg(rgb(match color {"#090c12"=>0x090c12,"#221c35"=>0x221c35,_=>0x101d2b})))
                                                 .child(label))
                                             .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("background",Value::String(color.into()),cx))))))
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("LOGO"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if logo_path.is_some() {"＋  Thay logo PNG"} else {"＋  Nạp logo PNG"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_logo(cx))))
+                                .when(logo_path.is_some(),|panel|panel
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(if logo_enabled {"✓  Logo hiển thị"} else {"Logo đang ẩn"})
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                            let enabled=this.editor.project().settings.extra.get("logo_enabled").and_then(Value::as_bool).unwrap_or(false);
+                                            this.update_setting("logo_enabled",Value::Bool(!enabled),cx);
+                                        })))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Kích thước: {logo_size:.0}%"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_size",-1.0,3.0,40.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_size",1.0,3.0,40.0,cx))))))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Vị trí: {logo_x:.0}%, {logo_y:.0}%"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_x",-2.0,0.0,100.0,cx))))
+                                            .child(div().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_x",2.0,0.0,100.0,cx))))
+                                            .child(div().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_y",-2.0,0.0,100.0,cx))))
+                                            .child(div().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_y",2.0,0.0,100.0,cx))))))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Độ mờ: {logo_opacity:.0}%"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_opacity",-10.0,0.0,100.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("logo_opacity",10.0,0.0,100.0,cx))))))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Hiệu ứng: {logo_effect}"))
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("logo_effect",&["none","fade","pulse","float"],cx)))))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("VỊ TRÍ LỜI"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Vị trí: {position_label}"))

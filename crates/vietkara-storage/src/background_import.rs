@@ -8,6 +8,99 @@ pub struct ImportedBackground {
     pub version_id: String,
 }
 
+/// Import a project-local PNG logo, checkpoint the previous project, and
+/// atomically publish the image and settings with rollback on save failure.
+pub fn import_logo(
+    project: &Project,
+    main: &Path,
+    source: &Path,
+) -> Result<ImportedBackground, String> {
+    if !source
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("png"))
+    {
+        return Err("Logo chỉ hỗ trợ file PNG".into());
+    }
+    if !source.is_file() {
+        return Err("Không tìm thấy file logo".into());
+    }
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = main
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let destination = directory.join("logo.png");
+    let temporary = directory.join(format!(".logo-{}.png", vietkara_domain::new_id()));
+    let backup = directory.join(format!(".logo-backup-{}.png", vietkara_domain::new_id()));
+    let result = (|| -> Result<ImportedBackground, String> {
+        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+        let output = Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-i"])
+            .arg(source)
+            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
+            .arg(&temporary)
+            .output()
+            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+        if !output.status.success()
+            || !temporary.is_file()
+            || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0
+        {
+            return Err(format!(
+                "Không chuyển được logo PNG: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let mut candidate = project.clone();
+        candidate
+            .settings
+            .extra
+            .insert("logo_enabled".into(), serde_json::Value::Bool(true));
+        candidate.extra.insert(
+            "logo_name".into(),
+            serde_json::Value::String("logo.png".into()),
+        );
+        candidate.validate().map_err(|error| error.to_string())?;
+        let version = create_version(directory, project, "Trước thay logo")
+            .map_err(|error| error.to_string())?;
+        let had_destination = destination.is_file();
+        if had_destination {
+            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = std::fs::rename(&temporary, &destination) {
+            if had_destination {
+                std::fs::rename(&backup, &destination)
+                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
+            }
+            return Err(error.to_string());
+        }
+        if let Err(error) = save_project(&candidate, main) {
+            let cleanup_error = std::fs::remove_file(&destination).err();
+            let restore_error = if had_destination {
+                std::fs::rename(&backup, &destination).err()
+            } else {
+                None
+            };
+            if cleanup_error.is_some() || restore_error.is_some() {
+                return Err(format!(
+                    "{error}; rollback cleanup={cleanup_error:?}, restore={restore_error:?}; backup {}",
+                    backup.display()
+                ));
+            }
+            return Err(error.to_string());
+        }
+        if had_destination {
+            let _ = std::fs::remove_file(&backup);
+        }
+        Ok(ImportedBackground {
+            project: candidate,
+            version_id: version.id,
+        })
+    })();
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
 fn supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -418,6 +511,72 @@ mod tests {
                 .join("project.json")
                 .is_file()
         );
+    }
+
+    #[test]
+    fn imports_png_logo_with_version_snapshot_and_enables_render_setting() {
+        let Ok(ffmpeg) = vietkara_media::find_binary("ffmpeg") else {
+            return;
+        };
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("project.json");
+        let source = directory.path().join("brand.png");
+        let generated = Command::new(ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red@0.5:s=32x32",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                "-f",
+                "image2",
+            ])
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        let project = Project::new("fixture");
+        project.save(&main).unwrap();
+
+        let imported = import_logo(&project, &main, &source).unwrap();
+        let saved = Project::load(&main).unwrap();
+
+        assert!(directory.path().join("logo.png").is_file());
+        assert_eq!(saved.settings.extra["logo_enabled"], true);
+        assert_eq!(saved.extra["logo_name"], "logo.png");
+        assert!(
+            directory
+                .path()
+                .join("versions")
+                .join(imported.version_id)
+                .join("project.json")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn rejects_non_png_logo_without_touching_project_or_assets() {
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("project.json");
+        let source = directory.path().join("brand.jpg");
+        std::fs::write(&source, b"not png").unwrap();
+        let error = match import_logo(&Project::new("fixture"), &main, &source) {
+            Ok(_) => panic!("non-PNG logo was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.contains("PNG"));
+        assert!(!main.exists());
+        assert!(!directory.path().join("logo.png").exists());
     }
 
     #[test]

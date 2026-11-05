@@ -237,6 +237,11 @@
 >   countdown vector (mic/star/heart/note/moon) cùng thời lượng 1–8 giây. Các
 >   giá trị dùng settings renderer sẵn có; app check/Clippy sạch và unit tests
 >   **8/8** pass.
+> - Thêm import logo PNG vào project với snapshot version, bật setting logo và
+>   rollback file/project nếu lưu lỗi; GPUI preview hiển thị đúng vị trí/kích
+>   thước/opacity và fade/pulse/float. Inspector có bật/tắt, size, XY, opacity
+>   và effect. Test PNG thật + snapshot và test từ chối file không phải PNG
+>   **2/2** pass.
 
 ## 1. Mục tiêu và phạm vi
 
