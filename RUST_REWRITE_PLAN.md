@@ -94,8 +94,12 @@
 >   `cargo build -p vietkara-app` đều pass; Python baseline **167/167** và
 >   Node **17/17** cũng pass.
 > - Đây mới là lát giao diện/lyrics đầu tiên, chưa đạt parity thiết kế đầy đủ;
->   giao diện mới chưa được kiểm tra trực tiếp bằng ảnh runtime, và preview
->   hiện vẫn là khung demo chứ chưa phải preview renderer thật.
+> - Preview GPUI hiện lấy dòng theo từ đang phát/đang chọn, tô trạng thái từng
+>   từ theo thời gian beat đã map sang bản hát và đổi cách trình bày theo mode.
+>   Nó chưa phát hình nền/video và chưa dùng chung layout ASS với renderer.
+> - Sau phần preview có nhịp: Rust **77/77**, fmt/clippy/check/build pass;
+>   Python **167/167**, Node **17/17** pass. Giao diện vẫn cần kiểm tra ảnh
+>   runtime và đối chiếu trực tiếp với màn hình Python.
 
 ## 1. Mục tiêu và phạm vi
 

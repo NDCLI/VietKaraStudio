@@ -1010,16 +1010,6 @@ impl Render for Studio {
             .unwrap_or_else(|| "Chọn một từ trên timeline".into());
         let selected_start = selected.map(|word| word.start).unwrap_or(0.);
         let selected_end = selected.map(|word| word.end).unwrap_or(0.);
-        let preview_text = selected
-            .map(|word| word.text.clone())
-            .or_else(|| {
-                self.editor
-                    .project()
-                    .words
-                    .first()
-                    .map(|word| word.text.clone())
-            })
-            .unwrap_or_else(|| "Lời bài hát sẽ hiển thị ở đây".into());
         let settings = &self.editor.project().settings;
         let display_mode = settings
             .extra
@@ -1039,6 +1029,53 @@ impl Render for Studio {
             &self.editor.project().anchors,
             true,
         );
+        let active_preview_word = display_words
+            .iter()
+            .find(|word| reference_position >= word.start && reference_position < word.end);
+        let preview_line = selected.or(active_preview_word).map(|word| word.line);
+        let previous_preview_line = preview_line
+            .and_then(|line| line.checked_sub(1))
+            .filter(|line| display_words.iter().any(|word| word.line == *line));
+        let selected_id = self.selected_word.as_deref();
+        let preview_line_element = |line: u32, size: f32, subdued: bool| {
+            div().flex().justify_center().gap_2().children(
+                display_words
+                    .iter()
+                    .filter(move |word| word.line == line)
+                    .map(|word| {
+                        let active =
+                            reference_position >= word.start && reference_position < word.end;
+                        let sung = reference_position >= word.end;
+                        let color = if active || sung {
+                            sung_color
+                        } else if Some(word.id.as_str()) == selected_id {
+                            0xffdf79
+                        } else if subdued {
+                            0xc4ccd5
+                        } else {
+                            0xffffff
+                        };
+                        div()
+                            .text_size(px(size))
+                            .text_color(rgb(color))
+                            .when(italic, |text| text.italic())
+                            .child(word.text.clone())
+                    }),
+            )
+        };
+        let previous_preview =
+            previous_preview_line.map(|line| preview_line_element(line, 20., true));
+        let current_preview = preview_line.map(|line| {
+            preview_line_element(
+                line,
+                match display_mode {
+                    "lyricsmv" => 34.,
+                    "subtitle" => 28.,
+                    _ => (font_size as f32 / 3.).clamp(16., 42.),
+                },
+                false,
+            )
+        });
         let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {
             let id = line.id.clone();
@@ -1314,11 +1351,12 @@ impl Render for Studio {
                                                 .w(if is_portrait {px(210.)} else {px(520.)})
                                                 .h(if is_portrait {px(300.)} else {px(292.)})
                                                 .rounded_sm().bg(rgb(0x101d2b))
-                                                .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child(if self.editor.project().beat.is_some(){"PREVIEW · KHUNG VIDEO"}else{"NẠP BEAT ĐỂ XEM TRƯỚC"}))
-                                                .child(div().mt_4().text_size(px((font_size as f32 / 3.).clamp(16.,42.)))
-                                                    .text_color(rgb(if selected.is_some(){sung_color}else{0xffffff}))
-                                                    .when(italic,|text|text.italic())
-                                                    .child(preview_text))),
+                                                .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
+                                                .child(div().flex().flex_col().gap_2().mt_4()
+                                                    .children(previous_preview)
+                                                    .children(current_preview)
+                                                    .when(preview_line.is_none(),|empty|empty
+                                                        .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child("Nạp lời để xem trước karaoke"))))),
                                     ),
                             )
                             .child(
