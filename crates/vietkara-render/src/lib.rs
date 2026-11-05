@@ -27,9 +27,9 @@
 //!   Linux with different fonts, would produce different layout and
 //!   different golden ASS output. Do not try to port `display_plan`
 //!   here.
-//! * Video / image backgrounds, scene overlays, logo and countdown
-//!   overlays, and the NVENC fallback in `engine.render()` — those
-//!   add filter-graph branches on top of the simple path built here.
+//! * Scene overlays, logo and countdown overlays, and the NVENC fallback
+//!   in `engine.render()` — those add filter-graph branches on top of the
+//!   background inputs supported here.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -626,6 +626,12 @@ pub enum RenderError {
     MissingGuideAudio,
     #[error("Màu nền không hợp lệ: {0}")]
     InvalidBackgroundColor(String),
+    #[error("Đường dẫn nền không hợp lệ trong project: {0}")]
+    InvalidBackgroundPath(String),
+    #[error("Chưa có video nền hợp lệ trong project.")]
+    MissingBackgroundVideo,
+    #[error("Chưa có ảnh nền hợp lệ trong project.")]
+    MissingBackgroundImage,
     #[error("Thời lượng render không hợp lệ: {0}")]
     InvalidDuration(f64),
     #[error("Lỗi đọc/ghi file: {0}")]
@@ -643,6 +649,14 @@ pub struct PreviewRange {
     pub duration: f64,
 }
 
+/// Optional visual background input. Audio is always sourced from the beat
+/// (and vocals for guide output), matching `engine.render()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderBackground {
+    Image(PathBuf),
+    Video(PathBuf),
+}
+
 /// Inputs for `ffmpeg_command`. Paths are used verbatim in the argv,
 /// as in Python (which passes `str(directory / "beat.wav")` and the
 /// relative `lyrics.ass` / `fonts` names, with the render run from
@@ -650,6 +664,7 @@ pub struct PreviewRange {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderInputs {
     pub beat: PathBuf,
+    pub background: Option<RenderBackground>,
     /// Guide vocal file; required only when
     /// `profile.audio_output == AudioOutput::Guide`.
     pub vocals: Option<PathBuf>,
@@ -666,6 +681,7 @@ impl RenderInputs {
     pub fn new(beat: impl Into<PathBuf>, duration: f64) -> Self {
         Self {
             beat: beat.into(),
+            background: None,
             vocals: None,
             ass_file: PathBuf::from("lyrics.ass"),
             fonts_dir: PathBuf::from("fonts"),
@@ -675,9 +691,83 @@ impl RenderInputs {
             encoder: VideoEncoder::Libx264,
         }
     }
+
+    /// Resolve the legacy Python background settings and project media names
+    /// into project-local render inputs. All filenames must be basenames.
+    pub fn configure_background_from_project(
+        &mut self,
+        project: &vietkara_domain::Project,
+        directory: &Path,
+    ) -> Result<(), RenderError> {
+        let kind = project
+            .settings
+            .extra
+            .get("background_type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("auto");
+        let local_file = |name: &str| -> Result<Option<PathBuf>, RenderError> {
+            let path = PathBuf::from(name);
+            if path.file_name().and_then(|value| value.to_str()) != Some(name) {
+                return Err(RenderError::InvalidBackgroundPath(name.to_owned()));
+            }
+            let path = directory.join(path);
+            Ok(path.is_file().then_some(path))
+        };
+        self.background = match kind {
+            "video" => {
+                let name = project
+                    .extra
+                    .get("background_video")
+                    .and_then(|video| video.get("source_file"))
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(RenderError::MissingBackgroundVideo)?;
+                Some(RenderBackground::Video(
+                    local_file(name)?.ok_or(RenderError::MissingBackgroundVideo)?,
+                ))
+            }
+            "original" => {
+                let mut found = None;
+                for media in [&project.reference, &project.beat].into_iter().flatten() {
+                    if let Some(name) = media
+                        .get("video")
+                        .and_then(|video| video.get("source_file"))
+                        .and_then(serde_json::Value::as_str)
+                        && let Some(path) = local_file(name)?
+                    {
+                        found = Some(RenderBackground::Video(path));
+                        break;
+                    }
+                }
+                Some(found.ok_or(RenderError::MissingBackgroundVideo)?)
+            }
+            "image" | "auto" => {
+                let enabled = kind == "image"
+                    || project
+                        .settings
+                        .extra
+                        .get("use_background")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
+                if enabled {
+                    let path = directory.join("background.jpg");
+                    if path.is_file() {
+                        Some(RenderBackground::Image(path))
+                    } else if kind == "image" {
+                        return Err(RenderError::MissingBackgroundImage);
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        Ok(())
+    }
 }
 
-/// Build the simple colour-background render command from
+/// Build the render command from
 /// `engine.render()`.
 ///
 /// Layout of the argv (beat-only):
@@ -733,23 +823,43 @@ pub fn ffmpeg_command(
         "-progress".into(),
         "pipe:1".into(),
         "-nostats".into(),
-        "-f".into(),
-        "lavfi".into(),
-        "-i".into(),
-        format!("color=c=0x{bg}:s={width}x{height}:r={fps}"),
-        "-i".into(),
-        inputs.beat.display().to_string(),
     ];
+    match &inputs.background {
+        Some(RenderBackground::Image(path)) => args.extend([
+            "-loop".into(),
+            "1".into(),
+            "-framerate".into(),
+            fps.clone(),
+            "-i".into(),
+            path.display().to_string(),
+        ]),
+        Some(RenderBackground::Video(path)) => args.extend([
+            "-stream_loop".into(),
+            "-1".into(),
+            "-i".into(),
+            path.display().to_string(),
+        ]),
+        None => args.extend([
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            format!("color=c=0x{bg}:s={width}x{height}:r={fps}"),
+        ]),
+    }
+    let background_input = 0usize;
+    let beat_input = 1usize;
+    args.extend(["-i".into(), inputs.beat.display().to_string()]);
     let guide = profile.audio_output == AudioOutput::Guide;
     if guide {
         let vocals = inputs
             .vocals
             .as_ref()
             .ok_or(RenderError::MissingGuideAudio)?;
+        let vocals_input = beat_input + 1;
         args.push("-i".into());
         args.push(vocals.display().to_string());
         let graph = format!(
-            "[0:v]{visual_filter}[base];[1:a:0][2:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]"
+            "[{background_input}:v:0]{visual_filter}[base];[{beat_input}:a:0][{vocals_input}:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]"
         );
         args.push("-filter_complex".into());
         args.push(graph);
@@ -761,9 +871,9 @@ pub fn ffmpeg_command(
         args.push("-vf".into());
         args.push(visual_filter);
         args.push("-map".into());
-        args.push("0:v:0".into());
+        args.push(format!("{background_input}:v:0"));
         args.push("-map".into());
-        args.push("1:a:0".into());
+        args.push(format!("{beat_input}:a:0"));
     }
     args.extend(encoding_options(profile.quality, inputs.encoder));
     args.extend([
@@ -1229,6 +1339,87 @@ mod tests {
     }
 
     #[test]
+    fn project_background_resolves_image_video_and_original_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        let image = directory.path().join("background.jpg");
+        let video = directory.path().join("background_source.mp4");
+        let original = directory.path().join("reference_source.mov");
+        std::fs::write(&image, b"jpg").unwrap();
+        std::fs::write(&video, b"mp4").unwrap();
+        std::fs::write(&original, b"mov").unwrap();
+
+        let mut project = vietkara_domain::Project::new("image");
+        project
+            .settings
+            .extra
+            .insert("background_type".into(), serde_json::json!("image"));
+        let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        inputs
+            .configure_background_from_project(&project, directory.path())
+            .unwrap();
+        assert_eq!(inputs.background, Some(RenderBackground::Image(image)));
+
+        project
+            .settings
+            .extra
+            .insert("background_type".into(), serde_json::json!("video"));
+        project.extra.insert(
+            "background_video".into(),
+            serde_json::json!({"source_file":"background_source.mp4"}),
+        );
+        inputs
+            .configure_background_from_project(&project, directory.path())
+            .unwrap();
+        assert_eq!(inputs.background, Some(RenderBackground::Video(video)));
+
+        project
+            .settings
+            .extra
+            .insert("background_type".into(), serde_json::json!("original"));
+        project.reference =
+            Some(serde_json::json!({"video":{"source_file":"reference_source.mov"}}));
+        inputs
+            .configure_background_from_project(&project, directory.path())
+            .unwrap();
+        assert_eq!(inputs.background, Some(RenderBackground::Video(original)));
+    }
+
+    #[test]
+    fn project_background_rejects_traversal_and_missing_required_assets() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut project = vietkara_domain::Project::new("unsafe");
+        project
+            .settings
+            .extra
+            .insert("background_type".into(), serde_json::json!("video"));
+        project.extra.insert(
+            "background_video".into(),
+            serde_json::json!({"source_file":"..\\outside.mp4"}),
+        );
+        let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        assert!(matches!(
+            inputs.configure_background_from_project(&project, directory.path()),
+            Err(RenderError::InvalidBackgroundPath(_))
+        ));
+        project.extra.insert(
+            "background_video".into(),
+            serde_json::json!({"source_file":"missing.mp4"}),
+        );
+        assert!(matches!(
+            inputs.configure_background_from_project(&project, directory.path()),
+            Err(RenderError::MissingBackgroundVideo)
+        ));
+        project
+            .settings
+            .extra
+            .insert("background_type".into(), serde_json::json!("image"));
+        assert!(matches!(
+            inputs.configure_background_from_project(&project, directory.path()),
+            Err(RenderError::MissingBackgroundImage)
+        ));
+    }
+
+    #[test]
     fn ffmpeg_command_beat_only_matches_engine() {
         let profile = RenderProfile {
             fps: Fps::Fixed(30.0),
@@ -1279,6 +1470,59 @@ mod tests {
             ["-map", "[base]", "-map", "[audio]"]
         );
         assert_eq!(argv.last().unwrap(), "karaoke.mp4");
+    }
+
+    #[test]
+    fn ffmpeg_command_video_background_loops_video_and_keeps_beat_audio() {
+        let profile = RenderProfile {
+            fps: Fps::Fixed(30.0),
+            ..RenderProfile::default()
+        };
+        let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        inputs.background = Some(RenderBackground::Video(PathBuf::from("background.mp4")));
+        let argv = ffmpeg_command(&profile, &inputs).unwrap();
+        assert!(
+            argv.windows(4)
+                .any(|args| args == ["-stream_loop", "-1", "-i", "background.mp4"])
+        );
+        assert!(argv.windows(4).any(|args| args == ["-i", "beat.wav", "-vf", "setpts=PTS-STARTPTS,fps=30.0,scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080,setsar=1,ass=lyrics.ass:fontsdir=fonts"]));
+        assert!(argv.windows(2).any(|args| args == ["-map", "0:v:0"]));
+        assert!(argv.windows(2).any(|args| args == ["-map", "1:a:0"]));
+        assert!(!argv.iter().any(|arg| arg.starts_with("color=c=")));
+    }
+
+    #[test]
+    fn ffmpeg_command_image_background_loops_at_output_rate() {
+        let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        inputs.background = Some(RenderBackground::Image(PathBuf::from("background.jpg")));
+        let argv = ffmpeg_command(&RenderProfile::default(), &inputs).unwrap();
+        assert!(
+            argv.windows(6)
+                .any(|args| args == ["-loop", "1", "-framerate", "30.0", "-i", "background.jpg"])
+        );
+        assert!(argv.windows(2).any(|args| args == ["-map", "1:a:0"]));
+    }
+
+    #[test]
+    fn ffmpeg_command_guide_with_video_background_maps_guide_audio_inputs() {
+        let profile = RenderProfile {
+            audio_output: AudioOutput::Guide,
+            ..RenderProfile::default()
+        };
+        let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        inputs.background = Some(RenderBackground::Video(PathBuf::from("background.mp4")));
+        inputs.vocals = Some(PathBuf::from("vocals.wav"));
+        let argv = ffmpeg_command(&profile, &inputs).unwrap();
+        let complex = argv
+            .iter()
+            .position(|arg| arg == "-filter_complex")
+            .unwrap();
+        assert!(argv[complex + 1].contains("[0:v:0]"));
+        assert!(argv[complex + 1].contains("[1:a:0][2:a:0]amix="));
+        assert_eq!(
+            &argv[complex + 2..complex + 6],
+            ["-map", "[base]", "-map", "[audio]"]
+        );
     }
 
     #[test]

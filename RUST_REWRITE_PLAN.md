@@ -129,6 +129,16 @@
 >   pass. Chưa có phát video liên tục, original-video source, scene/logo/
 >   countdown compositing hoặc layout ASS dùng chung.
 
+> **Tiến độ 2026-11-06 — renderer nhận nền project:**
+> - `RenderInputs::configure_background_from_project` đọc `background_type`
+>   và resolve an toàn file nền image/video/original trong project; thiếu file
+>   bắt buộc hoặc đường dẫn traversal sẽ trả lỗi rõ ràng.
+> - Builder FFmpeg lặp nền tĩnh hoặc video; audio vẫn map từ beat và vocal
+>   hướng dẫn vẫn `amix`. Bộ test xác minh map/index cho từng loại nền.
+> - Renderer này hiện có thể dựng khung từ nền project nhưng GPUI chưa có
+>   pipeline/job/UI export hoàn chỉnh; scene/logo/countdown và ASS layout
+>   parity vẫn đang mở.
+
 ## 1. Mục tiêu và phạm vi
 
 Chuyển dần VietKara Studio thành ứng dụng desktop Windows dùng Rust + GPUI cho UI, domain, lưu trữ, điều phối tác vụ và media orchestration; tiếp tục tái sử dụng FFmpeg/FFprobe và worker Python AI trong các giai đoạn đầu.
