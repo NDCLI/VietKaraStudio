@@ -1,109 +1,290 @@
-# VietKara Studio: kế hoạch viết lại bằng Rust + GPUI
+# VietKara Studio: kế hoạch chuyển dần sang Rust + GPUI
 
-## Mục tiêu
+> **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
+>
+> **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
 
-Viết lại ứng dụng desktop Windows thành app Rust dùng GPUI, giữ khả năng mở project hiện tại và đạt luồng làm karaoke hoàn chỉnh: nhập nguồn, căn lời, chỉnh timeline, xem trước, lưu project và xuất video. Nhánh nền: `codex/ui-redesign-1.1.4` tại commit `c8dae55` (bản 1.1.7). Nhánh triển khai riêng: `codex/rust-gpui-rewrite`.
+> **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 
-## Quyết định kiến trúc ban đầu
+## 1. Mục tiêu và phạm vi
 
-- Dùng Rust cho giao diện, project domain, điều phối job, playback, timeline và lưu trữ.
-- Dùng GPUI cho cửa sổ và controls. Trước khi viết editor đầy đủ, phải kiểm chứng GPUI trên Windows với nhập tiếng Việt/IME, resize, file picker và vẽ liên tục.
-- Giữ FFmpeg/FFprobe làm media backend và renderer đầu tiên để giữ kết quả xuất tương đồng.
-- Giữ worker Python tách tiến trình cho Demucs, Whisper và stable-ts trong giai đoạn đầu; giao tiếp bằng JSON Lines có version, stdout dành riêng cho protocol, stderr dành cho log, có progress/cancel.
-- Project cũ phải được import không phá hủy; lưu phiên bản/schema và migration tường minh.
-- Playback clock là nguồn thời gian chuẩn; UI không tự làm clock. Tác vụ media/AI không chạy trên UI thread.
+Chuyển dần VietKara Studio thành ứng dụng desktop Windows dùng Rust + GPUI cho UI, domain, lưu trữ, điều phối tác vụ và media orchestration; tiếp tục tái sử dụng FFmpeg/FFprobe và worker Python AI trong các giai đoạn đầu.
 
-## Các giai đoạn và tiêu chí hoàn tất
+Phạm vi cuối cùng cần giữ được:
 
-### 0. Kiểm kê và baseline
+- Mở, chỉnh sửa, lưu và trao đổi project hiện có.
+- Nhập reference/beat/vocal, SRT hoặc lyrics; căn lời thủ công và bằng AI.
+- Playback, waveform, timeline hai hàng, zoom/scroll, liên kết/độc lập mốc thời gian.
+- Preview và export có kết quả tương thích với renderer hiện tại.
+- Preset chữ, font tiếng Việt/VNI/TCVN3, duet roles, title/logo/background/countdown.
+- Autosave, version archive, relink media, batch render, cache/model, updater và đóng gói Windows.
 
-- Lập ma trận tính năng từ nhánh nền: media slots, project JSON, timing, duet roles, presets, typography, title/logo/background, export, batch render, archives, models/cache, updater.
-- Thu thập các project mẫu không chứa dữ liệu cá nhân và đầu ra tham chiếu; ghi rõ codec, FPS, độ phân giải, font, preset.
-- Ghi nhận schema project, ASS generation, FFmpeg command, worker protocol và thư mục data hiện tại.
-- Tiêu chí: ma trận có owner Rust/worker/FFmpeg, mức ưu tiên, mẫu kiểm chứng và tương thích cũ.
+Không nằm trong MVP đầu tiên: thay toàn bộ Python AI bằng Rust, tự viết audio decoder/player, tự viết video renderer hoặc thay GPUI khi chưa có bằng chứng cần thiết.
 
-### 1. Nguyên mẫu rủi ro GPUI + media
+## 2. Hiện trạng đã kiểm kê
 
-- Một cửa sổ GPUI trên Windows, layout panel co giãn, menu/chọn file, IME tiếng Việt, drag/drop.
-- Nạp audio, phát/dừng/seek, waveform tĩnh; đồng bộ playhead với audio clock.
-- Timeline prototype có zoom, kéo một mốc lời và cập nhật timestamp.
-- So sánh hiển thị chữ Việt, font, DPI scaling và vẽ waveform ở kích thước project thực tế.
-- Tiêu chí: build/run được trên Windows mục tiêu; thao tác không block UI; ghi lại các hạn chế GPUI và quyết định tiếp tục/dừng.
+### 2.1. Phần Rust hiện có
 
-### 2. Nền workspace và domain Rust
+Workspace hiện chỉ có hai crate:
 
-Workspace crates dự kiến:
+- `crates/vietkara-domain`: model `Project`, `Word`, `Anchor`, schema v2, validation, load/save JSON và giữ unknown fields qua `serde(flatten)`.
+- `crates/vietkara-app`: khai báo GPUI 0.2.2 và có UI mô phỏng editor; chưa xác nhận app compile/run, chưa có event/action thật cho mở file, playback, timeline, import, save hay export.
 
-| Crate | Phạm vi |
+Đã xác nhận `cargo check -p vietkara-domain` thành công. Chưa có kết quả test đáng tin cậy: test binary Windows bị treo sau khi khởi chạy; chưa được xem là test pass.
+
+Chưa tồn tại các crate được nêu trong kế hoạch cũ như storage, jobs, media, render và AI bridge. Vì vậy các crate này phải được tạo theo nhu cầu của từng vertical slice, không tạo toàn bộ skeleton trước khi có fixture và use case.
+
+### 2.2. Production baseline Python
+
+Các năng lực cần coi là hợp đồng tương thích hiện đang nằm trong các module sau:
+
+| Năng lực | Baseline hiện tại |
 |---|---|
-| `vietkara-app` | khởi động, cửa sổ GPUI, điều phối màn hình |
-| `vietkara-domain` | Project, media, lyric/word timing, duet, preset, validation, undo/redo |
-| `vietkara-storage` | serde, schema version, migration, autosave, paths và project archive |
-| `vietkara-jobs` | job lifecycle, progress, cancellation và subprocess |
-| `vietkara-media` | FFmpeg/FFprobe, probe, waveform, playback abstraction, audio sync |
-| `vietkara-render` | ASS/layout mapping, export profiles, render queue và output validation |
-| `vietkara-ai-bridge` | Python worker protocol, model status/cache, AI tasks |
+| HTTP/UI và project lifecycle | `app.py`, `static/studio.js` |
+| Schema/migration project | `app.py` và `vietkara-domain` đang bắt đầu tái hiện schema v2 |
+| Version archive, bundle, media fingerprint | `project_archive.py` |
+| Job progress/cancel/recovery | `app.py`, `worker.py`, `batch_render.py` |
+| FFmpeg/FFprobe và media conversion | `engine.py`, `media_tools.py`, `app.py` |
+| ASS/layout/font encoding | `layout.py`, `subtitles.py`, `bundled_assets.py` |
+| AI recognition/alignment/separation/cache | `app.py`, `worker.py`, `analysis_cache.py`, các module AI liên quan |
+| Audio sync và role suggestion | `audio_sync.py`, `duet_roles.py` |
+| Batch render | `batch_render.py` |
+| Updater/packaging | `updater.py`, `packaging/`, `docs/DISTRIBUTION.md` |
+| Hợp đồng kiểm thử | `tests/` và các lệnh test trong `README.md` |
 
-- Thiết lập error model, tracing/logging, config/data directories, crash recovery và serialization fixtures.
-- Tiêu chí: domain và migration có thể chạy độc lập khỏi GUI; mở/lưu project round-trip giữ dữ liệu.
+### 2.3. Khoảng trống và ràng buộc đã xác nhận
 
-### 3. Vertical slice editor
+- Project JSON schema hiện là v2; project cũ không được ghi đè khi migration.
+- Rust hiện chỉ có typed fields cho một phần schema; `reference`, `beat`, `settings`, `alignment`, `scenes` còn là JSON value. `serde(flatten)` giữ unknown fields ở project/word, nhưng chưa có fixture chứng minh mọi đường round-trip.
+- Importer Rust hiện nhận cả project schema 1 và 2 về mặt deserialize, nhưng schema 1 chưa có migration tương đương Python; chỉ đổi trường `schema` lên 2. Ngoài ra, ID mới của Rust hiện là UUID có dấu gạch nối, khác ID 32 ký tự hex mà app Python sinh và dùng để định danh thư mục. Phải sửa và kiểm thử trước khi ghi project dùng chung.
+- `Project::save` hiện ghi thẳng vào file đích, chưa atomic; chưa dùng để ghi production project cho đến khi có storage transaction.
+- Archive có manifest media, SHA-256, giới hạn tổng dung lượng ZIP 3 GiB/2.000 entry, giới hạn project JSON 20 MiB và allowlist tên media. Các quy tắc này phải được chuyển thành acceptance tests.
+- Không mặc định xem mọi hành vi hiện tại là hợp đồng an toàn: `restore_version` xóa media đang có trước khi chép media khôi phục; lỗi giữa chừng có thể làm project mất media. Rust phải stage, xác minh fingerprint rồi mới swap an toàn; không sao chép trình tự xóa trước này.
+- Batch render và job recovery là tính năng production, không được để đến cuối nếu vertical slice dùng chung job system.
+- Import bundle hiện giải nén media vào thư mục đích trước khi kiểm tra xong manifest/fingerprint; nếu lỗi có thể còn file dở. Rust phải giải nén vào staging, xác minh toàn bộ rồi mới đưa vào project.
+- Beat gốc là nguồn audio xuất video; vocal tách riêng chỉ phục vụ nhận dạng/căn lời theo README.
+- Môi trường mục tiêu là Windows 10/11 x64, có đường dẫn Unicode, CPU-only và NVIDIA.
 
-- Tạo/mở project; nạp beat/audio; nhập SRT hoặc lyrics; nghe và căn bằng Space.
-- Hai hàng timeline, waveform, playhead, zoom/scroll, chọn đoạn, sửa start/end, liên kết/độc lập.
-- Autosave, undo/redo, cảnh báo nguồn media thiếu và relink.
-- Tiêu chí: hoàn thành bài thử “mở nhạc → căn lời → sửa → lưu → đóng → mở lại” không mất dữ liệu.
+## 3. Quyết định kiến trúc
 
-### 4. Preview và export tương thích
+1. **Rust thay theo lát dọc.** Mỗi lát gồm domain/storage, UI, job/media adapter, test fixture và đường chạy thật; không port theo từng lớp cô lập quá lâu.
+2. **Python app giữ vai trò oracle về tương thích.** Dùng baseline để xác định format và hành vi người dùng cần giữ; không port lỗi toàn vẹn dữ liệu hoặc bảo mật đã biết. Quy tắc parity và quy tắc an toàn phải được phân biệt trong fixture/acceptance.
+3. **FFmpeg/FFprobe tiếp tục là backend đầu tiên.** Rust chỉ điều phối process, parse kết quả, chuẩn hóa lỗi và quản lý lifecycle.
+4. **AI worker chạy process tách biệt.** Giao tiếp bằng JSON Lines có `protocol_version`, `request_id`, progress, cancel và error; stdout chỉ dành cho protocol, stderr dành cho log.
+5. **Playback clock là nguồn thời gian chuẩn.** UI/timeline nhận snapshot clock và không tự chạy clock theo frame render.
+6. **Schema model và file format tách nhau.** Rust dùng typed model cho phần đã hiểu, nhưng phải giữ unknown JSON fields; migration có version, fixture và test round-trip.
+7. **Mọi thao tác thay media/restore/export đều có transaction hoặc bản sao an toàn.** Không xóa nguồn gốc trước khi kiểm tra file đích và fingerprint.
+8. **Khóa phiên bản phụ thuộc sau prototype.** Ghim phiên bản Rust cụ thể (không chỉ channel `stable`), GPUI, FFmpeg và worker protocol trong toolchain/build manifest.
 
-- Chuyển project sang ASS/FFmpeg renderer hiện có; tái sử dụng preset và quy tắc timing.
-- Preview khớp export về font, line wrapping, vị trí, outline/shadow, karaoke sweep, duet colors/icons, title/logo/background/countdown.
-- Hỗ trợ các format/resolution/FPS hiện có; progress, cancel, export folder và render info.
-- Tiêu chí: frame comparison trên fixture chuẩn và kiểm tra âm thanh xác nhận beat gốc được dùng theo đúng lựa chọn.
+## 4. Các giai đoạn thực hiện
 
-### 5. AI bridge và phần còn lại
+### Giai đoạn 0 — Baseline và hợp đồng tương thích
 
-- Worker Python phiên bản hóa cho tách vocal, nhận dạng/căn lời, role suggestion và model download.
-- Truyền đường dẫn/metadata thay vì nhúng media; progress và cancel xuyên suốt; tái sử dụng cache hiện có.
-- Bổ sung batch render, audio sync, project archive, presets import/export, fonts/assets và updater.
-- Tiêu chí: task hủy an toàn, lỗi worker rõ ràng, app tiếp tục dùng được; dữ liệu hiện có không bị ghi đè.
+**Mục tiêu:** biến hành vi Python hiện tại thành fixture có thể kiểm chứng.
 
-### 6. Đóng gói và chuyển người dùng
+**Công việc:**
 
-- Installer/portable Rust app; phân phối FFmpeg và Python AI runtime theo thành phần; model tải riêng.
-- Mở project bản cũ, sao lưu trước migration, rollback/update rõ ràng.
-- Chạy trên máy Windows sạch, máy CPU-only và NVIDIA; kiểm tra đường dẫn có dấu/ký tự Unicode.
-- Chuyển mặc định sang app mới chỉ khi đạt parity checklist; giữ cách mở app cũ trong thời gian chuyển tiếp.
+- Chốt commit baseline của app Python và phiên bản GPUI/Rust toolchain mục tiêu.
+- Lập ma trận tính năng: P0 bắt buộc cho MVP, P1 cần cho parity, P2 nâng cao.
+- Tạo fixture project JSON schema 1/2 có unknown fields, media mapping, words, anchors, scenes, settings và batch options; không đưa dữ liệu cá nhân vào repo.
+- Lưu đầu ra tham chiếu: normalized project JSON, ASS, FFmpeg command, probe metadata, render info và vài frame đại diện.
+- Ghi rõ thư mục dữ liệu, cache/model, archive, updater và quy tắc relink.
+- Ghi tiêu chí sai số: thời gian, kích thước frame, màu/font/layout và audio stream.
 
-## Ưu tiên MVP
+**Hoàn tất khi:** có `compatibility-matrix.md` hoặc tài liệu tương đương, fixture versioned, lệnh chạy lại được và mọi hạng mục có owner Rust/Python/FFmpeg.
 
-MVP dùng được gồm: project create/open/save, audio playback, lyrics/SRT import, Space tap-sync, waveform/timeline edit, autosave/undo, preview cơ bản và MP4 export bằng FFmpeg. Tách vocal/ASR, preset nâng cao, title/logo, duet suggestion, batch render và updater đi sau vertical slice.
+### Giai đoạn 1 — Spike rủi ro GPUI, Windows và playback
 
-## Rủi ro cần giải quyết sớm
+**Mục tiêu:** kiểm chứng các rủi ro có thể làm thay đổi kiến trúc trước khi đầu tư editor.
 
-1. GPUI đang phát triển nhanh; chốt revision/version và khóa dependency sau prototype.
-2. Playback, device changes, seek và đồng bộ UI cần abstraction riêng, không gắn clock vào frame render.
-3. Preview và FFmpeg export có thể lệch font/layout; dùng cùng dữ liệu layout và so sánh frame tự động.
-4. Worker AI và model/runtime nặng; giữ process tách biệt để UI, packaging và cập nhật ít phụ thuộc nhau.
-5. Project cũ có đường dẫn và trường tùy chọn; migration phải giữ unknown fields hoặc báo rõ dữ liệu chưa hỗ trợ.
-6. Rust chưa có trong PATH của môi trường hiện tại; cần cài stable MSVC toolchain cùng Visual Studio C++ Build Tools/Windows SDK trước khi build prototype.
+**Công việc:**
 
-## Thứ tự công việc đầu tiên
+- Window GPUI tối thiểu trên Windows 10/11: resize, DPI, menu, file picker, drag/drop.
+- Nhập tiếng Việt qua IME, paste, phím Space và phím tắt; kiểm tra font Unicode/VNI/TCVN3.
+- Dùng file fixture để probe và phát audio qua một abstraction có clock, seek, pause, device/error state.
+- Vẽ waveform tĩnh và playhead; timeline prototype kéo một mốc và cập nhật timestamp.
+- Đo UI responsiveness khi probe/render/worker chạy ngoài UI thread.
 
-1. Kiểm kê schema/project, FFmpeg/ASS export và các luồng media trên nhánh nền.
-2. Cài và xác nhận Rust stable MSVC, Cargo, C++ Build Tools và Windows SDK.
-3. Tạo GPUI window prototype, xác minh IME, file picker, resize và render trên máy Windows.
-4. Tạo workspace crates, bắt đầu `vietkara-domain` và `vietkara-storage` với fixture project cũ.
-5. Làm playback + tap-sync vertical slice trước khi port các panel nâng cao.
+**Hoàn tất khi:** build/run được trên máy mục tiêu, IME và đường dẫn Unicode hoạt động, playback không block UI, có báo cáo giới hạn GPUI và quyết định tiếp tục với revision đã khóa.
 
-## Ước lượng và nhịp giao hàng
+**Điểm dừng:** nếu GPUI không đáp ứng IME, file dialog hoặc render ổn định, giữ domain Rust và thay UI shell trước khi port editor.
 
-Ước lượng ban đầu cho một kỹ sư toàn thời gian đã quen Rust/media: prototype 2–3 tuần; domain/editor MVP 4–6 tuần; preview/export parity 3–5 tuần; AI/nâng cao 3–5 tuần; ổn định và đóng gói 2–3 tuần. Tổng khoảng 14–22 tuần, cần hiệu chỉnh sau prototype GPUI và inventory. Mỗi giai đoạn giao một bản chạy được, không đợi port toàn bộ mới kiểm chứng.
+### Giai đoạn 2 — Domain, storage và migration đáng tin cậy
 
-## Điều kiện nghiệm thu tổng thể
+**Mục tiêu:** biến Rust thành nguồn xử lý project an toàn, độc lập GUI.
 
-- Project cũ mở được và migration không ghi đè bản gốc.
-- Không mất lyric timing, preset, media mapping hoặc thông số export khi lưu lại.
-- Playback/timeline responsive; tác vụ AI/render có progress và cancel.
-- Preview và file xuất tương ứng trong bộ fixture đã thống nhất.
-- Installer chạy trên Windows sạch; model/cache không bị xóa khi app cập nhật.
+**Crate đề xuất:**
+
+| Crate | Trách nhiệm ban đầu |
+|---|---|
+| `vietkara-domain` | Project/Word/Anchor, media refs, settings đã typed, validation, commands và undo model |
+| `vietkara-storage` | load/save atomic, schema migration, autosave, paths, archive/version và bundle |
+| `vietkara-fixtures` hoặc test support | fixture project, golden JSON/ASS và helper so sánh |
+
+**Công việc:**
+
+- Hoàn thiện model schema v1/v2 và migration tường minh; phân biệt project schema với archive format.
+- Giữ ID project 32 ký tự hex, tương thích với đường dẫn và API Python; kiểm thử ID/line ID cũ và mới.
+- Không đánh dấu schema 1 là schema 2 chỉ bằng cách đổi số version: chuẩn hóa fields/word IDs/line IDs theo quy tắc tương đương Python rồi mới ghi schema mới.
+- Giữ unknown fields ở cấp project/word/settings nơi cần thiết.
+- Port quy tắc archive từ `project_archive.py`: manifest, SHA-256, giới hạn ZIP/entry, allowlist tên media; bổ sung restore/import atomic có rollback khi lỗi.
+- Save atomic bằng file tạm + rename; autosave/recovery không làm hỏng bản chính.
+- Thiết kế command/event cho undo/redo thay vì để UI sửa trực tiếp struct.
+- Test property/negative cases: duplicate IDs, NaN/negative timing, archive traversal, file thiếu/sai fingerprint, schema mới hơn.
+
+**Hoàn tất khi:** crate chạy không cần GUI; load/save/migrate/restore round-trip qua fixture schema 1/2; bản gốc và media hiện có không bị sửa khi migration/import/restore lỗi; test bảo đảm unknown fields và ID tương thích không mất/đổi sai.
+
+### Giai đoạn 3 — Vertical slice MVP: project → playback → tap-sync → save
+
+**Mục tiêu:** có một luồng Rust dùng được hằng ngày, nhưng vẫn có thể quay về Python app.
+
+**Công việc:**
+
+- `vietkara-app` có màn hình create/open project, relink media và save/close/reopen.
+- `vietkara-jobs` tối thiểu: lifecycle, progress, cancellation, error, persisted recovery record.
+- `vietkara-media` tối thiểu: FFprobe, audio source, waveform cache và playback abstraction.
+- Import SRT/lyrics; chọn câu/từ; Space tap-sync; chỉnh start/end; liên kết/độc lập mốc.
+- Timeline hai hàng với zoom/scroll, playhead theo playback clock và cảnh báo media thiếu.
+- Undo/redo, autosave và version snapshot trước thao tác phá hủy.
+
+**Hoàn tất khi:** bài test “mở nhạc → nhập lời → căn bằng Space → sửa mốc → lưu → đóng → mở lại” chạy được với fixture; job hủy không để lại project hỏng; UI vẫn phản hồi.
+
+### Giai đoạn 4 — Preview/export parity
+
+**Mục tiêu:** Rust tạo preview/export bằng cùng dữ liệu layout và đạt parity đo được với Python.
+
+**Crate đề xuất:**
+
+- `vietkara-render`: layout model, ASS generation, render profile, FFmpeg command, output validation.
+- Mở rộng `vietkara-media`: probe, waveform/audio metadata, sync metadata.
+
+**Công việc:**
+
+- Port theo golden output từ `layout.py`, `subtitles.py`, `bundled_assets.py`; không copy mù toàn bộ logic.
+- Chuẩn hóa font selection, VNI/TCVN3, line wrapping, outline/shadow, karaoke sweep, duet colors/icons.
+- Bổ sung title/logo/background/countdown, format/resolution/FPS và audio stream policy.
+- Preview dùng cùng layout data với exporter; không có hai thuật toán positioning độc lập.
+- Progress/cancel, export folder, render info và kiểm tra output.
+- Frame comparison và audio-stream assertion trên fixture chuẩn; sai lệch phải có ngưỡng được ghi rõ.
+
+**Hoàn tất khi:** xuất MP4 tối thiểu đạt parity fixture, audio dùng đúng beat gốc, preview/export không lệch các thuộc tính đã cam kết, lỗi FFmpeg hiển thị được nguyên nhân có thể hành động.
+
+### Giai đoạn 5 — AI bridge, audio sync và batch jobs
+
+**Mục tiêu:** thay orchestration Python bằng Rust mà không thay model/runtime ngay.
+
+**Công việc:**
+
+- `vietkara-ai-bridge`: protocol version, request ID, worker discovery, model status/cache, progress/cancel, timeout và crash recovery.
+- Port các flow: separation, recognition/alignment, align region, role suggestion; media truyền bằng path + metadata, không nhúng bytes.
+- Port/reuse audio sync và cache với fingerprint nguồn, model, language, options.
+- Batch render queue: record bền vững, resume sau restart, first pending item, per-item error và cancel.
+- Giới hạn tài nguyên, CPU-only/NVIDIA, model download riêng và không xóa cache khi update.
+
+**Hoàn tất khi:** worker lỗi/hủy không treo app; batch resume đúng item; cache không trả nhầm kết quả; project không bị ghi đè trước khi người dùng xác nhận kết quả AI.
+
+### Giai đoạn 6 — Parity nâng cao, đóng gói và chuyển người dùng
+
+**Mục tiêu:** thay production baseline với rollback rõ ràng.
+
+**Công việc:**
+
+- Preset import/export, scenes/assets, archive đầy đủ, fonts, updater và health diagnostics.
+- Portable/installer Windows; đóng gói FFmpeg và Python runtime theo thành phần; model tải riêng.
+- Máy sạch Windows 10/11 x64, đường dẫn Unicode, CPU-only và NVIDIA; kiểm tra upgrade từ bản cũ.
+- Smoke test sau cài đặt, crash recovery, file association, update/rollback và giữ nguyên `data/`, model/cache.
+- Chạy song song app cũ/app mới theo opt-in; diagnostics chỉ lưu cục bộ và không thu media/project.
+- Chỉ đổi mặc định sau khi checklist parity P0/P1 đạt và có bản rollback.
+
+**Hoàn tất khi:** installer/portable chạy trên máy sạch; mở project cũ không phá hủy; update không xóa data; bản cũ vẫn mở được nếu rollback.
+
+## 5. Ưu tiên tính năng và định nghĩa MVP
+
+| Ưu tiên | Phạm vi | Điều kiện đưa vào |
+|---|---|---|
+| P0 — lát dọc dùng được | Project schema 1/2 + migration an toàn; open/save/autosave/relink; nhập SRT/lyrics; phát beat, seek, tap-sync; chỉnh timeline; preview cơ bản; MP4 export dùng beat gốc; progress/cancel/error | Cần cho một bài hát đi trọn luồng trong app Rust và quay lại Python nếu gặp lỗi |
+| P1 — parity sản phẩm | Archive/version restore, undo/redo đầy đủ, tách vocal/ASR/alignment qua worker, audio sync, duet roles, presets/font, title/logo/background/countdown, batch render | Chỉ bắt đầu sau khi P0 ổn định; mỗi nhóm phải có fixture riêng |
+| P2 — phát hành/chất lượng vận hành | Updater, installer/portable parity, diagnostics, tối ưu GPU/cache và tiện ích nâng cao | Chỉ trước khi chuyển production baseline; phải qua kiểm tra máy sạch và rollback |
+
+MVP Rust không phải toàn bộ sản phẩm. MVP gồm:
+
+1. tạo/mở/save project schema 1/2, migration và giữ unknown fields;
+2. archive/autosave cơ bản và relink media;
+3. nhập SRT/lyrics;
+4. nạp audio, playback, seek và Space tap-sync;
+5. waveform/timeline tối thiểu, chỉnh mốc, undo/redo;
+6. preview cơ bản;
+7. MP4 export qua FFmpeg với beat gốc;
+8. progress/cancel/error cho các job trên.
+
+Archive/version đầy đủ được xếp P1 về parity, nhưng MVP vẫn cần autosave và một bản khôi phục an toàn tối thiểu trước thao tác phá hủy; không được bỏ khả năng phục hồi chỉ để rút ngắn MVP. Tách vocal/ASR, role suggestion, audio sync nâng cao, duet presentation đầy đủ, title/logo/background nâng cao, batch render, updater và installer parity là P1/P2 sau MVP.
+
+## 6. Ma trận crate theo thời điểm tạo
+
+Không tạo tất cả crate ngay từ đầu. Thứ tự đề xuất:
+
+1. `vietkara-domain` — đang có, hoàn thiện ở Giai đoạn 2.
+2. `vietkara-storage` — tạo cùng migration/archive fixture.
+3. `vietkara-jobs` — tạo trước khi có playback/render async thật.
+4. `vietkara-media` — tạo ở spike và mở rộng ở vertical slice.
+5. `vietkara-render` — chỉ tạo khi domain/layout contract ổn định.
+6. `vietkara-ai-bridge` — tạo khi MVP playback/edit/save đã ổn.
+7. `vietkara-app` — giữ là composition root/UI shell, không chứa business rules.
+
+Mỗi crate phải có API nhỏ, test độc lập và không phụ thuộc ngược vào `vietkara-app`.
+
+## 7. Tiêu chí chất lượng và kiểm thử
+
+Mỗi giai đoạn phải chạy được trên CI/local bằng lệnh ghi trong repository:
+
+- Rust: `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` khi dependency đã ổn định.
+- Python baseline: `.venv/Scripts/python.exe -m pytest tests -q`.
+- JavaScript baseline: `node --test tests/tapping.test.js tests/timeline_edit.test.js`.
+- Golden tests: project JSON normalized, ASS text, FFmpeg argv, probe metadata và frame/audio assertions.
+- Integration tests trên Windows cho IME, path Unicode, file dialog, process cancellation và installer smoke.
+
+Không gọi một giai đoạn là hoàn tất chỉ vì compile thành công; phải có fixture, hành trình người dùng và tiêu chí hồi quy tương ứng.
+
+## 8. Rủi ro và cách giảm thiểu
+
+1. **GPUI thay đổi nhanh:** khóa version sau spike; cô lập UI khỏi domain; có điểm dừng thay UI shell.
+2. **Playback/device/seek khó:** định nghĩa clock/player trait sớm; test bằng fake clock và fixture audio.
+3. **Preview lệch export:** một layout model dùng chung; golden frame/font tests trước khi thêm hiệu ứng.
+4. **Schema Python linh hoạt:** typed known fields + unknown map; migration không phá hủy; fixture cho field lạ.
+5. **Archive/media độc hại hoặc quá lớn:** allowlist path, giới hạn size/count, fingerprint và ghi tạm an toàn.
+6. **Worker AI treo hoặc crash:** process isolation, timeout, cancel, request ID, stderr log và recovery state.
+7. **Scope creep do parity:** P0/P1/P2 và ma trận tính năng; không port feature trước khi MVP path ổn.
+8. **Đóng gói nặng/phụ thuộc GPU:** tách runtime/model, CPU fallback và test máy sạch.
+9. **Hai app cùng sửa project:** khóa/phiên bản file hoặc cảnh báo conflict; chỉ một app làm writer trong migration rollout.
+
+## 9. Thứ tự công việc ngay sau kế hoạch này
+
+1. Bổ sung fixture project v1/v2, fixture archive và golden ASS/FFmpeg output từ baseline Python.
+2. Hoàn thiện `vietkara-domain` validation/migration contract và tạo `vietkara-storage`.
+3. Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock.
+4. Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync.
+5. Chỉ sau khi luồng save/reopen ổn định mới port preview/export.
+6. Chỉ sau khi MVP đạt mới đưa AI bridge và batch render vào Rust.
+
+## 10. Ước lượng và mốc quyết định
+
+Ước lượng chỉ dùng để lập kế hoạch, cần cập nhật sau spike:
+
+- Baseline/fixture + spike: 1–3 tuần.
+- Domain/storage/migration: 2–4 tuần.
+- Vertical slice MVP: 4–7 tuần.
+- Preview/export parity: 3–6 tuần.
+- AI bridge/batch/parity nâng cao: 4–8 tuần.
+- Đóng gói, rollout và hardening: 2–4 tuần.
+
+Tổng tham khảo: **16–32 tuần cho một kỹ sư đã quen Rust/media**, thay đổi theo kết quả GPUI và mức parity title/scene/duet. Mỗi mốc phải giao một bản chạy được; không đợi port xong toàn bộ mới kiểm chứng.
+
+## 11. Điều kiện nghiệm thu tổng thể
+
+- Project schema 1/2 mở được; migration và restore không ghi đè bản gốc.
+- Không mất timing, media mapping, preset hoặc trường chưa hiểu trong round-trip.
+- Playback/timeline responsive; job render/AI có progress, cancel, timeout và recovery.
+- Preview và file xuất khớp fixture theo ngưỡng đã ghi; audio xuất dùng đúng beat gốc.
+- Archive/bundle không vượt giới hạn, không cho path traversal và kiểm tra fingerprint.
+- Installer/portable chạy trên Windows sạch; model/cache/data sống qua cập nhật và rollback.
+- App Python vẫn là fallback cho đến khi checklist P0/P1 đạt trên máy mục tiêu.
