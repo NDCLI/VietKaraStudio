@@ -3274,23 +3274,27 @@ impl Render for Studio {
                                 );
                             }
                             if let Some((left, band_width, opacity)) = geometry.glow_band {
-                                elements.push(
-                                    div()
-                                        .absolute()
-                                        .left(px(x + left))
-                                        .top(px(y))
-                                        .w(px(band_width))
-                                        .h(px(height))
-                                        .relative()
-                                        .overflow_hidden()
-                                        .child(
-                                            make_text(0xffffff)
-                                                .absolute()
-                                                .left(px(-left))
-                                                .top(px(0.))
-                                                .opacity(opacity),
-                                        ),
-                                );
+                                let blur_radius =
+                                    (1.0 + sweep_feather as f32 / 12.0 + sweep_glow as f32 / 100.0)
+                                        * preview_scale;
+                                let mut glow = div()
+                                    .absolute()
+                                    .left(px(x + left))
+                                    .top(px(y))
+                                    .w(px(band_width))
+                                    .h(px(height))
+                                    .relative()
+                                    .overflow_hidden();
+                                for (offset_x, offset_y, alpha) in SWEEP_PREVIEW_GLOW_OFFSETS {
+                                    glow = glow.child(
+                                        make_text(0xffffff)
+                                            .absolute()
+                                            .left(px(-left + blur_radius * offset_x))
+                                            .top(px(blur_radius * offset_y))
+                                            .opacity(opacity * alpha),
+                                    );
+                                }
+                                elements.push(glow);
                             }
                         }
                         elements
@@ -4199,6 +4203,18 @@ struct SweepPreviewGeometry {
     glow_band: Option<(f32, f32, f32)>,
 }
 
+const SWEEP_PREVIEW_GLOW_OFFSETS: [(f32, f32, f32); 9] = [
+    (0.0, 0.0, 1.0),
+    (-1.0, 0.0, 0.22),
+    (1.0, 0.0, 0.22),
+    (0.0, -1.0, 0.18),
+    (0.0, 1.0, 0.18),
+    (-0.7, -0.7, 0.12),
+    (0.7, -0.7, 0.12),
+    (-0.7, 0.7, 0.12),
+    (0.7, 0.7, 0.12),
+];
+
 fn sweep_preview_geometry(
     width: f32,
     progress: f32,
@@ -4788,6 +4804,8 @@ mod workspace_tests {
 
     #[test]
     fn preview_sweep_geometry_tracks_partial_fill_feather_and_glow() {
+        assert_eq!(SWEEP_PREVIEW_GLOW_OFFSETS.len(), 9);
+        assert_eq!(SWEEP_PREVIEW_GLOW_OFFSETS[0], (0.0, 0.0, 1.0));
         let geometry = sweep_preview_geometry(100.0, 0.5, 12.0, 90.0, 20.0, 2.0);
         assert!((geometry.solid_width - 44.0).abs() < 0.001);
         assert_eq!(geometry.feather_segments.len(), 4);

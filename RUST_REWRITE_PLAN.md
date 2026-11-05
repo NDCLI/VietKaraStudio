@@ -302,7 +302,9 @@
 >   từ, feather dựng từ 4 dải alpha và glow band bám theo mép; tỉ lệ hình học
 >   scale theo preview viewport. Thêm test cho fill, segment, opacity và glow.
 >   Workspace test khả dụng pass; 6 test tích hợp cần FFmpeg/FFprobe tiếp tục
->   được lọc do binary không có trên PATH.
+>   được lọc do binary không có trên PATH. Làm mềm glow bằng 9 lớp glyph trắng
+>   alpha thấp lệch quanh mép trong clipping band; GPUI 0.2.2 chưa có blur glyph
+>   trực tiếp nên đây là xấp xỉ raster qua các lớp, không phải Gaussian blur.
 
 ## 1. Mục tiêu và phạm vi
 
