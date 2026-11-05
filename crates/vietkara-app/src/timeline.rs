@@ -375,6 +375,18 @@ impl Studio {
             .unwrap_or(&project.words);
         let map = |t| vietkara_domain::timing::map_time(t, anchors, false);
         let duration = project_timeline_duration(project, self.play_duration, anchors);
+        let selected_anchor_label = self
+            .selected_anchor
+            .and_then(|index| anchors.get(index).map(|anchor| (index, anchor)))
+            .map(|(index, anchor)| {
+                format!(
+                    "Anchor {}  ·  Ref {:.2}s  ↔  Beat {:.2}s",
+                    index + 1,
+                    anchor.r#ref,
+                    anchor.beat
+                )
+            })
+            .unwrap_or_else(|| "Chọn vạch anchor để xem và chỉnh mốc sync".into());
         let width = (duration as f32 * self.timeline_zoom).max(800.);
         let zoom = self.timeline_zoom;
         let mut content = div().relative().w(px(width)).h(px(178.)).bg(rgb(0x151820));
@@ -592,6 +604,12 @@ impl Studio {
                             cx.notify();
                         }),
                     )),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(rgb(theme::TEXT_MUTED))
+                    .child(selected_anchor_label),
             )
             .child(
                 div()

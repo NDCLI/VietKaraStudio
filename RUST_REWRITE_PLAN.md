@@ -328,6 +328,7 @@
 > - Anchor trên timeline có trạng thái chọn riêng; có thể xóa anchor được chọn
 >   qua `SetAnchors`, giữ undo/redo và autosave. Thêm anchor mới sẽ tự chọn nó;
 >   đổi project hoặc undo/redo sẽ xóa trạng thái chọn cũ để tránh nhầm index.
+>   Inspector timeline hiển thị rõ thời gian Ref ↔ Beat của anchor đang chọn.
 
 ## 1. Mục tiêu và phạm vi
 
