@@ -265,7 +265,13 @@
 >   section, đặt hoặc xóa tên section áp dụng cho cả dòng. Tên giới hạn theo
 >   domain 40 ký tự; thao tác dùng `SetLyrics`, giữ undo/redo và autosave, đồng
 >   thời tái tạo `project.text` để marker dòng trống khớp state. App **10/10**,
->   workspace check/Clippy pass. Scene image/artwork editor chưa triển khai.
+>   workspace check/Clippy pass.
+> - Bổ sung chọn 7 loại section scene chuẩn và nhập/thay ảnh PNG/JPG/WebP vào
+>   project dưới dạng PNG, có snapshot trước thay đổi và rollback khi lưu lỗi.
+>   Thay ảnh giữ nguyên transition/keyframe/decoration đã cấu hình; GPUI preview
+>   nạp ảnh scene theo section ở playback position và opacity. Storage tests
+>   cho import/replacement/giữ settings và từ chối section lạ pass; workspace
+>   check/Clippy sạch. Scene decoration editor vẫn chưa triển khai.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -192,6 +192,134 @@ pub fn import_countdown_image(
     result
 }
 
+/// Import or replace a section scene still as a project-managed PNG.
+pub fn import_scene_image(
+    project: &Project,
+    main: &Path,
+    source: &Path,
+    section: &str,
+) -> Result<ImportedBackground, String> {
+    const SECTIONS: &[&str] = &[
+        "intro",
+        "verse",
+        "pre-chorus",
+        "chorus",
+        "bridge",
+        "outro",
+        "instrumental",
+    ];
+    if !SECTIONS.contains(&section) {
+        return Err("Loại section scene không hợp lệ".into());
+    }
+    if !source
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp"
+            )
+        })
+    {
+        return Err("Ảnh scene chỉ hỗ trợ PNG, JPG hoặc WebP".into());
+    }
+    if !source.is_file() {
+        return Err("Không tìm thấy ảnh scene".into());
+    }
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = main
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let existing = project.scenes.iter().find(|scene| {
+        scene
+            .get("section_name")
+            .and_then(serde_json::Value::as_str)
+            == Some(section)
+    });
+    let id = existing
+        .and_then(|scene| scene.get("id").and_then(serde_json::Value::as_str))
+        .filter(|id| vietkara_domain::is_hex32(id))
+        .map(str::to_owned)
+        .unwrap_or_else(vietkara_domain::new_id);
+    let destination = directory.join(format!("scene_{id}.png"));
+    let temporary = directory.join(format!(".scene-{id}-{}.png", vietkara_domain::new_id()));
+    let backup = directory.join(format!(
+        ".scene-backup-{id}-{}.png",
+        vietkara_domain::new_id()
+    ));
+    let result = (|| -> Result<ImportedBackground, String> {
+        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+        let output = Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-i"])
+            .arg(source)
+            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
+            .arg(&temporary)
+            .output()
+            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+        if !output.status.success()
+            || !temporary.is_file()
+            || std::fs::metadata(&temporary)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+                == 0
+        {
+            return Err(format!(
+                "Không chuyển được ảnh scene: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        let mut candidate = project.clone();
+        if let Some(index) = candidate.scenes.iter().position(|item| {
+            item.get("section_name").and_then(serde_json::Value::as_str) == Some(section)
+        }) {
+            let scene = &mut candidate.scenes[index];
+            scene["id"] = serde_json::Value::String(id.clone());
+            scene["section_name"] = serde_json::Value::String(section.to_owned());
+        } else {
+            candidate.scenes.push(serde_json::json!({"id":id,"section_name":section,"opacity":100,"transition":"fade","transition_seconds":0.6,"keyframes":[{"x":0,"y":0,"scale":100,"opacity":100},{"x":0,"y":0,"scale":100,"opacity":100}],"contrast_mode":"auto"}));
+        }
+        candidate.validate().map_err(|error| error.to_string())?;
+        let version = create_version(directory, project, "Trước thay ảnh scene")
+            .map_err(|error| error.to_string())?;
+        let had_destination = destination.is_file();
+        if had_destination {
+            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = std::fs::rename(&temporary, &destination) {
+            if had_destination {
+                std::fs::rename(&backup, &destination)
+                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
+            }
+            return Err(error.to_string());
+        }
+        if let Err(error) = save_project(&candidate, main) {
+            let cleanup = std::fs::remove_file(&destination).err();
+            let restore = if had_destination {
+                std::fs::rename(&backup, &destination).err()
+            } else {
+                None
+            };
+            if cleanup.is_some() || restore.is_some() {
+                return Err(format!(
+                    "{error}; rollback cleanup={cleanup:?}, restore={restore:?}; backup {}",
+                    backup.display()
+                ));
+            }
+            return Err(error.to_string());
+        }
+        if had_destination {
+            let _ = std::fs::remove_file(&backup);
+        }
+        Ok(ImportedBackground {
+            project: candidate,
+            version_id: version.id,
+        })
+    })();
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
 fn supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -560,7 +688,7 @@ mod tests {
         let source = directory.path().join("clip.mp4");
         let project = Project::new("fixture");
         project.save(&main).unwrap();
-        let generated = Command::new(ffmpeg)
+        let generated = Command::new(&ffmpeg)
             .args([
                 "-y",
                 "-v",
@@ -612,7 +740,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let main = directory.path().join("project.json");
         let source = directory.path().join("brand.png");
-        let generated = Command::new(ffmpeg)
+        let generated = Command::new(&ffmpeg)
             .args([
                 "-y",
                 "-v",
@@ -703,6 +831,106 @@ mod tests {
                 .join("project.json")
                 .is_file()
         );
+    }
+
+    #[test]
+    fn imports_scene_image_with_snapshot_and_replaces_same_section() {
+        let Ok(ffmpeg) = vietkara_media::find_binary("ffmpeg") else {
+            return;
+        };
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("project.json");
+        let source = directory.path().join("scene.jpg");
+        let generated = Command::new(&ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=32x32",
+                "-frames:v",
+                "1",
+            ])
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(
+            generated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        let mut project = Project::new("fixture");
+        project.save(&main).unwrap();
+
+        let imported = import_scene_image(&project, &main, &source, "chorus").unwrap();
+        assert_eq!(imported.project.scenes.len(), 1);
+        assert_eq!(imported.project.scenes[0]["section_name"], "chorus");
+        let id = imported.project.scenes[0]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let image = directory.path().join(format!("scene_{id}.png"));
+        assert!(image.is_file());
+        assert!(
+            directory
+                .path()
+                .join("versions")
+                .join(&imported.version_id)
+                .join("project.json")
+                .is_file()
+        );
+
+        project = imported.project;
+        project.scenes[0]["transition"] = serde_json::json!("cut");
+        project.scenes[0]["contrast_mode"] = serde_json::json!("off");
+        let replacement = directory.path().join("replacement.png");
+        let generated = Command::new(&ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=32x32",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                "-f",
+                "image2",
+            ])
+            .arg(&replacement)
+            .output()
+            .unwrap();
+        assert!(generated.status.success());
+        let replaced = import_scene_image(&project, &main, &replacement, "chorus").unwrap();
+        assert_eq!(replaced.project.scenes.len(), 1);
+        assert_eq!(replaced.project.scenes[0]["id"], id);
+        assert_eq!(replaced.project.scenes[0]["transition"], "cut");
+        assert_eq!(replaced.project.scenes[0]["contrast_mode"], "off");
+        assert_eq!(
+            Project::load(&main).unwrap().scenes[0]["section_name"],
+            "chorus"
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_scene_section_before_writing_project() {
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("project.json");
+        let source = directory.path().join("scene.png");
+        std::fs::write(&source, b"bad image").unwrap();
+        let error =
+            match import_scene_image(&Project::new("fixture"), &main, &source, "custom-section") {
+                Ok(_) => panic!("unsupported scene section accepted"),
+                Err(error) => error,
+            };
+        assert!(error.contains("section"));
+        assert!(!main.exists());
+        assert!(std::fs::read(&source).is_ok());
     }
 
     #[test]

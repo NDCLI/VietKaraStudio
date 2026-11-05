@@ -984,6 +984,158 @@ impl Studio {
         })
         .detach();
     }
+    fn set_selected_scene_section(&mut self, cx: &mut Context<Self>) {
+        const SECTIONS: &[&str] = &[
+            "intro",
+            "verse",
+            "pre-chorus",
+            "chorus",
+            "bridge",
+            "outro",
+            "instrumental",
+        ];
+        let Some(id) = self.selected_word.as_deref() else {
+            return;
+        };
+        let Some(line) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .map(|word| word.line)
+        else {
+            return;
+        };
+        let current = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.as_deref())
+            .unwrap_or("");
+        let next = SECTIONS
+            .iter()
+            .position(|section| *section == current)
+            .map(|index| (index + 1) % SECTIONS.len())
+            .unwrap_or(0);
+        let mut words = self.editor.project().words.clone();
+        set_section_name_on_line(&mut words, line, SECTIONS[next]);
+        let text = vietkara_domain::lyrics::text_from_words(&words);
+        self.edit_status = match self.editor.execute(Command::SetLyrics { words, text }) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã chọn loại section scene • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        self.section_name_input.update(cx, |input, cx| {
+            input.set_value(SECTIONS[next]);
+            cx.notify();
+        });
+        cx.notify();
+    }
+    fn choose_scene_image(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm scene".into();
+            cx.notify();
+            return;
+        };
+        let Some(id) = self.selected_word.as_deref() else {
+            self.edit_status = "Chọn dòng đã gán loại section scene trước".into();
+            cx.notify();
+            return;
+        };
+        let Some(section) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.clone())
+        else {
+            self.edit_status = "Hãy gán loại section scene cho dòng đang chọn".into();
+            cx.notify();
+            return;
+        };
+        if ![
+            "intro",
+            "verse",
+            "pre-chorus",
+            "chorus",
+            "bridge",
+            "outro",
+            "instrumental",
+        ]
+        .contains(&section.as_str())
+        {
+            self.edit_status = "Tên section này không thuộc các loại scene được hỗ trợ".into();
+            cx.notify();
+            return;
+        }
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn ảnh scene (PNG, JPG hoặc WebP)".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang thêm ảnh scene và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_scene_image(
+                                    &project, &main, &source, &section,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã thêm ảnh scene • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn ảnh scene".into(),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
         {
@@ -2186,6 +2338,9 @@ impl Render for Studio {
                 .and_then(|item| item.section)
                 .unwrap_or(false)
         });
+        let selected_scene_exists = self.editor.project().scenes.iter().any(|scene| {
+            scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())
+        });
         let settings = &self.editor.project().settings;
         let display_mode = settings
             .extra
@@ -2589,6 +2744,51 @@ impl Render for Studio {
         };
         let preview_scale = preview_width / layout.width as f32;
         let preview_position = self.play_position;
+        let scene_preview =
+            self.path
+                .as_ref()
+                .and_then(|path| path.parent())
+                .and_then(|directory| {
+                    let active_section = display_words
+                        .iter()
+                        .find(|word| {
+                            let start = vietkara_domain::timing::map_time(
+                                word.start,
+                                &self.editor.project().anchors,
+                                false,
+                            );
+                            let end = vietkara_domain::timing::map_time(
+                                word.end,
+                                &self.editor.project().anchors,
+                                false,
+                            );
+                            start <= preview_position && preview_position < end
+                        })
+                        .and_then(|word| word.section_name.as_deref())
+                        .unwrap_or(&selected_section);
+                    self.editor
+                        .project()
+                        .scenes
+                        .iter()
+                        .find(|scene| {
+                            scene.get("section_name").and_then(Value::as_str)
+                                == Some(active_section)
+                        })
+                        .and_then(|scene| {
+                            let id = scene.get("id").and_then(Value::as_str)?;
+                            let image = directory.join(format!("scene_{id}.png"));
+                            image.is_file().then_some((image, scene))
+                        })
+                        .map(|(image, scene)| {
+                            let opacity = scene
+                                .get("opacity")
+                                .and_then(Value::as_f64)
+                                .unwrap_or(100.0)
+                                .clamp(0.0, 100.0) as f32
+                                / 100.0;
+                            (image, opacity)
+                        })
+                });
         let title_visible = layout
             .title
             .as_ref()
@@ -3085,6 +3285,11 @@ impl Render for Studio {
                                                         .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                             .bg(rgb(0x05080c)).opacity(0.32))
                                                 })
+                                                .when(scene_preview.is_some(), |frame| {
+                                                    let (path, opacity) = scene_preview.clone().unwrap();
+                                                    frame.child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
+                                                        .child(img(path).size_full().object_fit(ObjectFit::Cover).opacity(opacity)))
+                                                })
                                                 .child(div().absolute().left(px(8.)).top(px(6.)).text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
                                                     .flex().flex_col().gap_2()
@@ -3185,6 +3390,12 @@ impl Render for Studio {
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                 .child("Đặt tên cho cả dòng")
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_section_name(cx))))
+                            .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                .child("Chọn loại section scene tiếp theo")
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.set_selected_scene_section(cx))))
+                            .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2()
+                                .child(if selected_scene_exists {"Thay ảnh scene cho section"} else {"＋  Nạp ảnh scene cho section"})
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_scene_image(cx))))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                 .child(if selected_is_section_start {"✓  Đây là đầu section"} else {"＋  Bắt đầu section tại dòng này"})
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.toggle_section_boundary(cx))))
