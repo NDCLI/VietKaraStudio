@@ -126,6 +126,55 @@ fn dialogue(layer: u8, start: f64, end: f64, tags: &str, text: &str) -> Option<S
     })
 }
 
+fn readability_events(
+    plan: &DisplayPlan,
+    settings: &serde_json::Map<String, Value>,
+    scenes: &[crate::RenderScene],
+) -> Vec<String> {
+    let subtitle_box = string(settings, "display_mode", "karaoke") == "subtitle"
+        && boolean(settings, "subtitle_box", true);
+    if subtitle_box {
+        return Vec::new();
+    }
+    let mut output = Vec::new();
+    for row in &plan.rows {
+        let opacity = scenes
+            .iter()
+            .filter(|scene| scene.start <= row.start && row.start <= scene.end)
+            .map(|scene| scene.backing_opacity)
+            .max()
+            .unwrap_or(0);
+        if opacity == 0 {
+            continue;
+        }
+        let pad = row.font_size * 0.22;
+        let shape = crate::rounded_box(
+            0.0,
+            0.0,
+            row.width + 2.0 * pad,
+            row.height + 2.0 * pad,
+            12.0,
+        );
+        let mut anim = row_anim(row);
+        anim.x -= pad;
+        anim.y -= pad;
+        let options = AnimOpts {
+            line_animation: "none".into(),
+            horizontal_scale: 100.0,
+        };
+        let alpha = ((100 - opacity as u32) * 255 / 100) as u8;
+        let tags = format!(
+            "\\fscx100\\fscy100{}\\p1\\bord0\\shad0\\1c{}\\1a&H{alpha:02X}&",
+            animation(&anim, &options),
+            ass_color("#000000", 100)
+        );
+        if let Some(event) = dialogue(0, row.show_start, row.show_end, &tags, &shape) {
+            output.push(event);
+        }
+    }
+    output
+}
+
 fn title_state(mode: &str) -> (f64, f64, u8, u8) {
     match mode {
         "slide_up" => (0.0, 1.0, 100, 0),
@@ -376,6 +425,14 @@ fn word_event(
 /// The same `DisplayPlan` can be used by GPUI preview and passed here for
 /// export, preserving row breaks, positions, font sizes and word advances.
 pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
+    build_lyrics_ass_with_scenes(project, plan, &[])
+}
+
+pub fn build_lyrics_ass_with_scenes(
+    project: &Project,
+    plan: &DisplayPlan,
+    scenes: &[crate::RenderScene],
+) -> String {
     let settings = &project.settings.extra;
     let font = project.settings.font.replace(',', "");
     let font_size = project.settings.font_size;
@@ -425,6 +482,7 @@ pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
         style, String::new(), "[Events]".into(),
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text".into(),
     ];
+    lines.extend(readability_events(plan, settings, scenes));
     for row in &plan.rows {
         let anim = animation(&row_anim(row), &options);
         let sung_color = if duet && mode == "karaoke" {
@@ -660,6 +718,52 @@ mod tests {
         assert!(ass.contains("\\fad(0,"));
         assert!(ass.contains("\\clip("));
         assert!(ass.contains("Dialogue: 8,0:00:00.00,0:00:08.00"));
+    }
+
+    #[test]
+    fn scene_readability_backing_respects_intervals_and_subtitle_box() {
+        let project = project();
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let mut scene = crate::RenderScene {
+            image: None,
+            start: 0.8,
+            end: 1.8,
+            opacity: 1.0,
+            backing_opacity: 44,
+            fade_seconds: 0.0,
+            keyframes: [crate::SceneKeyframe::default(); 2],
+            decoration: None,
+        };
+        let ass = build_lyrics_ass_with_scenes(&project, &plan, &[scene.clone()]);
+        assert_eq!(
+            ass.lines()
+                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .count(),
+            1
+        );
+        assert!(
+            ass.lines()
+                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .all(|line| line.contains("0:00:00.00,0:00:02.60"))
+        );
+        scene.backing_opacity = 48;
+        let mut subtitle = project;
+        subtitle
+            .settings
+            .extra
+            .insert("display_mode".into(), Value::String("subtitle".into()));
+        subtitle
+            .settings
+            .extra
+            .insert("subtitle_box".into(), Value::Bool(true));
+        let subtitle_plan = crate::layout::display_plan(&subtitle, &FixedWidth);
+        let ass = build_lyrics_ass_with_scenes(&subtitle, &subtitle_plan, &[scene]);
+        assert_eq!(
+            ass.lines()
+                .filter(|line| line.starts_with("Dialogue: 0,"))
+                .count(),
+            1
+        );
     }
 
     #[test]

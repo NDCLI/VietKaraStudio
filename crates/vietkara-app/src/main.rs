@@ -2121,6 +2121,54 @@ impl Render for Studio {
             .title
             .as_ref()
             .is_some_and(|title| preview_position >= title.start && preview_position < title.end);
+        let scene_backing = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|directory| {
+                self.editor
+                    .project()
+                    .scenes
+                    .iter()
+                    .filter(|scene| {
+                        let section = scene
+                            .get("section_name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        let scene_words = display_words
+                            .iter()
+                            .filter(|word| word.section_name.as_deref() == Some(section));
+                        let (start, end) = scene_words.fold(
+                            (f64::INFINITY, f64::NEG_INFINITY),
+                            |(start, end), word| {
+                                (
+                                    start.min(vietkara_domain::timing::map_time(
+                                        word.start,
+                                        &self.editor.project().anchors,
+                                        false,
+                                    )),
+                                    end.max(vietkara_domain::timing::map_time(
+                                        word.end,
+                                        &self.editor.project().anchors,
+                                        false,
+                                    )),
+                                )
+                            },
+                        );
+                        start <= preview_position && preview_position <= end
+                    })
+                    .map(|scene| vietkara_render::scene_readability_opacity(scene, directory))
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let show_readability = scene_backing > 0
+            && !(display_mode == "subtitle"
+                && settings
+                    .extra
+                    .get("subtitle_box")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true));
         let mut current_preview: Vec<_> =
             if display_mode == "karaoke" && !active_plan_rows.is_empty() {
                 active_plan_rows
@@ -2158,6 +2206,24 @@ impl Render for Studio {
                     })
                     .collect()
             };
+        if show_readability {
+            for &row_index in &active_plan_rows {
+                let row = &layout.rows[row_index];
+                let pad = row.font_size as f32 * 0.22 * preview_scale;
+                current_preview.insert(
+                    0,
+                    div()
+                        .absolute()
+                        .left(px(row.x as f32 * preview_scale - pad))
+                        .top(px(row.y as f32 * preview_scale - pad))
+                        .w(px(row.width as f32 * preview_scale + pad * 2.))
+                        .h(px(row.height as f32 * preview_scale + pad * 2.))
+                        .rounded(px(12. * preview_scale))
+                        .bg(rgb(0x000000))
+                        .opacity(f32::from(scene_backing) / 100.),
+                );
+            }
+        }
         if let Some(title) = layout.title.as_ref().filter(|_| title_visible) {
             for row in &title.rows {
                 current_preview.push(

@@ -669,6 +669,7 @@ pub struct RenderScene {
     pub start: f64,
     pub end: f64,
     pub opacity: f64,
+    pub backing_opacity: u8,
     pub fade_seconds: f64,
     pub keyframes: [SceneKeyframe; 2],
     pub decoration: Option<RenderSceneDecoration>,
@@ -681,6 +682,68 @@ pub struct RenderSceneDecoration {
     pub image_height: u32,
     pub size: f64,
     pub keyframes: [SceneKeyframe; 2],
+}
+
+/// Match Python `_bright_pixel_ratio`: grayscale 48×27 thumbnail and its 80th percentile.
+pub fn readability_opacity(path: &Path) -> u8 {
+    let Ok(image) = image::open(path) else {
+        return 0;
+    };
+    let gray = image
+        .thumbnail(96, 54)
+        .resize_exact(48, 27, image::imageops::FilterType::Nearest)
+        .to_luma8();
+    let mut histogram = [0_u32; 256];
+    for pixel in gray.pixels() {
+        histogram[pixel.0[0] as usize] += 1;
+    }
+    let target = ((48 * 27) as f64 * 0.8).ceil() as u32;
+    let mut count = 0;
+    for (level, amount) in histogram.into_iter().enumerate() {
+        count += amount;
+        if count >= target {
+            return if level as f64 / 255.0 >= 0.64 { 44 } else { 0 };
+        }
+    }
+    0
+}
+
+/// Resolve a scene's contrast policy for preview and export.
+pub fn scene_readability_opacity(scene: &serde_json::Value, directory: &Path) -> u8 {
+    match scene
+        .get("contrast_mode")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("auto")
+    {
+        "always" => 48,
+        "off" => 0,
+        _ => scene
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| vietkara_domain::is_hex32(id))
+            .map(|id| readability_opacity(&directory.join(format!("scene_{id}.png"))))
+            .unwrap_or(0),
+    }
+}
+
+#[cfg(test)]
+mod readability_tests {
+    use super::*;
+
+    #[test]
+    fn bright_pixel_threshold_matches_scene_readability_policy() {
+        let directory = tempfile::tempdir().unwrap();
+        let dark = directory.path().join("dark.png");
+        let bright = directory.path().join("bright.png");
+        image::RgbImage::from_pixel(96, 54, image::Rgb([100, 100, 100]))
+            .save(&dark)
+            .unwrap();
+        image::RgbImage::from_pixel(96, 54, image::Rgb([200, 200, 200]))
+            .save(&bright)
+            .unwrap();
+        assert_eq!(readability_opacity(&dark), 0);
+        assert_eq!(readability_opacity(&bright), 44);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -797,7 +860,7 @@ impl RenderInputs {
             .create_new(true)
             .open(path)?;
         if let Err(error) = file
-            .write_all(ass::build_lyrics_ass(project, plan).as_bytes())
+            .write_all(ass::build_lyrics_ass_with_scenes(project, plan, &self.scenes).as_bytes())
             .and_then(|()| file.sync_all())
         {
             drop(file);
@@ -913,6 +976,12 @@ impl RenderInputs {
                 }
                 let image_path = directory.join(format!("scene_{id}.png"));
                 let image = image_path.is_file().then_some(image_path);
+                let contrast_mode = scene
+                    .get("contrast_mode")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|mode| ["auto", "always", "off"].contains(mode))
+                    .unwrap_or("auto")
+                    .to_owned();
                 let decoration_path = directory.join(format!("scene_decoration_{id}.png"));
                 let decoration = png_dimensions(&decoration_path)
                     .map(|(width, height)| (decoration_path, width, height));
@@ -1006,11 +1075,22 @@ impl RenderInputs {
                     },
                     [first, second],
                     decoration,
+                    contrast_mode,
                 ))
             })
             .map(
-                |(section, image, opacity, transition, frames, decoration)| {
-                    (section, (image, opacity, transition, frames, decoration))
+                |(section, image, opacity, transition, frames, decoration, contrast_mode)| {
+                    (
+                        section,
+                        (
+                            image,
+                            opacity,
+                            transition,
+                            frames,
+                            decoration,
+                            contrast_mode,
+                        ),
+                    )
                 },
             )
             .collect::<HashMap<_, _>>();
@@ -1050,7 +1130,7 @@ impl RenderInputs {
         let duration = self.duration.max(0.0);
         let mut resolved = Vec::new();
         for (index, (section, run_start, _)) in runs.iter().enumerate() {
-            let Some((image, opacity, base_transition, keyframes, decoration)) =
+            let Some((image, opacity, base_transition, keyframes, decoration, contrast_mode)) =
                 scenes.get(section)
             else {
                 continue;
@@ -1086,6 +1166,14 @@ impl RenderInputs {
                     start,
                     end,
                     opacity: *opacity,
+                    backing_opacity: match contrast_mode.as_str() {
+                        "always" => 48,
+                        "auto" => image
+                            .as_ref()
+                            .map(|path| readability_opacity(path))
+                            .unwrap_or(0),
+                        _ => 0,
+                    },
                     fade_seconds: transition.min((end - start) / 2.0).max(0.05),
                     keyframes: *keyframes,
                     decoration: decoration.clone(),
@@ -2570,6 +2658,7 @@ mod tests {
             start: 0.25,
             end: 1.75,
             opacity: 0.6,
+            backing_opacity: 0,
             fade_seconds: 0.2,
             keyframes: [
                 SceneKeyframe::default(),

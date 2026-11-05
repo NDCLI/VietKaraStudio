@@ -204,6 +204,12 @@
 >   workspace check và app build pass. Toàn bộ FFmpeg integration/workspace
 >   suite chưa chạy được trong shell này do thiếu `ffmpeg.exe`/`ffprobe.exe`;
 >   template/effect của title trong GPUI preview chưa vẽ đầy đủ.
+> - Port scene readability backing: đọc percentile 80 grayscale ở thumbnail
+>   48×27, ngưỡng sáng 0.64, opacity auto 44% / always 48%; mode off và subtitle
+>   có box không thêm backing. ASS backing theo show window của row và scene
+>   active tại `row.start`; preview dùng cùng estimator theo section scene.
+>   `vietkara-render` không chạy 37 tests không cần FFmpeg (2 integration bị
+>   loại do binary chưa có), clippy workspace và app build pass.
 
 ## 1. Mục tiêu và phạm vi
 
