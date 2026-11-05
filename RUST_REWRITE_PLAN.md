@@ -287,6 +287,12 @@
 >   integration export phụ thuộc FFmpeg app packaging); workspace check/Clippy
 >   sạch. Video background vẫn là ảnh frame cập nhật theo bước 0,5 giây, chưa
 >   phát liên tục trong canvas preview.
+> - Đối chiếu GPUI preview với baseline Python cho LyricsMV: ASS renderer Rust
+>   trước đó bỏ qua `mv_style` và dùng màu chưa hát cho cả câu chính lẫn dòng
+>   phụ. Đã port `single`/`stack`/`scroll`, geometry dòng phụ, alpha/outline,
+>   màu câu chính và gradient; regression test xác minh số event và opacity.
+>   `vietkara-render` **40/40** test không cần FFmpeg pass (2 integration render
+>   thật đã lọc do thiếu binary); workspace test khả dụng và clippy pass.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -471,6 +471,82 @@ fn gradient_bands(
     bands
 }
 
+struct LyricsMvContext<'a> {
+    line_height: f64,
+    plan: &'a DisplayPlan,
+    settings: &'a serde_json::Map<String, Value>,
+    unsung: &'a str,
+    options: &'a AnimOpts,
+}
+
+fn lyricsmv_ghost_events(
+    row: &DisplayRow,
+    neighbor: &DisplayRow,
+    delta: isize,
+    context: &LyricsMvContext<'_>,
+) -> Vec<String> {
+    let scale = 0.7;
+    let mut ghost = row.clone();
+    ghost.text.clone_from(&neighbor.text);
+    ghost.font_size = neighbor.font_size * scale;
+    ghost.width = neighbor.width * scale;
+    ghost.height = neighbor.height * scale;
+    ghost.x = match row.align.as_str() {
+        "left" => row.x,
+        "right" => row.x + row.width - ghost.width,
+        _ => (f64::from(context.plan.width) - ghost.width) / 2.0,
+    };
+    ghost.y = row.y + delta as f64 * row.font_size * context.line_height;
+    ghost.section_start = false;
+    ghost.section_end = false;
+    let opacity_percent = (65 - delta.unsigned_abs() as u8 * 15).max(20);
+    let alpha = (255.0 * (1.0 - f64::from(opacity_percent) / 100.0)).round_ties_even() as u8;
+    let outline_alpha = (255.0
+        * (1.0
+            - f64::from(opacity_percent)
+                * f64::from(opacity(context.settings, "outline_unsung_opacity", 100))
+                / 10_000.0))
+        .round_ties_even() as u8;
+    let tags = format!(
+        "{}\\fs{:.3}\\1a&H{alpha:02X}&\\3a&H{outline_alpha:02X}&",
+        animation(&row_anim(&ghost), context.options),
+        ghost.font_size
+    );
+    let text = literal(&crate::layout::font_text(&ghost.text, &context.plan.font));
+    gradient_bands(
+        &ghost,
+        context.settings,
+        context.unsung,
+        context.plan.height,
+    )
+    .into_iter()
+    .filter_map(|(top, bottom, hex_color)| {
+        let clip = if boolean(context.settings, "sung_gradient", false) && ghost.role == "all" {
+            format!("\\clip(0,{top:.2},{},{bottom:.2})", context.plan.width)
+        } else {
+            String::new()
+        };
+        dialogue(
+            2,
+            ghost.show_start,
+            ghost.show_end,
+            &format!(
+                "{tags}\\1c{}\\3c{}\\4c{}\\bord{:.2}\\shad{:.2}{clip}",
+                ass_color(&hex_color, 100),
+                ass_color(
+                    color(context.settings, "outline_unsung", "#15202a"),
+                    opacity(context.settings, "outline_unsung_opacity", 100)
+                ),
+                ass_color(color(context.settings, "shadow_color", "#000000"), 100),
+                number(context.settings, "outline_width", 3.0).clamp(0.0, 12.0),
+                number(context.settings, "shadow", 1.0).clamp(0.0, 15.0),
+            ),
+            &text,
+        )
+    })
+    .collect()
+}
+
 fn word_event(
     row: &DisplayRow,
     word: &PlannedWord,
@@ -592,7 +668,7 @@ pub fn build_lyrics_ass_with_scenes(
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text".into(),
     ];
     lines.extend(readability_events(plan, settings, scenes));
-    for row in &plan.rows {
+    for (row_index, row) in plan.rows.iter().enumerate() {
         if let Some(marker) = &row.role_marker {
             let tags = format!(
                 "\\an7\\pos({:.2},{:.2})\\p1\\bord0\\shad0\\1c{}",
@@ -641,7 +717,9 @@ pub fn build_lyrics_ass_with_scenes(
                     lines.push(event);
                 }
             }
-            for (top, bottom, hex_color) in gradient_bands(row, settings, unsung, plan.height) {
+            let plain_color = if mode == "lyricsmv" { sung } else { unsung };
+            for (top, bottom, hex_color) in gradient_bands(row, settings, plain_color, plan.height)
+            {
                 let clip = if boolean(settings, "sung_gradient", false) && row.role == "all" {
                     format!("\\clip(0,{top:.2},{},{bottom:.2})", plan.width)
                 } else {
@@ -662,6 +740,33 @@ pub fn build_lyrics_ass_with_scenes(
                     &literal(&crate::layout::font_text(&row.text, &plan.font)),
                 ) {
                     lines.push(event);
+                }
+            }
+            if mode == "lyricsmv" && string(settings, "mv_style", "stack") != "single" {
+                let count = if string(settings, "mv_style", "stack") == "scroll" {
+                    2isize
+                } else {
+                    1isize
+                };
+                let line_height = number(settings, "line_height", 1.4).clamp(1.0, 2.5);
+                let ghost_context = LyricsMvContext {
+                    line_height,
+                    plan,
+                    settings,
+                    unsung,
+                    options: &options,
+                };
+                for delta in -count..=count {
+                    if delta == 0 {
+                        continue;
+                    }
+                    let Some(neighbor_index) = row_index.checked_add_signed(delta) else {
+                        continue;
+                    };
+                    let Some(neighbor) = plan.rows.get(neighbor_index) else {
+                        continue;
+                    };
+                    lines.extend(lyricsmv_ghost_events(row, neighbor, delta, &ghost_context));
                 }
             }
             continue;
@@ -814,6 +919,76 @@ mod tests {
         assert!(dialogues[1].starts_with("Dialogue: 2,"));
         assert!(dialogues[1].ends_with("Xin chào"));
         assert!(!ass.contains("\\clip("));
+    }
+
+    #[test]
+    fn lyricsmv_ass_matches_single_stack_and_scroll_styles() {
+        let mut project = project();
+        for (id, line, text, start, end) in [(3, 1, "Ngày", 3.0, 3.5), (4, 2, "mới", 4.0, 4.5)] {
+            project.words.push(
+                serde_json::from_value(serde_json::json!({
+                    "id": format!("{id:032x}"),
+                    "line_uid": format!("{:032x}", line + 100),
+                    "text": text,
+                    "start": start,
+                    "end": end,
+                    "line": line
+                }))
+                .unwrap(),
+            );
+        }
+        project.settings.extra.extend([
+            ("display_mode".into(), Value::String("lyricsmv".into())),
+            ("sung".into(), Value::String("#123456".into())),
+        ]);
+
+        let dialogues_for = |style: &str| {
+            project
+                .settings
+                .extra
+                .clone()
+                .into_iter()
+                .chain([("mv_style".into(), Value::String(style.into()))])
+                .collect::<serde_json::Map<String, Value>>()
+        };
+        let mut single = project.clone();
+        single.settings.extra = dialogues_for("single");
+        let single_plan = crate::layout::display_plan(&single, &FixedWidth);
+        let single_ass = build_lyrics_ass(&single, &single_plan);
+        assert_eq!(
+            single_ass
+                .lines()
+                .filter(|line| line.starts_with("Dialogue:"))
+                .count(),
+            3
+        );
+        assert!(single_ass.contains("\\1c&H00563412\\3c"));
+
+        let mut stack = project.clone();
+        stack.settings.extra = dialogues_for("stack");
+        let stack_plan = crate::layout::display_plan(&stack, &FixedWidth);
+        let stack_ass = build_lyrics_ass(&stack, &stack_plan);
+        assert_eq!(
+            stack_ass
+                .lines()
+                .filter(|line| line.starts_with("Dialogue:"))
+                .count(),
+            7
+        );
+        assert!(stack_ass.contains("\\1a&H80&"));
+
+        let mut scroll = project.clone();
+        scroll.settings.extra = dialogues_for("scroll");
+        let scroll_plan = crate::layout::display_plan(&scroll, &FixedWidth);
+        let scroll_ass = build_lyrics_ass(&scroll, &scroll_plan);
+        assert_eq!(
+            scroll_ass
+                .lines()
+                .filter(|line| line.starts_with("Dialogue:"))
+                .count(),
+            9
+        );
+        assert!(scroll_ass.contains("\\1a&HA6&"));
     }
 
     #[test]
