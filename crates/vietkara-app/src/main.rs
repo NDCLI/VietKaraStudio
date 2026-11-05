@@ -1207,6 +1207,27 @@ impl Render for Studio {
         let sung_color = setting_color(settings, "sung", 0x52efb9);
         let unsung_color = setting_color(settings, "unsung", 0xffffff);
         let duet = settings.extra.get("singing_mode").and_then(Value::as_str) == Some("duet");
+        let role_color = |line: u32| {
+            let key = display_words
+                .iter()
+                .find(|word| word.line == line)
+                .map(|word| match word.role.as_str() {
+                    "male" => "role_a_color",
+                    "female" => "role_b_color",
+                    "voice_c" => "role_c_color",
+                    "voice_d" => "role_d_color",
+                    "voice_e" => "role_e_color",
+                    "voice_f" => "role_f_color",
+                    "unknown" => "role_unknown_color",
+                    _ => "role_all_color",
+                });
+            if duet && display_mode == "karaoke" {
+                key.map(|key| setting_color(settings, key, sung_color))
+                    .unwrap_or(sung_color)
+            } else {
+                sung_color
+            }
+        };
         let reference_position = vietkara_domain::timing::map_time(
             self.play_position,
             &self.editor.project().anchors,
@@ -1220,7 +1241,7 @@ impl Render for Studio {
             duet,
         );
         let selected_id = self.selected_word.as_deref();
-        let preview_line_element = |line: u32, size: f32, subdued: bool| {
+        let preview_line_element = |line: u32, size: f32, subdued: bool, line_color: u32| {
             div().flex().justify_center().gap_2().children(
                 display_words
                     .iter()
@@ -1234,7 +1255,7 @@ impl Render for Studio {
                         } else if display_mode == "subtitle" {
                             unsung_color
                         } else if display_mode == "lyricsmv" || active || sung {
-                            sung_color
+                            line_color
                         } else if Some(word.id.as_str()) == selected_id {
                             0xffdf79
                         } else {
@@ -1248,10 +1269,17 @@ impl Render for Studio {
                     }),
             )
         };
-        let mut preview_rows: Vec<(u32, f32, bool)> = if display_mode == "karaoke" {
+        let mut preview_rows: Vec<(u32, f32, bool, u32)> = if display_mode == "karaoke" {
             active_lines
                 .iter()
-                .map(|row| (row.line, (font_size as f32 / 3.).clamp(16., 42.), false))
+                .map(|row| {
+                    (
+                        row.line,
+                        (font_size as f32 / 3.).clamp(16., 42.),
+                        false,
+                        role_color(row.line),
+                    )
+                })
                 .collect()
         } else {
             active_lines
@@ -1261,6 +1289,7 @@ impl Render for Studio {
                         row.line,
                         if display_mode == "subtitle" { 28. } else { 34. },
                         false,
+                        role_color(row.line),
                     )]
                 })
                 .unwrap_or_default()
@@ -1269,7 +1298,12 @@ impl Render for Studio {
             && preview_rows.is_empty()
             && let Some(word) = selected
         {
-            preview_rows.push((word.line, (font_size as f32 / 3.).clamp(16., 42.), false));
+            preview_rows.push((
+                word.line,
+                (font_size as f32 / 3.).clamp(16., 42.),
+                false,
+                role_color(word.line),
+            ));
         }
         if display_mode == "lyricsmv"
             && settings.extra.get("mv_style").and_then(Value::as_str) != Some("single")
@@ -1306,9 +1340,9 @@ impl Render for Studio {
                         continue;
                     };
                     if offset == 0 {
-                        stack.push((*line_id, 34., false));
+                        stack.push((*line_id, 34., false, role_color(*line_id)));
                     } else {
-                        stack.push((*line_id, 22., true));
+                        stack.push((*line_id, 22., true, role_color(*line_id)));
                     }
                 }
                 preview_rows = stack;
@@ -1316,7 +1350,9 @@ impl Render for Studio {
         }
         let current_preview: Vec<_> = preview_rows
             .iter()
-            .map(|(line, size, subdued)| preview_line_element(*line, *size, *subdued))
+            .map(|(line, size, subdued, color)| {
+                preview_line_element(*line, *size, *subdued, *color)
+            })
             .collect();
         let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {

@@ -96,6 +96,7 @@ pub(super) fn visible_lines(
                 .row
                 .or_else(|| role_slots.get(first.role.as_str()).copied())
                 .unwrap_or(fallback_slot)
+                % 2
         } else if mode == "karaoke" {
             fallback_slot
         } else {
@@ -238,6 +239,28 @@ mod tests {
             vec![
                 VisibleLine { line: 0, slot: 0 },
                 VisibleLine { line: 1, slot: 1 },
+            ]
+        );
+    }
+
+    #[test]
+    fn duet_preview_maps_all_roles_to_two_lanes() {
+        let roles = ["male", "female", "voice_c", "voice_d", "voice_e", "voice_f"];
+        let words: Vec<_> = roles
+            .iter()
+            .enumerate()
+            .map(|(line, role)| {
+                let mut word = word("giọng", line as u32, 1., 2.);
+                word.role = (*role).into();
+                word
+            })
+            .collect();
+
+        assert_eq!(
+            visible_lines(&words, &[], 1.5, "karaoke", true),
+            vec![
+                VisibleLine { line: 4, slot: 0 },
+                VisibleLine { line: 5, slot: 1 }
             ]
         );
     }

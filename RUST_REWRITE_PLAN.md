@@ -96,13 +96,13 @@
 > - Đây mới là lát giao diện/lyrics đầu tiên, chưa đạt parity thiết kế đầy đủ;
 > - Preview GPUI lấy cửa sổ hiển thị theo thời gian lời và map beat/reference,
 >   chọn câu mới nhất đang hát hoặc vừa hát cho mỗi lane karaoke; hỗ trợ lane
->   duet theo role/row và cửa sổ một câu cho subtitle. LyricsMV có stack/scroll
->   lân cận. Đây mới là phần lựa chọn dòng và tô chữ, chưa phát hình nền/video
->   hoặc dùng chung layout ASS với renderer.
+>   duet hai lane theo role/row, lấy màu theo role và cửa sổ một câu cho
+>   subtitle. LyricsMV có stack/scroll lân cận. Đây mới là phần lựa chọn dòng
+>   và tô chữ, chưa phát hình nền/video hoặc dùng chung layout ASS với renderer.
 > - Tích hợp text input GPUI từ spike IME vào inspector; hỗ trợ chọn/sửa từ,
 >   paste và phím điều hướng. Sửa chữ cập nhật `words` + `project.text` trong
 >   một command undo/redo; đổi vai áp dụng cho toàn câu bằng một batch.
-> - Kiểm tra sau cập nhật preview: Rust **80/80**, fmt/clippy/check/build pass;
+> - Kiểm tra sau cập nhật preview: Rust **81/81**, fmt/clippy/check/build pass;
 >   Python **167/167**, Node **17/17** pass.
 > - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
 >   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
