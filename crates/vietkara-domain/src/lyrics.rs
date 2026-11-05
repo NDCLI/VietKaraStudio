@@ -11,6 +11,41 @@ pub enum ImportError {
     #[error(transparent)]
     Invalid(#[from] ProjectError),
 }
+
+/// Rebuild `project.text` from timed words using the Python studio's line
+/// ordering and blank-line marker behavior.
+pub fn text_from_words(words: &[Word]) -> String {
+    let mut indexes = std::collections::HashMap::new();
+    let mut lines: Vec<(u32, Vec<&Word>)> = Vec::new();
+    for word in words {
+        let index = if let Some(index) = indexes.get(&word.line) {
+            *index
+        } else {
+            let index = lines.len();
+            lines.push((word.line, vec![word]));
+            indexes.insert(word.line, index);
+            continue;
+        };
+        lines[index].1.push(word);
+    }
+    let mut output = String::new();
+    for (index, (_, line)) in lines.iter().enumerate() {
+        if index > 0 {
+            output.push('\n');
+            if line.first().is_some_and(|word| word.section == Some(true)) {
+                output.push('\n');
+            }
+        }
+        output.push_str(
+            &line
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+    }
+    output
+}
 pub fn import_srt(project: &Project, source: &str) -> Result<Command, ImportError> {
     project.validate()?;
     if project.words.iter().any(|word| word.locked == Some(true)) {
@@ -177,6 +212,10 @@ mod estimate_tests {
         assert_ne!(words[1].line_uid, words[2].line_uid);
         assert!(words.iter().all(|word| word.estimated));
         assert!((words[0].start - 3.).abs() < 1e-9);
+        assert_eq!(text_from_words(&words), text);
+        let mut section_words = words;
+        section_words[2].section = Some(true);
+        assert_eq!(text_from_words(&section_words), "Xin chào\n\nTạm biệt");
     }
 
     #[test]

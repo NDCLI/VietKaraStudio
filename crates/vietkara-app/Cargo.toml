@@ -10,8 +10,8 @@ vietkara-domain = { path = "../vietkara-domain" }
 vietkara-storage = { path = "../vietkara-storage" }
 vietkara-media = { path = "../vietkara-media" }
 serde_json = "1"
+unicode-segmentation = "1.10"
 
 
 [dev-dependencies]
-unicode-segmentation = "1.10"
 tempfile = "3"

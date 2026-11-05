@@ -97,9 +97,15 @@
 > - Preview GPUI hiện lấy dòng theo từ đang phát/đang chọn, tô trạng thái từng
 >   từ theo thời gian beat đã map sang bản hát và đổi cách trình bày theo mode.
 >   Nó chưa phát hình nền/video và chưa dùng chung layout ASS với renderer.
-> - Sau phần preview có nhịp: Rust **77/77**, fmt/clippy/check/build pass;
->   Python **167/167**, Node **17/17** pass. Giao diện vẫn cần kiểm tra ảnh
->   runtime và đối chiếu trực tiếp với màn hình Python.
+> - Tích hợp text input GPUI từ spike IME vào inspector; hỗ trợ chọn/sửa từ,
+>   paste và phím điều hướng. Sửa chữ cập nhật `words` + `project.text` trong
+>   một command undo/redo; đổi vai áp dụng cho toàn câu bằng một batch.
+> - Kiểm tra: Rust **78/78**, fmt/clippy/check/build pass; Python **167/167**,
+>   Node **17/17** pass. App khởi chạy với fixture schema 2. Accessibility
+>   tree của cửa sổ GPUI không đọc được trong công cụ desktop, nên thao tác gõ
+>   IME trực tiếp trên input sản phẩm vẫn cần kiểm tra thủ công.
+> - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
+>   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
 
 ## 1. Mục tiêu và phạm vi
 

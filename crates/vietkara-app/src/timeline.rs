@@ -30,7 +30,10 @@ impl Studio {
         if word.locked == Some(true) {
             return;
         }
-        self.selected_word = Some(word.id.clone());
+        let word_id = word.id.clone();
+        let word_text = word.text.clone();
+        self.selected_word = Some(word_id);
+        self.set_word_input(&word_text, cx);
         self.timeline_drag = Some(TimelineDrag {
             index,
             edge,

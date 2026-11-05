@@ -1,6 +1,7 @@
+mod text_input;
 mod timeline;
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
+    App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
     MouseButton, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
@@ -44,6 +45,7 @@ struct TapSession {
 }
 struct Studio {
     editor: Editor,
+    word_input: Entity<text_input::TextInput>,
     focus_handle: FocusHandle,
     edit_status: String,
     playing: bool,
@@ -75,6 +77,130 @@ struct Studio {
 }
 
 impl Studio {
+    pub(crate) fn set_word_input(&mut self, value: &str, cx: &mut Context<Self>) {
+        self.word_input.update(cx, |input, cx| {
+            input.set_value(value);
+            cx.notify();
+        });
+    }
+
+    fn apply_word_text(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(id) = self.selected_word.clone() else {
+            self.edit_status = "Chọn một từ trước khi sửa nội dung".into();
+            cx.notify();
+            return;
+        };
+        let Some(mut word) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        let text = self.word_input.read(cx).value().trim().to_owned();
+        if text.is_empty() || text.chars().count() > 200 {
+            self.edit_status = "Nội dung từ cần có 1–200 ký tự".into();
+            cx.notify();
+            return;
+        }
+        if word.locked == Some(true) {
+            self.edit_status = "Câu này đang khóa".into();
+            cx.notify();
+            return;
+        }
+        if word.text == text {
+            return;
+        }
+        word.text = text;
+        let mut words = self.editor.project().words.clone();
+        let Some(index) = words.iter().position(|item| item.id == id) else {
+            return;
+        };
+        words[index] = word.clone();
+        let project_text = vietkara_domain::lyrics::text_from_words(&words);
+        self.edit_status = match self.editor.execute(Command::ReplaceWordText {
+            id,
+            word: Box::new(word),
+            text: project_text,
+        }) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã sửa từ • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
+    fn cycle_selected_role(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        let Some(id) = self.selected_word.clone() else {
+            return;
+        };
+        let Some(selected) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        let words: Vec<_> = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .filter(|word| word.line_uid == selected.line_uid)
+            .collect();
+        if words.iter().any(|word| word.locked == Some(true)) {
+            self.edit_status = "Câu này đang khóa".into();
+            cx.notify();
+            return;
+        }
+        let roles = [
+            "all", "male", "female", "voice_c", "voice_d", "voice_e", "voice_f", "unknown",
+        ];
+        let index = roles
+            .iter()
+            .position(|role| *role == selected.role)
+            .unwrap_or(0);
+        let next_role = roles[(index + 1) % roles.len()];
+        let label = role_label(next_role);
+        let edits = words
+            .into_iter()
+            .map(|word| {
+                let mut updated = word.clone();
+                updated.role = next_role.into();
+                Command::ReplaceWord {
+                    id: word.id.clone(),
+                    word: Box::new(updated),
+                }
+            })
+            .collect();
+        self.edit_status = match self.editor.execute(Command::Batch(edits)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                format!("Đã đổi vai câu: {label} • chưa lưu")
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
     fn update_setting(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.recovery.is_some() || self.tapping.is_some() {
             return;
@@ -186,6 +312,7 @@ impl Studio {
                         Ok(editor) => {
                             this.editor = editor;
                             this.selected_word = None;
+                            this.set_word_input("", cx);
                             this.dirty = false;
                             this.autosave_pending = false;
                             this.edit_status = format!(
@@ -220,14 +347,22 @@ impl Studio {
         cx.notify();
     }
     fn previous_tap(&mut self, cx: &mut Context<Self>) {
-        let Some(session) = &mut self.tapping else {
-            return;
+        let (tap, id, text) = {
+            let Some(session) = &mut self.tapping else {
+                return;
+            };
+            let Some(tap) = session.clock.back() else {
+                return;
+            };
+            session.words[tap.index] = self.editor.project().words[tap.index].clone();
+            (
+                tap,
+                session.words[tap.index].id.clone(),
+                session.words[tap.index].text.clone(),
+            )
         };
-        let Some(tap) = session.clock.back() else {
-            return;
-        };
-        session.words[tap.index] = self.editor.project().words[tap.index].clone();
-        self.selected_word = Some(session.words[tap.index].id.clone());
+        self.selected_word = Some(id);
+        self.set_word_input(&text, cx);
         self.autosave_pending = true;
         #[cfg(windows)]
         if let Some(worker) = &self.playback {
@@ -287,20 +422,34 @@ impl Studio {
         let Some(tap) = tap else {
             return;
         };
-        let Some(session) = &mut self.tapping else {
-            return;
+        let outcome = {
+            let Some(session) = &mut self.tapping else {
+                return;
+            };
+            let mut project = self.editor.project().clone();
+            project.words = session.words.clone();
+            match vietkara_domain::tapping::tap_command(&project, tap) {
+                Ok(Command::ReplaceWord { word, .. }) => {
+                    let id = word.id.clone();
+                    let text = word.text.clone();
+                    session.words[tap.index] = *word;
+                    Ok(Some((id, text)))
+                }
+                Err(error) => {
+                    session.clock.back();
+                    Err(error)
+                }
+                _ => Ok(None),
+            }
         };
-        let mut project = self.editor.project().clone();
-        project.words = session.words.clone();
-        match vietkara_domain::tapping::tap_command(&project, tap) {
-            Ok(Command::ReplaceWord { word, .. }) => {
-                self.selected_word = Some(word.id.clone());
-                session.words[tap.index] = *word;
+        match outcome {
+            Ok(Some((id, text))) => {
+                self.selected_word = Some(id);
+                self.set_word_input(&text, cx);
                 self.autosave_pending = true;
                 cx.notify();
             }
             Err(error) => {
-                session.clock.back();
                 self.edit_status = error;
                 cx.notify();
             }
@@ -397,6 +546,7 @@ impl Studio {
             .iter()
             .find(|word| word.id == id)
         {
+            let text = word.text.clone();
             let beat = vietkara_domain::timing::map_time(
                 word.start,
                 &self.editor.project().anchors,
@@ -412,6 +562,7 @@ impl Studio {
             #[cfg(not(windows))]
             let _ = beat;
             self.selected_word = Some(id);
+            self.set_word_input(&text, cx);
             cx.notify();
         }
     }
@@ -696,6 +847,20 @@ impl Studio {
             Ok(_) => {
                 self.dirty = true;
                 self.autosave_pending = true;
+                self.selected_word = self
+                    .editor
+                    .project()
+                    .words
+                    .first()
+                    .map(|word| word.id.clone());
+                let first_text = self
+                    .editor
+                    .project()
+                    .words
+                    .first()
+                    .map(|word| word.text.clone())
+                    .unwrap_or_default();
+                self.set_word_input(&first_text, cx);
                 "Đã thay lời • chưa lưu".into()
             }
             Err(error) => error.to_string(),
@@ -774,6 +939,7 @@ impl Studio {
                         this.dirty = false;
                         this.edit_status = "Đã mở project".into();
                         this.selected_word = None;
+                        this.set_word_input("", cx);
                         this.reset_playback();
                     }
                     Ok(None) => this.edit_status = "Đã hủy mở project".into(),
@@ -960,6 +1126,7 @@ impl Studio {
         } else {
             self.editor.undo()
         };
+        let changed = matches!(&result, Ok(Some(_)));
         self.edit_status = match result {
             Ok(Some(_)) => {
                 self.dirty = true;
@@ -974,6 +1141,21 @@ impl Studio {
             Ok(None) => "Không có thay đổi trong lịch sử".into(),
             Err(error) => error.to_string(),
         };
+        if changed {
+            let text = self
+                .selected_word
+                .as_ref()
+                .and_then(|id| {
+                    self.editor
+                        .project()
+                        .words
+                        .iter()
+                        .find(|word| &word.id == id)
+                })
+                .map(|word| word.text.clone())
+                .unwrap_or_default();
+            self.set_word_input(&text, cx);
+        }
         cx.notify();
     }
 }
@@ -1005,11 +1187,9 @@ impl Render for Studio {
         let selected = display_words
             .iter()
             .find(|word| Some(&word.id) == self.selected_word.as_ref());
-        let selected_text = selected
-            .map(|word| word.text.clone())
-            .unwrap_or_else(|| "Chọn một từ trên timeline".into());
         let selected_start = selected.map(|word| word.start).unwrap_or(0.);
         let selected_end = selected.map(|word| word.end).unwrap_or(0.);
+        let selected_role = selected.map(|word| role_label(&word.role)).unwrap_or("—");
         let settings = &self.editor.project().settings;
         let display_mode = settings
             .extra
@@ -1398,10 +1578,15 @@ impl Render for Studio {
                             .child(
                                 div()
                                     .mt_2()
-                                    .p_2()
-                                    .bg(rgb(0x17191f))
-                                    .child(selected_text),
+                                    .child(self.word_input.clone()),
                             )
+                            .child(div().mt_2().flex().gap_2()
+                                .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2()
+                                    .child("Áp dụng chữ")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_word_text(cx))))
+                                .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Vai: {selected_role}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_role(cx)))))
                             .child(div().mt_4().child(format!("Bắt đầu {selected_start:.3}s")))
                             .child(div().mt_2().child(format!("Kết thúc {selected_end:.3}s")))
                             .children([(true,-0.05,"Đầu −50ms"),(true,0.05,"Đầu +50ms"),(false,-0.05,"Cuối −50ms"),(false,0.05,"Cuối +50ms")].into_iter().map(|(start,delta,label)|
@@ -1475,6 +1660,19 @@ fn setting_color(settings: &vietkara_domain::settings::Settings, key: &str, fall
         .unwrap_or(fallback)
 }
 
+fn role_label(role: &str) -> &'static str {
+    match role {
+        "male" => "Nam",
+        "female" => "Nữ",
+        "voice_c" => "Giọng 3",
+        "voice_d" => "Giọng 4",
+        "voice_e" => "Giọng 5",
+        "voice_f" => "Giọng 6",
+        "unknown" => "Chưa rõ",
+        _ => "Cùng hát",
+    }
+}
+
 fn main() {
     let path = std::env::args_os().nth(1).map(PathBuf::from);
     let project = match path
@@ -1497,6 +1695,7 @@ fn main() {
         Err(error) => (None, format!("Không đọc được recovery: {error}")),
     };
     Application::new().run(move |cx: &mut App| {
+        cx.bind_keys(text_input::key_bindings());
         cx.bind_keys([
             KeyBinding::new("ctrl-b", ImportBeat, Some("Studio")),
             KeyBinding::new("ctrl-r", ImportReference, Some("Studio")),
@@ -1521,6 +1720,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
+                let word_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 cx.new(|cx: &mut Context<Studio>| {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
@@ -1616,6 +1816,7 @@ fn main() {
                     });
                     let mut studio = Studio {
                         focus_handle,
+                        word_input,
                         editor: Editor::new(project).expect("Project mới phải hợp lệ"),
                         edit_status: initial_status,
                         path,

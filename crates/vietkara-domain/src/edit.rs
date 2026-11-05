@@ -22,6 +22,11 @@ pub enum Command {
         id: String,
         word: Box<Word>,
     },
+    ReplaceWordText {
+        id: String,
+        word: Box<Word>,
+        text: String,
+    },
     SetAnchors(Vec<Anchor>),
     SetSettings(crate::settings::Settings),
     SetScenes(Vec<Value>),
@@ -87,6 +92,23 @@ impl Command {
                 Self::ReplaceWord {
                     id: id.clone(),
                     word: Box::new(std::mem::replace(target, *word.clone())),
+                }
+            }
+            Self::ReplaceWordText { id, word, text } => {
+                if word.id != *id {
+                    return Err(EditError::ChangedWordId);
+                }
+                let target = project
+                    .words
+                    .iter_mut()
+                    .find(|current| current.id == *id)
+                    .ok_or_else(|| EditError::MissingWord(id.clone()))?;
+                let old_word = std::mem::replace(target, *word.clone());
+                let old_text = std::mem::replace(&mut project.text, text.clone());
+                Self::ReplaceWordText {
+                    id: id.clone(),
+                    word: Box::new(old_word),
+                    text: old_text,
                 }
             }
             Self::SetAnchors(value) => {
@@ -205,6 +227,29 @@ mod tests {
             serde_json::to_value(Project::load(path).unwrap()).unwrap(),
             edited
         );
+    }
+    #[test]
+    fn word_text_edit_updates_project_text_and_undo_redo_together() {
+        let original = fixture();
+        let mut editor = Editor::new(original.clone()).unwrap();
+        let mut words = original.words.clone();
+        words[0].text = "Chào".into();
+        let text = crate::lyrics::text_from_words(&words);
+        editor
+            .execute(Command::ReplaceWordText {
+                id: words[0].id.clone(),
+                word: Box::new(words[0].clone()),
+                text: text.clone(),
+            })
+            .unwrap();
+        assert_eq!(editor.project().text, text);
+        assert_eq!(editor.project().words[0].text, "Chào");
+        editor.undo().unwrap();
+        assert_eq!(editor.project().text, original.text);
+        assert_eq!(editor.project().words[0].text, original.words[0].text);
+        editor.redo().unwrap();
+        assert_eq!(editor.project().text, text);
+        assert_eq!(editor.project().words[0].text, "Chào");
     }
     #[test]
     fn failed_command_preserves_project_and_redo() {
