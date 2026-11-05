@@ -247,6 +247,9 @@
 >   thời gian đầu bài. Test conversion PNG + metadata/snapshot và từ chối file
 >   không hợp lệ **2/2** pass; app unit tests **8/8**, workspace check/Clippy
 >   sạch.
+> - Inspector/preview hỗ trợ subtitle backing: bật/tắt, chọn màu, opacity,
+>   radius; GPUI chỉ vẽ trong subtitle mode và dùng đúng các settings ASS.
+>   App fmt/check/Clippy sạch, unit tests **8/8** pass.
 
 ## 1. Mục tiêu và phạm vi
 

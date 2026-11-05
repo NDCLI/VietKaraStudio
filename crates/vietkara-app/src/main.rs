@@ -2102,6 +2102,26 @@ impl Render for Studio {
             .get("title_color")
             .and_then(Value::as_str)
             .unwrap_or("#ffffff");
+        let subtitle_box = settings
+            .extra
+            .get("subtitle_box")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let subtitle_box_color = settings
+            .extra
+            .get("subtitle_box_color")
+            .and_then(Value::as_str)
+            .unwrap_or("#000000");
+        let subtitle_box_opacity = settings
+            .extra
+            .get("subtitle_box_opacity")
+            .and_then(Value::as_f64)
+            .unwrap_or(50.0);
+        let subtitle_box_radius = settings
+            .extra
+            .get("subtitle_box_radius")
+            .and_then(Value::as_f64)
+            .unwrap_or(8.0);
         let singing_mode = settings
             .extra
             .get("singing_mode")
@@ -2521,6 +2541,22 @@ impl Render for Studio {
                     })
                     .collect()
             };
+        if display_mode == "subtitle" && subtitle_box && !active_plan_rows.is_empty() {
+            let row = &layout.rows[active_plan_rows[0]];
+            let color = preview_hex_color(subtitle_box_color);
+            current_preview.insert(
+                0,
+                div()
+                    .absolute()
+                    .left(px(row.x as f32 * preview_scale - 10.0 * preview_scale))
+                    .top(px(row.y as f32 * preview_scale - 6.0 * preview_scale))
+                    .w(px(row.width as f32 * preview_scale + 20.0 * preview_scale))
+                    .h(px(row.height as f32 * preview_scale + 12.0 * preview_scale))
+                    .rounded(px(subtitle_box_radius as f32 * preview_scale))
+                    .bg(rgb(color))
+                    .opacity((subtitle_box_opacity / 100.0) as f32),
+            );
+        }
         if show_readability {
             for &row_index in &active_plan_rows {
                 let row = &layout.rows[row_index];
@@ -3005,6 +3041,26 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(match display_mode {"lyricsmv"=>"Lời nổi bật theo câu", "subtitle"=>"Phụ đề", _=>"Karaoke · quét từng từ"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("display_mode",&["karaoke","lyricsmv","subtitle"],cx))))
+                                .when(display_mode == "subtitle",|panel|panel
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(if subtitle_box {"✓  Hộp nền phụ đề"} else {"Hộp nền phụ đề đang tắt"})
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                            let enabled=this.editor.project().settings.extra.get("subtitle_box").and_then(Value::as_bool).unwrap_or(true);
+                                            this.update_setting("subtitle_box",Value::Bool(!enabled),cx);
+                                        })))
+                                    .when(subtitle_box,|panel|panel
+                                        .child(div().mt_2().child(format!("Độ mờ nền: {subtitle_box_opacity:.0}%"))
+                                            .child(div().flex().gap_3()
+                                                .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("subtitle_box_opacity",-5.0,0.0,100.0,cx))))
+                                                .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("subtitle_box_opacity",5.0,0.0,100.0,cx))))))
+                                        .child(div().mt_2().child(format!("Bo góc: {subtitle_box_radius:.0}px"))
+                                            .child(div().flex().gap_3()
+                                                .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("subtitle_box_radius",-2.0,0.0,40.0,cx))))
+                                                .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("subtitle_box_radius",2.0,0.0,40.0,cx))))))
+                                        .child(div().mt_2().flex().gap_2()
+                                            .children([("Đen","#000000"),("Xanh đêm","#101d2b"),("Tím","#221c35")].into_iter().map(|(label,color)|
+                                                div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child(label)
+                                                    .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("subtitle_box_color",Value::String(color.into()),cx))))))))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("KHUNG HÌNH"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(if is_portrait{"9:16 · Dọc"}else{"16:9 · Ngang"})
