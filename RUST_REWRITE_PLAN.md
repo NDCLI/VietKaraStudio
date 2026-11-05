@@ -162,9 +162,12 @@
 >   beat anchors, show windows, alignment và word positions; invariant hai
 >   lane được giữ. GPUI preview karaoke đã gọi planner, đo glyph tiếng Việt
 >   bằng `WindowTextSystem::shape_line`, cache plan theo nội dung/settings và
->   đặt từng từ theo tọa độ/cỡ chữ trong canvas. ASS export chưa dùng planner;
->   adapter đo font bên renderer và marker/title/gradient/countdown vẫn còn.
->   Workspace **98/98**, fmt/clippy/check/build app đều pass trên Windows.
+>   đặt từng từ theo tọa độ/cỡ chữ trong canvas. `ass::build_lyrics_ass` và
+>   `RenderInputs::prepare_lyrics_ass` đã nhận cùng plan, xuất row karaoke với
+>   sweep từng từ hoặc subtitle row đơn; writer chỉ tạo file mới, không ghi đè.
+>   Integration test dựng thật bằng FFmpeg xác nhận ASS hợp lệ. Chưa nối writer
+>   vào action export GPUI; title/marker/gradient/countdown/readability backing
+>   chưa port. Workspace **104/104**, fmt/clippy/check/build app đều pass.
 
 ## 1. Mục tiêu và phạm vi
 

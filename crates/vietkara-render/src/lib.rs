@@ -16,20 +16,22 @@
 //!   — the rules from `render_info.describe` / `encoding_options`.
 //! * `ffmpeg_command` — a pure argv builder for color/image/video
 //!   backgrounds, scene layers, logo/countdown overlays and guide audio.
+//! * `layout::display_plan` and `ass::build_lyrics_ass` — measured lyric row
+//!   geometry and the first native subtitle pass, consuming the same plan.
 //! * `verify_output` — runs `ffprobe` on a rendered file.
 //!
 //! # Explicitly NOT in scope (Phase 4, after the layout contract
 //! stabilises)
 //!
-//! * `build_ass()` / `display_plan()` layout: that needs font
-//!   measurement (PIL / fontTools, Windows fonts) to compute row
-//!   positions, word widths and line wrapping. Porting it now, on
-//!   Linux with different fonts, would produce different layout and
-//!   different golden ASS output. Do not try to port `display_plan`
-//!   here.
+//! * `TextMeasurer` is injected so preview/export can use the same actual font
+//!   face. GPUI currently supplies the Windows preview measurer; the export
+//!   action must pass its cached `DisplayPlan` to `prepare_lyrics_ass`.
+//! * ASS currently covers planned row placement, simple subtitle rows, duet
+//!   colors and timed karaoke word sweeps. Role artwork, gradients, title,
+//!   readability backing and text/glyph countdown layers remain unported.
 //! * Scene image and decoration position/scale/alpha, logo effects and custom
-//!   image countdown overlays are supported. Full ASS `display_plan`, text or
-//!   glyph countdown modes and the NVENC fallback remain outside this slice.
+//!   image countdown overlays are supported. The GPUI export action and
+//!   NVENC fallback remain outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -43,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+pub mod ass;
 pub mod layout;
 
 // ---------------------------------------------------------------------------
@@ -775,6 +778,33 @@ impl RenderInputs {
             ffmpeg: PathBuf::from("ffmpeg"),
             encoder: VideoEncoder::Libx264,
         }
+    }
+
+    /// Serialize the shared measured plan to an export-local ASS file and
+    /// point the FFmpeg command at it. The caller should place `path` inside
+    /// its temporary render directory, never over the user's project files.
+    pub fn prepare_lyrics_ass(
+        &mut self,
+        project: &vietkara_domain::Project,
+        plan: &layout::DisplayPlan,
+        path: impl AsRef<Path>,
+    ) -> Result<(), RenderError> {
+        let path = path.as_ref();
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        if let Err(error) = file
+            .write_all(ass::build_lyrics_ass(project, plan).as_bytes())
+            .and_then(|()| file.sync_all())
+        {
+            drop(file);
+            let _ = std::fs::remove_file(path);
+            return Err(error.into());
+        }
+        self.ass_file = path.to_path_buf();
+        Ok(())
     }
 
     /// Resolve the legacy Python background settings and project media names
