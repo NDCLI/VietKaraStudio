@@ -1235,6 +1235,27 @@ impl Render for Studio {
             .get("display_mode")
             .and_then(Value::as_str)
             .unwrap_or("karaoke");
+        let display_position = settings
+            .extra
+            .get("position")
+            .and_then(Value::as_str)
+            .unwrap_or("bottom");
+        let display_align = settings
+            .extra
+            .get("align")
+            .and_then(Value::as_str)
+            .unwrap_or("center");
+        let position_label = match display_position {
+            "top" => "Trên",
+            "center" => "Giữa",
+            _ => "Dưới",
+        };
+        let align_label = match display_align {
+            "left" => "Trái",
+            "right" => "Phải",
+            "justify" => "Căn theo lane",
+            _ => "Giữa",
+        };
         let is_portrait = settings.aspect == vietkara_domain::settings::Aspect::Portrait;
         let italic = settings
             .extra
@@ -1280,32 +1301,41 @@ impl Render for Studio {
         );
         let selected_id = self.selected_word.as_deref();
         let preview_line_element = |line: u32, size: f32, subdued: bool, line_color: u32| {
-            div().flex().justify_center().gap_2().children(
-                display_words
-                    .iter()
-                    .filter(move |word| word.line == line)
-                    .map(|word| {
-                        let active =
-                            reference_position >= word.start && reference_position < word.end;
-                        let sung = reference_position >= word.end;
-                        let color = if subdued {
-                            0xc4ccd5
-                        } else if display_mode == "subtitle" {
-                            unsung_color
-                        } else if display_mode == "lyricsmv" || active || sung {
-                            line_color
-                        } else if Some(word.id.as_str()) == selected_id {
-                            0xffdf79
-                        } else {
-                            0xffffff
-                        };
-                        div()
-                            .text_size(px(size))
-                            .text_color(rgb(color))
-                            .when(italic, |text| text.italic())
-                            .child(word.text.clone())
-                    }),
-            )
+            let line_align = preview_alignment(display_align, line, &active_lines);
+            div()
+                .w_full()
+                .flex()
+                .items_center()
+                .when(line_align == "left", |row| row.justify_start())
+                .when(line_align == "center", |row| row.justify_center())
+                .when(line_align == "right", |row| row.justify_end())
+                .gap_2()
+                .children(
+                    display_words
+                        .iter()
+                        .filter(move |word| word.line == line)
+                        .map(|word| {
+                            let active =
+                                reference_position >= word.start && reference_position < word.end;
+                            let sung = reference_position >= word.end;
+                            let color = if subdued {
+                                0xc4ccd5
+                            } else if display_mode == "subtitle" {
+                                unsung_color
+                            } else if display_mode == "lyricsmv" || active || sung {
+                                line_color
+                            } else if Some(word.id.as_str()) == selected_id {
+                                0xffdf79
+                            } else {
+                                0xffffff
+                            };
+                            div()
+                                .text_size(px(size))
+                                .text_color(rgb(color))
+                                .when(italic, |text| text.italic())
+                                .child(word.text.clone())
+                        }),
+                )
         };
         let mut preview_rows: Vec<(u32, f32, bool, u32)> = if display_mode == "karaoke" {
             active_lines
@@ -1663,7 +1693,13 @@ impl Render for Studio {
                                             .justify_center()
                                             .items_center()
                                             .child(div()
-                                                .flex().flex_col().justify_center().items_center()
+                                                .flex().flex_col()
+                                                .when(display_position == "top", |frame| frame.justify_start())
+                                                .when(display_position == "center", |frame| frame.justify_center())
+                                                .when(display_position != "top" && display_position != "center", |frame| frame.justify_end())
+                                                .when(display_align == "left", |frame| frame.items_start())
+                                                .when(display_align == "center" || display_align == "justify", |frame| frame.items_center())
+                                                .when(display_align == "right", |frame| frame.items_end())
                                                 .w(if is_portrait {px(portrait_width)} else {px(workspace.preview)})
                                                 .h(px(preview_height))
                                                 .rounded_sm().bg(rgb(0x101d2b))
@@ -1752,6 +1788,13 @@ impl Render for Studio {
                                 .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(if italic{"✓  Chữ nghiêng"}else{"Chữ nghiêng"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{let v=!this.editor.project().settings.extra.get("italic").and_then(Value::as_bool).unwrap_or(false);this.update_setting("italic",Value::Bool(v),cx);})))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("VỊ TRÍ LỜI"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Vị trí: {position_label}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("position",&["bottom","center","top"],cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Căn lề: {align_label}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("align",&["center","left","right","justify"],cx))))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("MÀU CHỮ ĐÃ HÁT"))
                                 .child(div().mt_2().flex().gap_2()
                                     .children([("Xanh ngọc","#52efb9"),("Vàng","#f4cf72"),("Hồng","#ff87b7")].into_iter().map(|(label,color)|
@@ -1793,6 +1836,23 @@ fn setting_color(settings: &vietkara_domain::settings::Settings, key: &str, fall
         .and_then(|value| value.strip_prefix('#'))
         .and_then(|value| u32::from_str_radix(value, 16).ok())
         .unwrap_or(fallback)
+}
+
+fn preview_alignment(
+    align: &str,
+    line: u32,
+    active_lines: &[preview::VisibleLine],
+) -> &'static str {
+    match align {
+        "left" => "left",
+        "right" => "right",
+        "justify" => active_lines
+            .iter()
+            .find(|row| row.line == line)
+            .map(|row| if row.slot == 0 { "left" } else { "right" })
+            .unwrap_or("left"),
+        _ => "center",
+    }
 }
 
 fn role_label(role: &str) -> &'static str {
@@ -2021,5 +2081,16 @@ mod workspace_tests {
                 right: 270.,
             }
         );
+    }
+
+    #[test]
+    fn justified_karaoke_aligns_the_two_lanes_outward() {
+        let rows = [
+            preview::VisibleLine { line: 7, slot: 0 },
+            preview::VisibleLine { line: 8, slot: 1 },
+        ];
+        assert_eq!(preview_alignment("justify", 7, &rows), "left");
+        assert_eq!(preview_alignment("justify", 8, &rows), "right");
+        assert_eq!(preview_alignment("center", 7, &rows), "center");
     }
 }
