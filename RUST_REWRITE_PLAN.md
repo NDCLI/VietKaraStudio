@@ -325,6 +325,9 @@
 >   Test kiểm tra vị trí reference được nội suy và từ chối anchor gần trùng.
 >   Đường kéo kiểm tra riêng ràng buộc anchor để tránh clone/validate toàn bộ
 >   project ở mỗi mouse-move; domain validation đầy đủ vẫn chạy một lần khi thả.
+> - Anchor trên timeline có trạng thái chọn riêng; có thể xóa anchor được chọn
+>   qua `SetAnchors`, giữ undo/redo và autosave. Thêm anchor mới sẽ tự chọn nó;
+>   đổi project hoặc undo/redo sẽ xóa trạng thái chọn cũ để tránh nhầm index.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -56,6 +56,7 @@ struct Studio {
     edit_status: String,
     playing: bool,
     selected_word: Option<String>,
+    selected_anchor: Option<usize>,
     timeline_zoom: f32,
     timeline_drag: Option<timeline::TimelineDrag>,
     timeline_scroll: ScrollHandle,
@@ -1527,6 +1528,7 @@ impl Studio {
                             this.editor = editor;
                             this.listen_track = slot;
                             this.selected_word = None;
+                            this.selected_anchor = None;
                             this.set_word_input("", cx);
                             this.dirty = false;
                             this.autosave_pending = false;
@@ -2253,6 +2255,7 @@ impl Studio {
                     Ok(Some((path, editor, recovery))) => {
                         this.path = Some(path);
                         this.editor = editor;
+                        this.selected_anchor = None;
                         this.recovery = recovery;
                         this.autosave_pending = false;
                         this.dirty = false;
@@ -2276,6 +2279,7 @@ impl Studio {
                 match Editor::new(candidate.accept()) {
                     Ok(editor) => {
                         self.editor = editor;
+                        self.selected_anchor = None;
                         self.dirty = true;
                         self.edit_status = "Đã khôi phục vào bộ nhớ • chưa lưu".into();
                     }
@@ -2627,6 +2631,7 @@ impl Studio {
             Err(error) => error.to_string(),
         };
         if changed {
+            self.selected_anchor = None;
             let text = self
                 .selected_word
                 .as_ref()
@@ -4821,6 +4826,7 @@ fn main() {
                         inspector_design: false,
                         playing: false,
                         selected_word: None,
+                        selected_anchor: None,
                         timeline_zoom: 80.,
                         timeline_drag: None,
                         timeline_scroll: ScrollHandle::new(),

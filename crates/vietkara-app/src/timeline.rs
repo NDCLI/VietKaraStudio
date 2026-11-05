@@ -84,6 +84,18 @@ fn anchors_valid(anchors: &[vietkara_domain::Anchor]) -> bool {
         })
 }
 
+fn remove_anchor_at(
+    anchors: &[vietkara_domain::Anchor],
+    index: usize,
+) -> Option<Vec<vietkara_domain::Anchor>> {
+    if index >= anchors.len() {
+        return None;
+    }
+    let mut candidate = anchors.to_vec();
+    candidate.remove(index);
+    Some(candidate)
+}
+
 pub(super) fn project_timeline_duration(
     project: &Project,
     playback_duration: f64,
@@ -147,11 +159,49 @@ impl Studio {
                 return;
             }
         };
+        let selected_anchor = candidate
+            .iter()
+            .position(|anchor| (anchor.beat - self.play_position).abs() < 0.0001);
         self.edit_status = match self.editor.execute(Command::SetAnchors(candidate)) {
             Ok(_) => {
+                self.selected_anchor = selected_anchor;
                 self.dirty = true;
                 self.autosave_pending = true;
                 "Đã thêm anchor tại playhead • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
+    pub(super) fn remove_selected_anchor(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+        {
+            return;
+        }
+        let Some(index) = self.selected_anchor else {
+            self.edit_status = "Chọn một anchor trên timeline để xóa".into();
+            cx.notify();
+            return;
+        };
+        let Some(candidate) = remove_anchor_at(&self.editor.project().anchors, index) else {
+            self.selected_anchor = None;
+            self.edit_status = "Anchor đã thay đổi, hãy chọn lại".into();
+            cx.notify();
+            return;
+        };
+        self.edit_status = match self.editor.execute(Command::SetAnchors(candidate)) {
+            Ok(_) => {
+                self.selected_anchor = None;
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã xóa anchor • chưa lưu".into()
             }
             Err(error) => error.to_string(),
         };
@@ -232,6 +282,7 @@ impl Studio {
         let Some(anchor) = self.editor.project().anchors.get(index) else {
             return;
         };
+        self.selected_anchor = Some(index);
         self.timeline_drag = Some(TimelineDrag {
             index: 0,
             edge: vietkara_domain::timeline::Edge::Start,
@@ -409,7 +460,11 @@ impl Studio {
                     .w(px(6.))
                     .h(px(84.))
                     .rounded_full()
-                    .bg(rgb(0xffbe55))
+                    .bg(rgb(if self.selected_anchor == Some(index) {
+                        0xffe08a
+                    } else {
+                        0xffbe55
+                    }))
                     .cursor_pointer()
                     .on_mouse_down(
                         MouseButton::Left,
@@ -512,6 +567,22 @@ impl Studio {
                                 cx.listener(|this, _, _, cx| this.add_anchor_at_playhead(cx)),
                             ),
                     )
+                    .child(
+                        div()
+                            .cursor_pointer()
+                            .rounded_sm()
+                            .bg(rgb(if self.selected_anchor.is_some() {
+                                0x713b3b
+                            } else {
+                                theme::CANVAS
+                            }))
+                            .px_2()
+                            .child("Xóa anchor")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| this.remove_selected_anchor(cx)),
+                            ),
+                    )
                     .child(div().cursor_pointer().child("Zoom +").on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
@@ -537,8 +608,8 @@ impl Studio {
 mod tests {
     use super::super::AudioSlot;
     use super::{
-        anchors_valid, clamp_seek_position, insert_anchor_at_beat, timeline_to_track_time,
-        track_to_timeline_time, waveform_timeline_interval,
+        anchors_valid, clamp_seek_position, insert_anchor_at_beat, remove_anchor_at,
+        timeline_to_track_time, track_to_timeline_time, waveform_timeline_interval,
     };
     use vietkara_domain::Anchor;
 
@@ -629,5 +700,22 @@ mod tests {
         let mut crossed = inserted;
         crossed[1].beat = crossed[2].beat + 1.0;
         assert!(!anchors_valid(&crossed));
+    }
+
+    #[test]
+    fn removing_anchor_preserves_order_and_checks_selection_bounds() {
+        let anchors = vec![
+            Anchor {
+                r#ref: 10.0,
+                beat: 12.0,
+            },
+            Anchor {
+                r#ref: 20.0,
+                beat: 22.0,
+            },
+        ];
+        let remaining = remove_anchor_at(&anchors, 0).unwrap();
+        assert_eq!(remaining, vec![anchors[1].clone()]);
+        assert!(remove_anchor_at(&anchors, 2).is_none());
     }
 }
