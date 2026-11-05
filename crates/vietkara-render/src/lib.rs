@@ -28,9 +28,8 @@
 //!   Linux with different fonts, would produce different layout and
 //!   different golden ASS output. Do not try to port `display_plan`
 //!   here.
-//! * Scene decoration position/alpha and scene-image motion are supported;
-//!   dynamic decoration scaling, logo/countdown overlays and NVENC fallback
-//!   remain outside this slice.
+//! * Scene image and decoration position/scale/alpha are supported; logo and
+//!   countdown overlays and the NVENC fallback remain outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -672,6 +671,8 @@ pub struct RenderScene {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderSceneDecoration {
     pub image: PathBuf,
+    pub image_width: u32,
+    pub image_height: u32,
     pub size: f64,
     pub keyframes: [SceneKeyframe; 2],
 }
@@ -693,6 +694,19 @@ impl Default for SceneKeyframe {
             opacity: 100.0,
         }
     }
+}
+
+fn png_dimensions(path: &Path) -> Option<(u32, u32)> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut bytes = [0u8; 24];
+    file.read_exact(&mut bytes).ok()?;
+    if &bytes[..8] != b"\x89PNG\r\n\x1a\n" || &bytes[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
 }
 
 /// Inputs for `ffmpeg_command`. Paths are used verbatim in the argv,
@@ -838,7 +852,8 @@ impl RenderInputs {
                 let image_path = directory.join(format!("scene_{id}.png"));
                 let image = image_path.is_file().then_some(image_path);
                 let decoration_path = directory.join(format!("scene_decoration_{id}.png"));
-                let decoration = decoration_path.is_file().then_some(decoration_path);
+                let decoration = png_dimensions(&decoration_path)
+                    .map(|(width, height)| (decoration_path, width, height));
                 if image.is_none() && decoration.is_none() {
                     return None;
                 }
@@ -910,11 +925,14 @@ impl RenderInputs {
                     decoration_frames.and_then(|frames| frames.get(1)),
                     decoration_first,
                 );
-                let decoration = decoration.map(|image| RenderSceneDecoration {
-                    image,
-                    size: number("decoration_size", 28.0).clamp(5.0, 80.0),
-                    keyframes: [decoration_first, decoration_second],
-                });
+                let decoration =
+                    decoration.map(|(image, image_width, image_height)| RenderSceneDecoration {
+                        image,
+                        image_width,
+                        image_height,
+                        size: number("decoration_size", 28.0).clamp(5.0, 80.0),
+                        keyframes: [decoration_first, decoration_second],
+                    });
                 Some((
                     section.to_owned(),
                     image,
@@ -1218,15 +1236,25 @@ pub fn ffmpeg_command(
             let alpha_progress = format!("min(max(T/{duration:.6},0),1)");
             let lerp =
                 |a: f64, b: f64, progress: &str| format!("({a:.4}+({:.4})*{progress})", b - a);
-            // `scale=eval=frame` crashes the bundled Windows FFmpeg build
-            // when scaling a still-image overlay. Keep a deterministic
-            // first-keyframe size while animating position and alpha.
-            let width_expr = format!(
-                "max(1,{width}*{:.4}/100*{:.4}/100)",
-                decoration.size, first.scale
-            );
+            let max_width = (width as f64 * decoration.size * 2.0 / 100.0)
+                .round()
+                .max(1.0) as u32;
+            let max_height = (max_width as f64 * decoration.image_height as f64
+                / decoration.image_width.max(1) as f64)
+                .round()
+                .max(1.0) as u32;
+            let initial_scale = first.scale.clamp(100.0, 200.0);
+            let base_width = (max_width as f64 * initial_scale / 200.0).round().max(1.0) as u32;
+            let base_height = (max_height as f64 * initial_scale / 200.0).round().max(1.0) as u32;
+            let scale_progress = format!("min(max(on/{:.6},0),1)", duration * profile.fps_value());
+            let zoom = format!(
+                "{}/{}",
+                lerp(first.scale, last.scale, &scale_progress),
+                initial_scale
+            )
+            .replace(',', "\\,");
             let mut layer = format!(
-                "[{input_index}:v:0]setpts=PTS-STARTPTS,format=rgba,scale=w='{width_expr}':h=-1"
+                "[{input_index}:v:0]setpts=PTS-STARTPTS,format=rgba,scale={base_width}:{base_height}:force_original_aspect_ratio=decrease,pad={max_width}:{max_height}:(ow-iw)/2:(oh-ih)/2:color=black@0,zoompan=z='{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={max_width}x{max_height}:fps={fps}"
             );
             let opacity_expr =
                 lerp(first.opacity, last.opacity, &alpha_progress).replace(',', "\\,");
@@ -1834,7 +1862,10 @@ mod tests {
         let decoration_image = directory
             .path()
             .join(format!("scene_decoration_{scene_id}.png"));
-        std::fs::write(&decoration_image, b"png").unwrap();
+        let mut png_header = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png_header.extend(64u32.to_be_bytes());
+        png_header.extend(32u32.to_be_bytes());
+        std::fs::write(&decoration_image, png_header).unwrap();
         let mut project = vietkara_domain::Project::new("scene");
         project.scenes.push(serde_json::json!({
             "id": scene_id,
@@ -1871,6 +1902,7 @@ mod tests {
         assert_eq!(inputs.scenes[0].image, Some(image));
         let decoration = inputs.scenes[0].decoration.as_ref().unwrap();
         assert_eq!(decoration.image, decoration_image);
+        assert_eq!((decoration.image_width, decoration.image_height), (64, 32));
         assert_eq!(decoration.size, 30.0);
         assert_eq!(decoration.keyframes[1].x, 70.0);
         assert_eq!(inputs.scenes[0].start, 2.0);
@@ -1893,7 +1925,11 @@ mod tests {
         assert!(graph.contains("geq=r='r(X\\,Y)'"));
         assert!(graph.contains("overlay=x=0:y=0"));
         assert!(graph.contains("ass=lyrics.ass:fontsdir=fonts[base]"));
-        assert!(graph.contains("[3:v:0]setpts=PTS-STARTPTS,format=rgba,scale=w='"));
+        assert!(graph.contains("[3:v:0]setpts=PTS-STARTPTS,format=rgba,scale=576:288"));
+        assert!(
+            graph.contains("zoompan=z='(100.0000+(50.0000)*min(max(on/240.000000\\,0)\\,1))/100'"),
+            "{graph}"
+        );
         assert!(graph.contains("scene_decoration0"));
         assert_eq!(
             &command[graph_index + 2..graph_index + 6],
@@ -2178,6 +2214,8 @@ mod tests {
             ],
             decoration: Some(RenderSceneDecoration {
                 image: decoration_image,
+                image_width: 32,
+                image_height: 32,
                 size: 28.0,
                 keyframes: [
                     SceneKeyframe {
