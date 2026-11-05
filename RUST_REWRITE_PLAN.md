@@ -79,6 +79,19 @@
 
 > **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 
+> **Tiến độ 2026-11-06 — tiếp tục lát giao diện W3 (đang chờ kiểm chứng):**
+> - Bố cục GPUI đã chuyển gần cấu trúc editor cũ: danh sách lời / nguồn media
+>   bên trái, preview theo khung 16:9 hoặc 9:16 và timeline ở giữa, inspector
+>   từ / thiết kế bên phải.
+> - Inspector cho phép đổi chế độ karaoke/phụ đề/lời theo câu, tỉ lệ khung,
+>   cỡ chữ, chữ nghiêng và màu quét; cập nhật qua command `SetSettings`, dirty
+>   state và autosave.
+> - Thêm nhập TXT mỗi dòng một câu, ước lượng mốc theo độ dài beat theo quy tắc
+>   `timing.estimate_words`, giữ xác nhận trước khi thay toàn bộ lời; thêm test
+>   domain cho số từ, ranh giới dòng và dữ liệu lỗi.
+> - Đây mới là lát giao diện/lyrics đầu tiên, chưa đạt parity thiết kế đầy đủ;
+>   thay đổi này đang chờ batch build/test và kiểm tra trực tiếp trên Windows.
+
 ## 1. Mục tiêu và phạm vi
 
 Chuyển dần VietKara Studio thành ứng dụng desktop Windows dùng Rust + GPUI cho UI, domain, lưu trữ, điều phối tác vụ và media orchestration; tiếp tục tái sử dụng FFmpeg/FFprobe và worker Python AI trong các giai đoạn đầu.

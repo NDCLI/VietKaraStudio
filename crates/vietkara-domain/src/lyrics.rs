@@ -88,3 +88,129 @@ pub fn import_srt(project: &Project, source: &str) -> Result<Command, ImportErro
         text: candidate.text,
     })
 }
+
+/// Estimate word timings for plain, one-line-per-lyric text, matching
+/// `timing.estimate_words` in the Python editor. Times are in beat seconds.
+pub fn estimate_lyrics(
+    project: &Project,
+    source: &str,
+    duration: f64,
+) -> Result<Command, ImportError> {
+    project.validate()?;
+    if project.words.iter().any(|word| word.locked == Some(true)) {
+        return Err(ImportError::Locked);
+    }
+    if !duration.is_finite() || duration <= 0. {
+        return Err(ImportError::Empty);
+    }
+    let lines: Vec<Vec<&str>> = source
+        .lines()
+        .map(str::split_whitespace)
+        .map(|line| line.collect::<Vec<_>>())
+        .filter(|line: &Vec<&str>| !line.is_empty())
+        .collect();
+    let count: usize = lines.iter().map(Vec::len).sum();
+    if count == 0 {
+        return Err(ImportError::Empty);
+    }
+    if count > MAX_WORDS {
+        return Err(ProjectError::TooManyWords.into());
+    }
+    let mut cursor = 5_f64.min(duration * 0.05);
+    let step = ((duration - cursor - 1.) / count as f64).max(0.1);
+    let mut words = Vec::with_capacity(count);
+    for (line_index, tokens) in lines.iter().enumerate() {
+        let line_uid = new_id();
+        for token in tokens {
+            let text: String = token.chars().take(200).collect();
+            words.push(Word {
+                id: new_id(),
+                text,
+                start: cursor,
+                end: cursor + step * 0.9,
+                line_uid: line_uid.clone(),
+                role: "all".into(),
+                line: line_index as u32,
+                estimated: true,
+                locked: None,
+                section: None,
+                section_name: None,
+                manual: None,
+                label_color: None,
+                row: None,
+                extra: Default::default(),
+            });
+            cursor += step;
+        }
+    }
+    let text = lines
+        .iter()
+        .map(|line| line.join(" "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut candidate = project.clone();
+    candidate.words = words;
+    candidate.text = text.clone();
+    candidate.migrate()?;
+    candidate.validate()?;
+    Ok(Command::SetLyrics {
+        words: candidate.words,
+        text,
+    })
+}
+
+#[cfg(test)]
+mod estimate_tests {
+    use super::*;
+
+    #[test]
+    fn estimates_one_word_per_token_and_preserves_line_boundaries() {
+        let project = Project::new("Bài hát");
+        let Command::SetLyrics { words, text } =
+            estimate_lyrics(&project, "Xin chào\nTạm biệt", 60.).unwrap()
+        else {
+            panic!("expected lyrics command");
+        };
+        assert_eq!(words.len(), 4);
+        assert_eq!(text, "Xin chào\nTạm biệt");
+        assert_eq!(words[0].line, words[1].line);
+        assert_ne!(words[1].line_uid, words[2].line_uid);
+        assert!(words.iter().all(|word| word.estimated));
+        assert!((words[0].start - 3.).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rejects_empty_lyrics_and_locked_words() {
+        let project = Project::new("Bài hát");
+        assert!(matches!(
+            estimate_lyrics(&project, "\n  ", 30.),
+            Err(ImportError::Empty)
+        ));
+        assert!(matches!(
+            estimate_lyrics(&project, "Xin chào", f64::NAN),
+            Err(ImportError::Empty)
+        ));
+        let mut locked = project;
+        locked.words.push(Word {
+            id: new_id(),
+            text: "Xin".into(),
+            start: 0.,
+            end: 1.,
+            line_uid: new_id(),
+            role: "all".into(),
+            line: 0,
+            estimated: false,
+            locked: Some(true),
+            section: None,
+            section_name: None,
+            manual: None,
+            label_color: None,
+            row: None,
+            extra: Default::default(),
+        });
+        assert!(matches!(
+            estimate_lyrics(&locked, "Xin chào", 30.),
+            Err(ImportError::Locked)
+        ));
+    }
+}

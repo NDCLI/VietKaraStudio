@@ -19,7 +19,7 @@ impl Studio {
         if self.saving
             || self.tapping.is_some()
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
         {
             return;

@@ -4,6 +4,7 @@ use gpui::{
     MouseButton, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, size,
 };
+use serde_json::Value;
 use vietkara_domain::{
     Project, Word,
     edit::{Command, Editor},
@@ -22,6 +23,7 @@ actions!(
         SaveAs,
         Open,
         ImportSrt,
+        ImportLyrics,
         TogglePlayback,
         StopPlayback,
         SeekBack,
@@ -62,15 +64,51 @@ struct Studio {
     dirty: bool,
     confirm_open: bool,
     confirm_close: bool,
-    pending_srt: Option<Command>,
+    pending_lyrics: Option<Command>,
     pending_audio: Option<(AudioSlot, PathBuf)>,
     autosave_status: String,
     autosaving: bool,
     autosave_pending: bool,
     _autosave_task: Task<()>,
+    left_tab_media: bool,
+    inspector_design: bool,
 }
 
 impl Studio {
+    fn update_setting(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.recovery.is_some() || self.tapping.is_some() {
+            return;
+        }
+        let mut settings = self.editor.project().settings.clone();
+        settings.extra.insert(key.to_owned(), value);
+        self.edit_status = match self.editor.execute(Command::SetSettings(settings)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật thiết kế • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+    fn cycle_setting(&mut self, key: &str, values: &[&str], cx: &mut Context<Self>) {
+        let current = self
+            .editor
+            .project()
+            .settings
+            .extra
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let next = values
+            .iter()
+            .position(|value| *value == current)
+            .map(|index| (index + 1) % values.len())
+            .unwrap_or(0);
+        if let Some(value) = values.get(next) {
+            self.update_setting(key, Value::String((*value).to_owned()), cx);
+        }
+    }
     fn choose_audio(&mut self, slot: AudioSlot, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
@@ -78,7 +116,7 @@ impl Studio {
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.pending_audio.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
         {
             return;
         }
@@ -200,7 +238,7 @@ impl Studio {
     fn begin_tapping(&mut self, cx: &mut Context<Self>) {
         if self.saving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -382,7 +420,7 @@ impl Studio {
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
         {
             return;
@@ -401,7 +439,7 @@ impl Studio {
     fn adjust_word(&mut self, start: bool, delta: f64, cx: &mut Context<Self>) {
         if self.saving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -539,10 +577,18 @@ impl Studio {
     }
 
     fn import_srt(&mut self, cx: &mut Context<Self>) {
+        self.import_lyrics_file(true, cx);
+    }
+
+    fn import_plain_lyrics(&mut self, cx: &mut Context<Self>) {
+        self.import_lyrics_file(false, cx);
+    }
+
+    fn import_lyrics_file(&mut self, is_srt: bool, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -556,7 +602,13 @@ impl Studio {
             .iter()
             .any(|w| w.locked == Some(true))
         {
-            self.edit_status = "Mở khóa các câu trước khi nhập SRT".into();
+            self.edit_status = "Mở khóa các câu trước khi thay lời".into();
+            cx.notify();
+            return;
+        }
+        let duration = self.play_duration;
+        if !is_srt && duration <= 0. {
+            self.edit_status = "Hãy nạp beat trước khi ước lượng mốc cho lời TXT".into();
             cx.notify();
             return;
         }
@@ -565,11 +617,24 @@ impl Studio {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("Nhập file SRT".into()),
+            prompt: Some(
+                if is_srt {
+                    "Nhập file SRT"
+                } else {
+                    "Nhập lời dạng TXT"
+                }
+                .into(),
+            ),
         });
         self.saving = true;
-        self.edit_status = "Đang chuẩn bị lời từ SRT…".into();
+        self.edit_status = if is_srt {
+            "Đang đọc file SRT…"
+        } else {
+            "Đang ước lượng mốc lời…"
+        }
+        .into();
         cx.notify();
+        let is_srt_for_parse = is_srt;
         cx.spawn(async move |this, cx| {
             let result = match selection.await {
                 Ok(Ok(Some(paths))) => {
@@ -583,11 +648,16 @@ impl Studio {
                                     .read_to_string(&mut source)
                                     .map_err(|e| e.to_string())?;
                                 if source.len() > 10 * 1024 * 1024 {
-                                    return Err("SRT vượt quá 10 MiB".to_owned());
+                                    return Err("File lời vượt quá 10 MiB".to_owned());
                                 }
-                                vietkara_domain::lyrics::import_srt(&project, &source)
-                                    .map(Some)
-                                    .map_err(|e| e.to_string())
+                                let command = if is_srt_for_parse {
+                                    vietkara_domain::lyrics::import_srt(&project, &source)
+                                } else {
+                                    vietkara_domain::lyrics::estimate_lyrics(
+                                        &project, &source, duration,
+                                    )
+                                };
+                                command.map(Some).map_err(|e| e.to_string())
                             })
                             .await
                     } else {
@@ -602,10 +672,15 @@ impl Studio {
                 this.saving = false;
                 match result {
                     Ok(Some(command)) => {
-                        this.pending_srt = Some(command);
-                        this.edit_status = "SRT đã sẵn sàng, chờ xác nhận".into();
+                        this.pending_lyrics = Some(command);
+                        this.edit_status = if is_srt {
+                            "SRT sẵn sàng, chờ xác nhận"
+                        } else {
+                            "Lời sẵn sàng, chờ xác nhận"
+                        }
+                        .into();
                     }
-                    Ok(None) => this.edit_status = "Đã hủy nhập SRT".into(),
+                    Ok(None) => this.edit_status = "Đã hủy nhập lời".into(),
                     Err(error) => this.edit_status = error,
                 }
                 cx.notify();
@@ -613,15 +688,15 @@ impl Studio {
         })
         .detach();
     }
-    fn accept_srt(&mut self, cx: &mut Context<Self>) {
-        let Some(command) = self.pending_srt.take() else {
+    fn accept_lyrics(&mut self, cx: &mut Context<Self>) {
+        let Some(command) = self.pending_lyrics.take() else {
             return;
         };
         self.edit_status = match self.editor.execute(command) {
             Ok(_) => {
                 self.dirty = true;
                 self.autosave_pending = true;
-                "Đã nhập SRT • chưa lưu".into()
+                "Đã thay lời • chưa lưu".into()
             }
             Err(error) => error.to_string(),
         };
@@ -632,7 +707,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -650,7 +725,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -731,7 +806,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -748,7 +823,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -801,7 +876,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -847,7 +922,7 @@ impl Studio {
     fn font_size(&mut self, delta: f64, cx: &mut Context<Self>) {
         if self.saving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -873,7 +948,7 @@ impl Studio {
     fn history(&mut self, redo: bool, cx: &mut Context<Self>) {
         if self.saving
             || self.recovery.is_some()
-            || self.pending_srt.is_some()
+            || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
@@ -935,6 +1010,30 @@ impl Render for Studio {
             .unwrap_or_else(|| "Chọn một từ trên timeline".into());
         let selected_start = selected.map(|word| word.start).unwrap_or(0.);
         let selected_end = selected.map(|word| word.end).unwrap_or(0.);
+        let preview_text = selected
+            .map(|word| word.text.clone())
+            .or_else(|| {
+                self.editor
+                    .project()
+                    .words
+                    .first()
+                    .map(|word| word.text.clone())
+            })
+            .unwrap_or_else(|| "Lời bài hát sẽ hiển thị ở đây".into());
+        let settings = &self.editor.project().settings;
+        let display_mode = settings
+            .extra
+            .get("display_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("karaoke");
+        let is_portrait = settings.aspect == vietkara_domain::settings::Aspect::Portrait;
+        let italic = settings
+            .extra
+            .get("italic")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let font_size = settings.font_size;
+        let sung_color = setting_color(settings, "sung", 0x52efb9);
         let reference_position = vietkara_domain::timing::map_time(
             self.play_position,
             &self.editor.project().anchors,
@@ -986,6 +1085,7 @@ impl Render for Studio {
             .on_action(cx.listener(|this, _: &SaveAs, _, cx| this.save_as(cx)))
             .on_action(cx.listener(|this, _: &Open, _, cx| this.open(cx)))
             .on_action(cx.listener(|this, _: &ImportSrt, _, cx| this.import_srt(cx)))
+            .on_action(cx.listener(|this, _: &ImportLyrics, _, cx| this.import_plain_lyrics(cx)))
             .on_action(cx.listener(|this, _: &TogglePlayback, _, cx| this.transport(0,cx)))
             .on_action(cx.listener(|this, _: &StopPlayback, _, cx| this.transport(1,cx)))
             .on_action(cx.listener(|this, _: &SeekBack, _, cx| this.transport(2,cx)))
@@ -1041,12 +1141,12 @@ impl Render for Studio {
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_audio(cx))))
                 .child(div().cursor_pointer().child("Hủy")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_audio=None;cx.notify();})))))
-            .when(self.pending_srt.is_some(), |root| root.child(div().flex().gap_3().p_3()
-                .child("Nhập SRT sẽ thay toàn bộ lời và mốc từ hiện tại.")
-                .child(div().cursor_pointer().px_3().child("Thay lời bằng SRT")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_srt(cx))))
+            .when(self.pending_lyrics.is_some(), |root| root.child(div().flex().gap_3().p_3()
+                .child("Thay lời sẽ cập nhật toàn bộ từ và mốc hiện tại.")
+                .child(div().cursor_pointer().px_3().child("Thay toàn bộ lời")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_lyrics(cx))))
                 .child(div().cursor_pointer().px_3().child("Hủy")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_srt=None;this.edit_status="Đã hủy nhập SRT".into();cx.notify();})))))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_lyrics=None;this.edit_status="Đã hủy nhập lời".into();cx.notify();})))))
             .when(self.confirm_close, |root| root.child(div().flex().gap_3().p_3()
                 .child("Project chưa lưu. Lưu trước khi đóng hoặc chọn đóng không lưu.")
                 .child(div().cursor_pointer().px_3().child("Đóng không lưu")
@@ -1150,30 +1250,43 @@ impl Render for Studio {
                     .p_3()
                     .child(
                         div()
-                            .w(px(220.))
+                            .w(px(240.))
+                            .flex()
+                            .flex_col()
+                            .overflow_hidden()
                             .bg(rgb(0x20232b))
                             .rounded_md()
                             .p_3()
-                            .child("PROJECT")
-                            .child(div().mt_3().cursor_pointer().child("Nhập / relink beat")
-                                .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.choose_audio(AudioSlot::Beat,cx))))
-                            .child(div().mt_3().cursor_pointer().child("Nhập / relink bản hát")
-                                .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.choose_audio(AudioSlot::Reference,cx))))
-                            .child(div().mt_3().child(if self.editor.project().beat.is_some() {
-                                "Beat gốc • đã nạp"
-                            } else {
-                                "Beat gốc"
-                            }))
-                            .child(div().mt_2().child(
-                                if self.editor.project().reference.is_some() {
-                                    "Bản tham chiếu • đã nạp"
-                                } else {
-                                    "Bản tham chiếu"
-                                },
-                            ))
-                            .child(div().mt_2().child("Video nền"))
-                            .child(div().mt_6().child("Preset chữ"))
-                            .child(div().mt_2().child("Vai & màu song ca")),
+                            .child(div().flex().justify_between().items_center()
+                                .child("LỜI BÀI HÁT")
+                                .child(div().cursor_pointer().px_2().child("＋ SRT")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.import_srt(cx)))))
+                            .child(div().flex().mt_3().mb_2().gap_2()
+                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                                    .bg(rgb(if !self.left_tab_media {0x34465b}else{0x17191f}))
+                                    .child("Danh sách")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.left_tab_media=false;cx.notify();})))
+                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                                    .bg(rgb(if self.left_tab_media {0x34465b}else{0x17191f}))
+                                    .child("Nguồn media")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.left_tab_media=true;cx.notify();}))))
+                            .when(self.left_tab_media,|panel|panel
+                                .child(div().mt_2().text_color(rgb(0x9aa7b7)).child("AUDIO & VIDEO"))
+                                .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if self.editor.project().beat.is_some(){"●  Beat gốc · đã nạp"}else{"＋  Nạp beat gốc"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_audio(AudioSlot::Beat,cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if self.editor.project().reference.is_some(){"●  Bản hát · đã nạp"}else{"＋  Nạp bản hát / video"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_audio(AudioSlot::Reference,cx))))
+                                .child(div().mt_4().text_color(rgb(0x9aa7b7)).child("Project JSON"))
+                                .child(div().mt_2().text_size(px(11.)).child(self.path.as_ref().map(|path|path.display().to_string()).unwrap_or_else(||"Chưa lưu project".into()))))
+                            .when(!self.left_tab_media,|panel|panel
+                                .child(div().text_size(px(11.)).text_color(rgb(0x9aa7b7))
+                                    .child(format!("{} từ · {} dòng",self.editor.project().words.len(),self.editor.project().words.iter().map(|w|w.line).max().map(|line|line+1).unwrap_or(0))))
+                                .child(div().id("lyric-list").flex_1().overflow_y_scroll().mt_2().children(lyric_rows))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child("✎  Ước lượng mốc từ TXT")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_plain_lyrics(cx))))),
                     )
                     .child(
                         div()
@@ -1187,14 +1300,25 @@ impl Render for Studio {
                                     .bg(rgb(0x20232b))
                                     .rounded_md()
                                     .p_4()
-                                    .child("XEM TRƯỚC")
+                                    .child(div().flex().justify_between()
+                                        .child("XEM TRƯỚC")
+                                        .child(format!("{}  ·  {}  ·  {}",if is_portrait {"9:16 · Dọc"} else {"16:9 · Ngang"},settings.font,display_mode)))
                                     .child(
                                         div()
                                             .flex()
                                             .flex_1()
                                             .justify_center()
                                             .items_center()
-                                            .child("Nạp beat để xem trước video karaoke"),
+                                            .child(div()
+                                                .flex().flex_col().justify_center().items_center()
+                                                .w(if is_portrait {px(210.)} else {px(520.)})
+                                                .h(if is_portrait {px(300.)} else {px(292.)})
+                                                .rounded_sm().bg(rgb(0x101d2b))
+                                                .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child(if self.editor.project().beat.is_some(){"PREVIEW · KHUNG VIDEO"}else{"NẠP BEAT ĐỂ XEM TRƯỚC"}))
+                                                .child(div().mt_4().text_size(px((font_size as f32 / 3.).clamp(16.,42.)))
+                                                    .text_color(rgb(if selected.is_some(){sung_color}else{0xffffff}))
+                                                    .when(italic,|text|text.italic())
+                                                    .child(preview_text))),
                                     ),
                             )
                             .child(
@@ -1204,19 +1328,34 @@ impl Render for Studio {
                                     .rounded_md()
                                     .p_3()
                                     .child(timeline)
-                                    .child("DANH SÁCH TỪ")
-                                    .child(div().cursor_pointer().child(if self.editor.project().settings.timeline_linked {"Mốc: Liên kết"}else{"Mốc: Độc lập"})
-                                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx))))
-                                    .child(div().id("word-list").overflow_y_scroll().h(px(120.)).children(lyric_rows)),
+                                    .child(div().flex().justify_between().items_center().mt_2()
+                                        .child("TIMELINE · Kéo khối để chọn, kéo mép để chỉnh mốc")
+                                        .child(div().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_1()
+                                            .child(if self.editor.project().settings.timeline_linked {"Mốc liên kết"}else{"Mốc độc lập"})
+                                            .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx))))),
                             ),
                     )
                     .child(
                         div()
-                            .w(px(250.))
+                            .w(px(270.))
+                            .flex()
+                            .flex_col()
+                            .id("design-inspector")
+                            .overflow_y_scroll()
                             .bg(rgb(0x20232b))
                             .rounded_md()
                             .p_3()
-                            .child("CÂU ĐANG CHỌN")
+                            .child(div().flex().gap_2().mb_2()
+                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                                    .bg(rgb(if !self.inspector_design {0x34465b}else{0x17191f}))
+                                    .child("Từ")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.inspector_design=false;cx.notify();})))
+                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                                    .bg(rgb(if self.inspector_design {0x34465b}else{0x17191f}))
+                                    .child("Thiết kế")
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.inspector_design=true;cx.notify();}))))
+                            .when(!self.inspector_design,|panel|panel
+                            .child("TỪ ĐANG CHỌN")
                             .child(div().mt_3().child("Lời bài hát"))
                             .child(
                                 div()
@@ -1230,7 +1369,40 @@ impl Render for Studio {
                             .children([(true,-0.05,"Đầu −50ms"),(true,0.05,"Đầu +50ms"),(false,-0.05,"Cuối −50ms"),(false,0.05,"Cuối +50ms")].into_iter().map(|(start,delta,label)|
                                 div().mt_2().cursor_pointer().child(label)
                                     .on_mouse_down(MouseButton::Left,cx.listener(move |this, _, _, cx|this.adjust_word(start,delta,cx)))))
-                            .child(div().mt_6().child("Space để căn lời theo nhạc")),
+                            .child(div().mt_6().child("Space để căn lời theo nhạc")))
+                            .when(self.inspector_design,|panel|panel
+                                .child("THIẾT KẾ LỜI")
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("CHẾ ĐỘ HIỂN THỊ"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(match display_mode {"lyricsmv"=>"Lời nổi bật theo câu", "subtitle"=>"Phụ đề", _=>"Karaoke · quét từng từ"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("display_mode",&["karaoke","lyricsmv","subtitle"],cx))))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("KHUNG HÌNH"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if is_portrait{"9:16 · Dọc"}else{"16:9 · Ngang"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        let next=if this.editor.project().settings.aspect==vietkara_domain::settings::Aspect::Portrait {vietkara_domain::settings::Aspect::Landscape} else {vietkara_domain::settings::Aspect::Portrait};
+                                        let mut settings=this.editor.project().settings.clone();settings.aspect=next;
+                                        this.edit_status=match this.editor.execute(Command::SetSettings(settings)){Ok(_)=>{this.dirty=true;this.autosave_pending=true;"Đã đổi khung hình • chưa lưu".into()},Err(error)=>error.to_string()};cx.notify();
+                                    })))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("PHÔNG CHỮ"))
+                                .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(settings.font.clone())
+                                    .child(div().flex().gap_3()
+                                        .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.font_size(-1.,cx))))
+                                        .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.font_size(1.,cx))))))
+                                .child(div().mt_2().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child(format!("{} px · Tiếng Việt: Trường xưa, nắng mới",settings.font_size)))
+                                .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if italic{"✓  Chữ nghiêng"}else{"Chữ nghiêng"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{let v=!this.editor.project().settings.extra.get("italic").and_then(Value::as_bool).unwrap_or(false);this.update_setting("italic",Value::Bool(v),cx);})))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("MÀU CHỮ ĐÃ HÁT"))
+                                .child(div().mt_2().flex().gap_2()
+                                    .children([("Xanh ngọc","#52efb9"),("Vàng","#f4cf72"),("Hồng","#ff87b7")].into_iter().map(|(label,color)|
+                                        div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                            .child(div().flex().gap_1().items_center()
+                                                .child(div().w(px(10.)).h(px(10.)).rounded_sm().bg(rgb(match color {"#f4cf72"=>0xf4cf72,"#ff87b7"=>0xff87b7,_=>0x52efb9})))
+                                                .child(label))
+                                            .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("sung",Value::String(color.into()),cx))))))
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x748297)).child("Các tùy chỉnh nâng cao sẽ được bổ sung tiếp theo."))),
                     ),
             )
             .child(
@@ -1253,6 +1425,16 @@ impl Render for Studio {
                     .child(status),
             )
     }
+}
+
+fn setting_color(settings: &vietkara_domain::settings::Settings, key: &str, fallback: u32) -> u32 {
+    settings
+        .extra
+        .get(key)
+        .and_then(Value::as_str)
+        .and_then(|value| value.strip_prefix('#'))
+        .and_then(|value| u32::from_str_radix(value, 16).ok())
+        .unwrap_or(fallback)
 }
 
 fn main() {
@@ -1286,6 +1468,7 @@ fn main() {
             KeyBinding::new("ctrl-left", SeekBack, Some("Studio")),
             KeyBinding::new("ctrl-right", SeekForward, Some("Studio")),
             KeyBinding::new("ctrl-shift-i", ImportSrt, Some("Studio")),
+            KeyBinding::new("ctrl-shift-l", ImportLyrics, Some("Studio")),
             KeyBinding::new("ctrl-o", Open, Some("Studio")),
             KeyBinding::new("ctrl-s", Save, Some("Studio")),
             KeyBinding::new("ctrl-shift-s", SaveAs, Some("Studio")),
@@ -1403,12 +1586,14 @@ fn main() {
                         dirty: false,
                         confirm_open: false,
                         confirm_close: false,
-                        pending_srt: None,
+                        pending_lyrics: None,
                         pending_audio: None,
                         autosave_status: String::new(),
                         autosaving: false,
                         autosave_pending: false,
                         _autosave_task: task,
+                        left_tab_media: false,
+                        inspector_design: false,
                         playing: false,
                         selected_word: None,
                         timeline_zoom: 80.,
