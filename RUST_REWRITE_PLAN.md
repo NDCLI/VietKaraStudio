@@ -217,6 +217,10 @@
 >   37/37 pass khi bỏ 2 FFmpeg integration; app tests 7/8 (test export thực
 >   cần `ffmpeg.exe`), workspace clippy và app build pass. PNG palette gốc chưa
 >   được đóng gói; Rust đang dùng vector fallback tương thích baseline.
+> - Hoàn thiện title preview GPUI: vẽ 24 dải gradient của template, viền bo
+>   góc và opacity; title text dùng màu/font settings, chuyển động fade/slide/
+>   zoom/flip được nội suy theo thời gian playback giống ASS. Test riêng kiểm
+>   tra pha vào/giữ/ra; app clippy và build pass.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -2243,16 +2243,46 @@ impl Render for Studio {
             }
         }
         if let Some(title) = layout.title.as_ref().filter(|_| title_visible) {
+            let (motion_x, motion_y, motion_scale, motion_opacity) =
+                title_preview_motion(title, preview_position);
+            if let Some(box_layout) = &title.template {
+                let template = &box_layout.template;
+                let last = template.colors.last().unwrap_or(&template.colors[0]);
+                let bands = (0..24).map(|index| {
+                    let t = index as f64 / 23.0;
+                    let color = vietkara_render::blend(&template.colors[0], last, t);
+                    div().flex_1().h_full().bg(rgb(preview_hex_color(&color)))
+                });
+                current_preview.insert(
+                    0,
+                    div()
+                        .absolute()
+                        .left(px((box_layout.x as f32 + motion_x) * preview_scale))
+                        .top(px((box_layout.y as f32 + motion_y) * preview_scale))
+                        .w(px(box_layout.width as f32 * preview_scale))
+                        .h(px(box_layout.height as f32 * preview_scale))
+                        .flex()
+                        .flex_row()
+                        .overflow_hidden()
+                        .rounded(px(template.radius as f32 * preview_scale))
+                        .bg(rgb(preview_hex_color(&template.colors[0])))
+                        .border_1()
+                        .border_color(rgb(preview_hex_color(&template.border)))
+                        .opacity((template.opacity as f32 / 100.0) * motion_opacity)
+                        .children(bands),
+                );
+            }
             for row in &title.rows {
                 current_preview.push(
                     div()
                         .absolute()
-                        .left(px(row.x as f32 * preview_scale))
-                        .top(px(row.y as f32 * preview_scale))
-                        .text_size(px(row.size as f32 * preview_scale))
-                        .text_color(rgb(0xffffff))
+                        .left(px((row.x as f32 + motion_x) * preview_scale))
+                        .top(px((row.y as f32 + motion_y) * preview_scale))
+                        .text_size(px(row.size as f32 * preview_scale * motion_scale))
+                        .text_color(rgb(preview_hex_color(&title.color)))
                         .font_weight(gpui::FontWeight::BOLD)
                         .when(title.italic, |text| text.italic())
+                        .opacity(motion_opacity)
                         .child(row.text.clone()),
                 );
             }
@@ -2733,6 +2763,55 @@ fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
 }
 
+fn title_preview_motion(
+    title: &vietkara_render::layout::TitleLayout,
+    time: f64,
+) -> (f32, f32, f32, f32) {
+    let duration = title.effect_seconds.max(0.001);
+    let elapsed = (time - title.start).clamp(0.0, duration);
+    let remaining = (title.end - time).clamp(0.0, duration);
+    let mut x = 0.0_f32;
+    let mut y = 0.0_f32;
+    let mut scale = 1.0_f32;
+    let mut opacity = 1.0_f32;
+    let entering = match title.enter.as_str() {
+        "slide_up" => (0.0, 48.0),
+        "slide_down" => (0.0, -48.0),
+        "slide_left" => (96.0, 0.0),
+        "slide_right" => (-96.0, 0.0),
+        _ => (0.0, 0.0),
+    };
+    if time - title.start < duration {
+        let p = (elapsed / duration) as f32;
+        x += entering.0 * (1.0 - p);
+        y += entering.1 * (1.0 - p);
+        match title.enter.as_str() {
+            "zoom" => scale *= 0.65 + 0.35 * p,
+            "flip" => scale *= 0.65 + 0.35 * p,
+            "fade" => opacity *= p,
+            _ => {}
+        }
+    }
+    if title.end - time < duration {
+        let p = (remaining / duration) as f32;
+        let leaving = match title.exit.as_str() {
+            "slide_up" => (0.0, -48.0),
+            "slide_down" => (0.0, 48.0),
+            "slide_left" => (-96.0, 0.0),
+            "slide_right" => (96.0, 0.0),
+            _ => (0.0, 0.0),
+        };
+        x += leaving.0 * (1.0 - p);
+        y += leaving.1 * (1.0 - p);
+        match title.exit.as_str() {
+            "zoom" | "flip" => scale *= 0.65 + 0.35 * p,
+            "fade" => opacity *= p,
+            _ => {}
+        }
+    }
+    (x, y, scale, opacity)
+}
+
 fn role_label(role: &str) -> &'static str {
     match role {
         "male" => "Nam",
@@ -2986,6 +3065,30 @@ mod workspace_tests {
         assert_eq!(parse_ffmpeg_time("01:00:00.000000"), Some(3600.0));
         assert_eq!(parse_ffmpeg_time("N/A"), None);
         assert_eq!(parse_ffmpeg_time("00:61:00.000000"), None);
+    }
+
+    #[test]
+    fn title_preview_motion_tracks_enter_hold_and_exit_phases() {
+        let title = vietkara_render::layout::TitleLayout {
+            start: 2.0,
+            end: 8.0,
+            effect_seconds: 1.0,
+            enter: "slide_left".into(),
+            exit: "fade".into(),
+            rows: vec![],
+            color: "#ffffff".into(),
+            outline: "#000000".into(),
+            outline_width: 2.0,
+            shadow: 1.0,
+            shadow_color: "#000000".into(),
+            weight: 700,
+            italic: false,
+            font: "Arial".into(),
+            template: None,
+        };
+        assert_eq!(title_preview_motion(&title, 2.0), (96.0, 0.0, 1.0, 1.0));
+        assert_eq!(title_preview_motion(&title, 4.0), (0.0, 0.0, 1.0, 1.0));
+        assert_eq!(title_preview_motion(&title, 8.0), (0.0, 0.0, 1.0, 0.0));
     }
 
     #[test]
