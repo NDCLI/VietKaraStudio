@@ -229,8 +229,10 @@
 > - Thêm nhóm TITLE CARD vào inspector GPUI: bật/tắt, lần bật đầu lấy tên
 >   project nếu title trống, sửa nội dung title bằng GPUI text input, chọn
 >   template và hiệu ứng vào/ra. Settings đi qua `SetSettings`, giữ
->   dirty/autosave hiện có. Credit, thời gian, màu và cỡ title chưa có control
->   trong inspector.
+>   dirty/autosave hiện có. Bổ sung credit/nghệ sĩ, cỡ chữ, vị trí dọc,
+>   khoảng thời gian, và palette màu title; text inputs riêng cho title/credit
+>   đồng bộ lại khi settings thay đổi. App fmt/check/Clippy sạch, unit tests
+>   **8/8** pass (integration export cần FFmpeg được bỏ qua).
 
 ## 1. Mục tiêu và phạm vi
 

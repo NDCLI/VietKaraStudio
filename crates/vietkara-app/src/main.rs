@@ -49,6 +49,7 @@ struct TapSession {
 struct Studio {
     editor: Editor,
     word_input: Entity<text_input::TextInput>,
+    title_credit_input: Entity<text_input::TextInput>,
     focus_handle: FocusHandle,
     edit_status: String,
     playing: bool,
@@ -512,6 +513,37 @@ impl Studio {
             return;
         }
         self.update_setting("title_text", Value::String(text), cx);
+    }
+    fn apply_title_credit(&mut self, cx: &mut Context<Self>) {
+        let text = self.title_credit_input.read(cx).value().trim().to_owned();
+        if text.chars().count() > 120 {
+            self.edit_status = "Credit không được dài quá 120 ký tự".into();
+            cx.notify();
+            return;
+        }
+        self.update_setting("title_credit", Value::String(text), cx);
+    }
+    fn adjust_title_number(
+        &mut self,
+        key: &str,
+        delta: f64,
+        min: f64,
+        max: f64,
+        cx: &mut Context<Self>,
+    ) {
+        let current = self
+            .editor
+            .project()
+            .settings
+            .extra
+            .get(key)
+            .and_then(Value::as_f64)
+            .unwrap_or(min);
+        let next = (current + delta).clamp(min, max);
+        if (next - current).abs() < f64::EPSILON {
+            return;
+        }
+        self.update_setting(key, Value::from(next), cx);
     }
     fn cycle_setting(&mut self, key: &str, values: &[&str], cx: &mut Context<Self>) {
         let current = self
@@ -1841,6 +1873,21 @@ impl Studio {
 
 impl Render for Studio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let credit_input_value = self
+            .editor
+            .project()
+            .settings
+            .extra
+            .get("title_credit")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        if self.title_credit_input.read(cx).value() != credit_input_value {
+            self.title_credit_input.update(cx, |input, cx| {
+                input.set_value(&credit_input_value);
+                cx.notify();
+            });
+        }
         let workspace = workspace_size(f32::from(window.viewport_size().width));
         let portrait_width = (workspace.preview * 9. / 16.).min(210.);
         let preview_height = if self.editor.project().settings.aspect
@@ -1899,6 +1946,31 @@ impl Render for Studio {
             .get("title_text")
             .and_then(Value::as_str)
             .unwrap_or("");
+        let title_size = settings
+            .extra
+            .get("title_size")
+            .and_then(Value::as_f64)
+            .unwrap_or(105.0);
+        let title_y = settings
+            .extra
+            .get("title_y")
+            .and_then(Value::as_f64)
+            .unwrap_or(28.0);
+        let title_start = settings
+            .extra
+            .get("title_start")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let title_end = settings
+            .extra
+            .get("title_end")
+            .and_then(Value::as_f64)
+            .unwrap_or(8.0);
+        let title_color = settings
+            .extra
+            .get("title_color")
+            .and_then(Value::as_str)
+            .unwrap_or("#ffffff");
         let background_type = settings
             .extra
             .get("background_type")
@@ -2765,6 +2837,36 @@ impl Render for Studio {
                                         .child("Áp dụng title")
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_title_text(cx))))
                                     .child(div().mt_1().text_size(px(11.)).text_color(rgb(0x748297)).child(if title_text.is_empty(){"Chưa có nội dung title".to_owned()}else{title_text.to_owned()}))
+                                    .child(div().mt_3().child("Credit / nghệ sĩ"))
+                                    .child(div().mt_2().child(self.title_credit_input.clone()))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2()
+                                        .child("Áp dụng credit")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_title_credit(cx))))
+                                    .child(div().mt_3().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Cỡ title: {title_size:.0} px"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_size",-5.0,30.0,220.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_size",5.0,30.0,220.0,cx))))))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Vị trí dọc: {title_y:.0}%"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("−").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_y",-2.0,5.0,85.0,cx))))
+                                            .child(div().cursor_pointer().child("+").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_y",2.0,5.0,85.0,cx))))))
+                                    .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                        .child(format!("Thời gian: {title_start:.1}–{title_end:.1}s"))
+                                        .child(div().flex().gap_3()
+                                            .child(div().cursor_pointer().child("Đầu −").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_start",-0.5,0.0,86399.0,cx))))
+                                            .child(div().cursor_pointer().child("Đầu +").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_start",0.5,0.0,86399.0,cx))))
+                                            .child(div().cursor_pointer().child("Cuối −").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_end",-0.5,0.1,86400.0,cx))))
+                                            .child(div().cursor_pointer().child("Cuối +").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_title_number("title_end",0.5,0.1,86400.0,cx))))))
+                                    .child(div().mt_3().child(format!("Màu chữ: {title_color}")))
+                                    .child(div().mt_2().flex().gap_2()
+                                        .children([("Trắng","#ffffff"),("Vàng","#f4cf72"),("Xanh ngọc","#52efb9"),("Hồng","#ff87b7")].into_iter().map(|(label,color)|
+                                            div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                                .child(div().flex().gap_1().items_center()
+                                                    .child(div().w(px(10.)).h(px(10.)).rounded_sm().bg(rgb(match color {"#f4cf72"=>0xf4cf72,"#52efb9"=>0x52efb9,"#ff87b7"=>0xff87b7,_=>0xffffff})))
+                                                    .child(label))
+                                                .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("title_color",Value::String(color.into()),cx))))))
                                     .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                         .child(format!("Template: {title_template}"))
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("title_template",&["none","gradient","midnight","crystal","neon","retro","pastel"],cx))))
@@ -2961,6 +3063,7 @@ fn main() {
             },
             |window, cx| {
                 let word_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
+                let title_credit_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 cx.new(|cx: &mut Context<Studio>| {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
@@ -3057,6 +3160,7 @@ fn main() {
                     let mut studio = Studio {
                         focus_handle,
                         word_input,
+                        title_credit_input,
                         editor: Editor::new(project).expect("Project mới phải hợp lệ"),
                         edit_status: initial_status,
                         path,
