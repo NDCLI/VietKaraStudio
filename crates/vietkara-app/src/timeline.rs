@@ -30,6 +30,46 @@ pub(super) fn timeline_to_track_time(
     }
 }
 
+fn waveform_timeline_interval(
+    slot: AudioSlot,
+    first_bin: usize,
+    end_bin: usize,
+    bin_count: usize,
+    track_duration: f64,
+    anchors: &[vietkara_domain::Anchor],
+) -> Option<(f64, f64)> {
+    if bin_count == 0 || !track_duration.is_finite() || track_duration <= 0.0 {
+        return None;
+    }
+    let start = first_bin as f64 / bin_count as f64 * track_duration;
+    let end = end_bin.min(bin_count) as f64 / bin_count as f64 * track_duration;
+    let start = track_to_timeline_time(slot, start, anchors).max(0.0);
+    let end = track_to_timeline_time(slot, end, anchors).max(0.0);
+    (end > start).then_some((start, end))
+}
+
+pub(super) fn project_timeline_duration(project: &Project, playback_duration: f64) -> f64 {
+    let media_duration = [
+        (AudioSlot::Reference, project.reference.as_ref()),
+        (AudioSlot::Beat, project.beat.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(slot, metadata)| {
+        let duration = metadata?.get("duration")?.as_f64()?;
+        Some(track_to_timeline_time(slot, duration, &project.anchors).max(0.0))
+    })
+    .fold(0.0_f64, f64::max);
+    let word_duration = project
+        .words
+        .iter()
+        .map(|word| vietkara_domain::timing::map_time(word.end, &project.anchors, false))
+        .fold(0.0_f64, f64::max);
+    playback_duration
+        .max(media_duration)
+        .max(word_duration)
+        .max(1.0)
+}
+
 pub(super) struct TimelineDrag {
     index: usize,
     edge: vietkara_domain::timeline::Edge,
@@ -44,12 +84,7 @@ impl Studio {
             return;
         }
         let project = self.editor.project();
-        let word_duration = project
-            .words
-            .iter()
-            .map(|word| vietkara_domain::timing::map_time(word.end, &project.anchors, false))
-            .fold(0.0, f64::max);
-        let duration = self.play_duration.max(word_duration);
+        let duration = project_timeline_duration(project, self.play_duration);
         let position = clamp_seek_position(position, duration);
         #[cfg(windows)]
         if let Some(worker) = &self.playback
@@ -156,10 +191,7 @@ impl Studio {
             .or_else(|| self.tapping.as_ref().map(|s| s.words.as_slice()))
             .unwrap_or(&project.words);
         let map = |t| vietkara_domain::timing::map_time(t, &project.anchors, false);
-        let duration = words
-            .iter()
-            .map(|w| map(w.end))
-            .fold(self.play_duration.max(1.), f64::max);
+        let duration = project_timeline_duration(project, self.play_duration);
         let width = (duration as f32 * self.timeline_zoom).max(800.);
         let zoom = self.timeline_zoom;
         let mut content = div().relative().w(px(width)).h(px(178.)).bg(rgb(0x151820));
@@ -185,9 +217,15 @@ impl Studio {
                     ),
             );
         }
-        for (metadata, label, top, color) in [
-            (&project.reference, "Bản hát", 20., 0x397a9c),
-            (&project.beat, "Beat", 68., 0x4d9a72),
+        for (slot, metadata, label, top, color) in [
+            (
+                AudioSlot::Reference,
+                &project.reference,
+                "Bản hát",
+                20.,
+                0x397a9c,
+            ),
+            (AudioSlot::Beat, &project.beat, "Beat", 68., 0x4d9a72),
         ] {
             content = content.child(div().absolute().left(px(0.)).top(px(top)).child(label));
             if let Some(metadata) = metadata {
@@ -199,15 +237,22 @@ impl Studio {
                     let stride = (peaks.len() / 1600).max(1);
                     for index in (0..peaks.len()).step_by(stride) {
                         let peak = peaks[index].as_f64().unwrap_or(0.).clamp(0., 1.) as f32;
-                        let x = index as f64 / peaks.len().max(1) as f64 * length;
+                        let Some((start, end)) = waveform_timeline_interval(
+                            slot,
+                            index,
+                            index + stride,
+                            peaks.len(),
+                            length,
+                            &project.anchors,
+                        ) else {
+                            continue;
+                        };
                         content = content.child(
                             div()
                                 .absolute()
-                                .left(px(x as f32 * zoom))
+                                .left(px(start as f32 * zoom))
                                 .top(px(top + 22. - peak * 15.))
-                                .w(px((length as f32 * zoom * stride as f32
-                                    / peaks.len().max(1) as f32)
-                                    .max(1.)))
+                                .w(px(((end - start) as f32 * zoom).max(1.)))
                                 .h(px((peak * 30.).max(1.)))
                                 .bg(rgb(color)),
                         );
@@ -327,7 +372,10 @@ impl Studio {
 #[cfg(test)]
 mod tests {
     use super::super::AudioSlot;
-    use super::{clamp_seek_position, timeline_to_track_time, track_to_timeline_time};
+    use super::{
+        clamp_seek_position, timeline_to_track_time, track_to_timeline_time,
+        waveform_timeline_interval,
+    };
     use vietkara_domain::Anchor;
 
     #[test]
@@ -363,6 +411,36 @@ mod tests {
         assert_eq!(
             timeline_to_track_time(AudioSlot::Beat, 15.0, &anchors),
             15.0
+        );
+    }
+
+    #[test]
+    fn reference_waveform_bins_align_to_beat_time_and_clip_before_zero() {
+        let anchors = vec![
+            Anchor {
+                r#ref: 10.0,
+                beat: 12.0,
+            },
+            Anchor {
+                r#ref: 20.0,
+                beat: 32.0,
+            },
+        ];
+        assert_eq!(
+            waveform_timeline_interval(AudioSlot::Reference, 2, 3, 4, 20.0, &anchors),
+            Some((12.0, 22.0))
+        );
+        assert_eq!(
+            waveform_timeline_interval(AudioSlot::Reference, 0, 1, 4, 20.0, &anchors),
+            Some((0.0, 2.0))
+        );
+        assert_eq!(
+            waveform_timeline_interval(AudioSlot::Beat, 1, 2, 4, 20.0, &anchors),
+            Some((5.0, 10.0))
+        );
+        assert_eq!(
+            waveform_timeline_interval(AudioSlot::Beat, 2, 2, 4, 20.0, &anchors),
+            None
         );
     }
 }

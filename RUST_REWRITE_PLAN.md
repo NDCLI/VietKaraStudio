@@ -315,6 +315,10 @@
 >   duration từ reference được đổi qua anchors, chiều ngược lại dùng khi seek
 >   timeline/chọn từ/lùi tap. Regression test kiểm tra ánh xạ track và round-trip
 >   với anchors có drift.
+> - Waveform reference được ánh xạ từng bin lên trục beat theo anchors và cắt
+>   phần trước mốc 0; độ dài timeline lấy max giữa duration beat/reference và
+>   lời. Regression test kiểm tra khoảng bin sau drift, clipping và beat giữ
+>   nguyên tọa độ.
 
 ## 1. Mục tiêu và phạm vi
 
