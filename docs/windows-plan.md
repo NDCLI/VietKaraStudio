@@ -622,3 +622,16 @@ warnings` sạch; `cargo test --workspace` pass toàn bộ (vietkara-media cần
 `ffmpeg`/`ffprobe` trong PATH, nếu thiếu 3 test fixture sẽ fail). Chưa có
 bằng chứng runtime cho transport/tap-sync/timeline drag/Save As/Open/import
 beat; các mục đó vẫn mở.
+
+### W3: runtime hạn chế sau commit de281db
+
+Build debug và mở bản sao fixture v2 tại `target/runtime-w3/Bài hát W3/`
+(đường dẫn Unicode, kèm `beat.wav` sine 5 giây sinh bằng FFmpeg). Chụp cửa
+sổ xác nhận: app lên, tên project và nhãn tiếng Việt đúng dấu, cỡ chữ 110,
+timeline hai hàng với bốn từ đúng thời điểm, bộ đếm `0.00 / 5.00 s`, stderr
+rỗng, `project.json` không đổi byte. Click/phím giả lập qua `PostMessage`
+không được GPUI nhận (nút Phát không đổi trạng thái), nên chưa kiểm chứng:
+playback thật và playhead, Space tap-sync, kéo khối từ, undo/redo, Lưu,
+Save As, Mở, nhập SRT/beat, autosave 30 giây. Các mục đó cần thao tác tay
+hoặc công cụ UI automation; không coi bằng chứng hiển thị này là parity
+tương tác.
