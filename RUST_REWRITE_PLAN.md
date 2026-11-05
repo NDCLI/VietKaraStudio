@@ -309,6 +309,9 @@
 >   tác gửi lệnh seek cho playback worker, cập nhật playhead/preview ngay, giới
 >   hạn trong duration và bỏ qua khi đang căn nhịp hoặc kéo mốc. Regression test
 >   kiểm tra clamp và giá trị không hữu hạn; app check và test mục tiêu pass.
+> - Playback transport cho phép chọn nghe beat hoặc bản hát; đổi nguồn sẽ khởi
+>   tạo worker với `beat.wav` / `reference.wav` tương ứng, và nhập audio mới sẽ
+>   chuyển sang track vừa nhập. Có regression test ánh xạ track sang tên media.
 
 ## 1. Mục tiêu và phạm vi
 

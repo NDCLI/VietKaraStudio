@@ -2,7 +2,7 @@
 use crate::{create_version, save_project, sha256_file};
 use std::path::Path;
 use vietkara_domain::Project;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioSlot {
     Beat,
     Reference,

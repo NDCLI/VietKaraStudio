@@ -67,6 +67,7 @@ struct Studio {
     background_frame_requested_at: f64,
     background_frame_pending: bool,
     playback_error: Option<String>,
+    listen_track: AudioSlot,
     #[cfg(windows)]
     playback: Option<Playback>,
     _playback_task: Task<()>,
@@ -1524,6 +1525,7 @@ impl Studio {
                     Ok(imported) => match Editor::new(imported.project) {
                         Ok(editor) => {
                             this.editor = editor;
+                            this.listen_track = slot;
                             this.selected_word = None;
                             this.set_word_input("", cx);
                             this.dirty = false;
@@ -1866,9 +1868,12 @@ impl Studio {
             let Some(directory) = self.path.as_ref().and_then(|p| p.parent()) else {
                 return;
             };
-            let path = directory.join("beat.wav");
+            let filename = audio_slot_filename(self.listen_track);
+            let path = directory.join(filename);
             if !path.is_file() {
-                self.playback_error = Some("Chưa có beat.wav; cần nhập hoặc relink beat".into());
+                self.playback_error = Some(format!(
+                    "Chưa có {filename}; hãy nhập hoặc relink track đang nghe"
+                ));
                 return;
             }
             match Playback::new() {
@@ -1885,6 +1890,14 @@ impl Studio {
         {
             self.playback_error = Some("Backend audio hiện hỗ trợ Windows".into());
         }
+    }
+    fn select_listen_track(&mut self, slot: AudioSlot, cx: &mut Context<Self>) {
+        if self.listen_track == slot {
+            return;
+        }
+        self.listen_track = slot;
+        self.reset_playback();
+        cx.notify();
     }
     fn transport(&mut self, operation: u8, cx: &mut Context<Self>) {
         if self.tapping.is_some() {
@@ -4140,10 +4153,25 @@ impl Render for Studio {
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.transport(2,cx))))
                     .child(div().cursor_pointer().child("+5s")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.transport(3,cx))))
+                    .child(div().cursor_pointer().px_2().rounded_sm()
+                        .bg(rgb(if self.listen_track == AudioSlot::Beat { theme::ACCENT_SURFACE } else { theme::CANVAS }))
+                        .child("Nghe beat")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.select_listen_track(AudioSlot::Beat,cx))))
+                    .child(div().cursor_pointer().px_2().rounded_sm()
+                        .bg(rgb(if self.listen_track == AudioSlot::Reference { theme::ACCENT_SURFACE } else { theme::CANVAS }))
+                        .child("Nghe bản hát")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.select_listen_track(AudioSlot::Reference,cx))))
                     .child(format!("{:.2} / {:.2} s",self.play_position,self.play_duration))
                     .child(self.playback_error.clone().unwrap_or_default())
                     .child(status),
             )
+    }
+}
+
+fn audio_slot_filename(slot: AudioSlot) -> &'static str {
+    match slot {
+        AudioSlot::Beat => "beat.wav",
+        AudioSlot::Reference => "reference.wav",
     }
 }
 
@@ -4786,6 +4814,7 @@ fn main() {
                         background_frame_requested_at: -1.,
                         background_frame_pending: false,
                         playback_error: None,
+                        listen_track: AudioSlot::Beat,
                         #[cfg(windows)]
                         playback: None,
                         _playback_task: playback_task,
@@ -4803,6 +4832,12 @@ fn main() {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn playback_track_resolves_to_managed_audio_file() {
+        assert_eq!(audio_slot_filename(AudioSlot::Beat), "beat.wav");
+        assert_eq!(audio_slot_filename(AudioSlot::Reference), "reference.wav");
+    }
 
     #[test]
     fn preview_sweep_geometry_tracks_partial_fill_feather_and_glow() {
