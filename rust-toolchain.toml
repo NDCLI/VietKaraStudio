@@ -1,4 +1,7 @@
 [toolchain]
-channel = "stable-x86_64-pc-windows-msvc"
+# Pinned exact version (plan §3.8): no host triple, so rustup picks the
+# host toolchain on Windows and on Linux/macOS alike.
+# The previous `stable-x86_64-pc-windows-msvc` broke `cargo` on any
+# non-Windows host ("target tuple in channel name").
+channel = "1.99.1"
 profile = "minimal"
-

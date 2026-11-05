@@ -3,6 +3,26 @@
 > **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
 >
 > **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
+>
+> **Tiến độ 2026-11-05 — Giai đoạn 0 + đầu Giai đoạn 2 (xong, kiểm chứng trên Linux):**
+> - `docs/compatibility-matrix.md` mới: ma trận P0/P1/P2, hợp đồng tương thích
+>   Python ↔ Rust, fixture v1/v2.
+> - `rust-toolchain.toml` ghim Rust **1.99.1** (không host triple; file cũ
+>   `stable-x86_64-pc-windows-msvc` làm `cargo` lỗi trên mọi host không
+>   phải Windows).
+> - `vietkara-domain`: ID 32 hex (`Uuid::simple()`), schema thiếu = 1,
+>   migration v1→v2 đúng `timing.validate_words`/`validate_anchors`
+>   (đã đối chiếu trực tiếp với Python trên cùng fixture), save atomic,
+>   typed word fields (`estimated`/`locked`/`section`/`label_color`/`row`/…).
+> - `vietkara-storage` mới: atomic save, manifest SHA-256, version snapshot,
+>   restore an toàn (verify → stage → swap, rollback), bundle ZIP
+>   (giới hạn 3 GiB / 2.000 entry / 20 MiB, allowlist media, chặn path
+>   traversal). `cargo fmt --check`, `cargo clippy -p vietkara-domain
+>   -p vietkara-storage -- -D warnings`, `cargo test` 14/14 pass;
+>   `pytest tests/test_timing.py` 4/4, `node --test` tapping/timeline 14/14.
+> - **Chưa xong:** spike GPUI/Windows/IME/playback (Giai đoạn 1) — cần máy
+>   Windows 10/11; `cargo test --workspace` (gồm `vietkara-app`/GPUI)
+>   chưa chạy được trên Linux. Xem §9.
 
 > **Mốc đối chiếu:** baseline Python là nhánh `codex/ui-redesign-1.1.4`, commit `c8dae55` (release 1.1.7); không dùng `main` tại `3798f4e` làm baseline tính năng. Nhánh Rust hiện là `codex/rust-gpui-rewrite`.
 
@@ -259,9 +279,9 @@ Không gọi một giai đoạn là hoàn tất chỉ vì compile thành công; 
 
 ## 9. Thứ tự công việc ngay sau kế hoạch này
 
-1. Bổ sung fixture project v1/v2, fixture archive và golden ASS/FFmpeg output từ baseline Python.
-2. Hoàn thiện `vietkara-domain` validation/migration contract và tạo `vietkara-storage`.
-3. Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock.
+1. ✅ Bổ sung fixture project v1/v2, fixture archive và golden ASS/FFmpeg output từ baseline Python. — *2026-11-05: fixture v1/v2 và fixture archive/bundle trong test của `vietkara-storage` đã xong; golden ASS/FFmpeg output vẫn còn (thuộc Giai đoạn 4, làm sau khi layout contract ổn định).*
+2. ✅ Hoàn thiện `vietkara-domain` validation/migration contract và tạo `vietkara-storage`.
+3. ⏳ Chạy GPUI/Windows spike có IME, file picker, path Unicode và fake playback clock. — *Bước tiếp theo; cần máy Windows, chưa làm được trên Linux.*
 4. Tạo `vietkara-jobs` + `vietkara-media` tối thiểu, sau đó làm vertical slice playback/tap-sync.
 5. Chỉ sau khi luồng save/reopen ổn định mới port preview/export.
 6. Chỉ sau khi MVP đạt mới đưa AI bridge và batch render vào Rust.

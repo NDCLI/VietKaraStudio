@@ -16,3 +16,4 @@ target/
 docs/*
 !docs/DISTRIBUTION.md
 !docs/RELEASE.md
+!docs/compatibility-matrix.md
