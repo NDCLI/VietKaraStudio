@@ -254,6 +254,13 @@
 >   countdown và countdown sau khoảng nghỉ từ 8 giây; hiển thị đúng số slot
 >   còn lại và hỗ trợ PNG tùy chỉnh. Thêm regression test cho cửa sổ đầu bài,
 >   khoảng nghỉ và thời điểm không hoạt động; app unit tests **9/9** pass.
+> - Thêm nhóm cài đặt export trong inspector: MP4/MOV/MKV, 1080p/4K,
+>   quality, FPS, beat/guide vocal và audio normalization. Các lựa chọn cập
+>   nhật typed Settings bằng `SetSettings` để giữ undo/autosave và được đọc
+>   trực tiếp bởi `RenderProfile::from_project`. Workspace check/Clippy pass;
+>   app **9/9**, domain **20/20**, jobs **5/5**, storage **19/19**, media
+>   non-FFmpeg **11/11** và render non-FFmpeg **39/39** pass. Full FFmpeg
+>   integrations chưa chạy được vì `ffmpeg.exe`/`ffprobe.exe` không có trong PATH.
 
 ## 1. Mục tiêu và phạm vi
 

@@ -505,6 +505,26 @@ impl Studio {
         };
         cx.notify();
     }
+    fn update_typed_settings(
+        &mut self,
+        update: impl FnOnce(&mut vietkara_domain::settings::Settings),
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.autosaving || self.recovery.is_some() || self.tapping.is_some() {
+            return;
+        }
+        let mut settings = self.editor.project().settings.clone();
+        update(&mut settings);
+        self.edit_status = match self.editor.execute(Command::SetSettings(settings)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật cài đặt xuất • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
     fn apply_title_text(&mut self, cx: &mut Context<Self>) {
         let text = self.word_input.read(cx).value().trim().to_owned();
         if text.chars().count() > 200 {
@@ -2234,6 +2254,29 @@ impl Render for Studio {
             .get("align")
             .and_then(Value::as_str)
             .unwrap_or("center");
+        let export_resolution = match settings.resolution {
+            vietkara_domain::settings::Resolution::Hd => "1080p",
+            vietkara_domain::settings::Resolution::UltraHd => "4K",
+        };
+        let export_quality = match settings.render_quality {
+            vietkara_domain::settings::RenderQuality::Standard => "Tiêu chuẩn",
+            vietkara_domain::settings::RenderQuality::High => "Cao",
+            vietkara_domain::settings::RenderQuality::Maximum => "Tối đa",
+        };
+        let export_format = match settings.render_format {
+            vietkara_domain::settings::RenderFormat::Mp4 => "MP4",
+            vietkara_domain::settings::RenderFormat::Mov => "MOV",
+            vietkara_domain::settings::RenderFormat::Mkv => "MKV",
+        };
+        let export_fps = match settings.render_fps {
+            vietkara_domain::settings::RenderFps::Source => "Theo nguồn",
+            vietkara_domain::settings::RenderFps::Thirty => "30 FPS",
+            vietkara_domain::settings::RenderFps::Sixty => "60 FPS",
+        };
+        let export_audio = match settings.audio_output {
+            vietkara_domain::settings::AudioOutput::Beat => "Beat",
+            vietkara_domain::settings::AudioOutput::Guide => "Beat + vocal guide",
+        };
         let position_label = match display_position {
             "top" => "Trên",
             "center" => "Giữa",
@@ -3222,7 +3265,26 @@ impl Render for Studio {
                                                 .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.cycle_setting(key,&["none","fade","slide_up","slide_down","slide_left","slide_right","zoom","flip"],cx)))
                                         })))
                                 )
-                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x748297)).child("Cài đặt được lưu cùng project."))),
+                                .child(div().mt_4().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("XUẤT VIDEO"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Định dạng: {export_format}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.render_format=match settings.render_format {vietkara_domain::settings::RenderFormat::Mp4=>vietkara_domain::settings::RenderFormat::Mov,vietkara_domain::settings::RenderFormat::Mov=>vietkara_domain::settings::RenderFormat::Mkv,vietkara_domain::settings::RenderFormat::Mkv=>vietkara_domain::settings::RenderFormat::Mp4},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Độ phân giải: {export_resolution}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.resolution=match settings.resolution {vietkara_domain::settings::Resolution::Hd=>vietkara_domain::settings::Resolution::UltraHd,vietkara_domain::settings::Resolution::UltraHd=>vietkara_domain::settings::Resolution::Hd},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Chất lượng: {export_quality}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.render_quality=match settings.render_quality {vietkara_domain::settings::RenderQuality::Standard=>vietkara_domain::settings::RenderQuality::High,vietkara_domain::settings::RenderQuality::High=>vietkara_domain::settings::RenderQuality::Maximum,vietkara_domain::settings::RenderQuality::Maximum=>vietkara_domain::settings::RenderQuality::Standard},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Tốc độ khung hình: {export_fps}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.render_fps=match settings.render_fps {vietkara_domain::settings::RenderFps::Source=>vietkara_domain::settings::RenderFps::Thirty,vietkara_domain::settings::RenderFps::Thirty=>vietkara_domain::settings::RenderFps::Sixty,vietkara_domain::settings::RenderFps::Sixty=>vietkara_domain::settings::RenderFps::Source},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(format!("Âm thanh: {export_audio}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.audio_output=match settings.audio_output {vietkara_domain::settings::AudioOutput::Beat=>vietkara_domain::settings::AudioOutput::Guide,vietkara_domain::settings::AudioOutput::Guide=>vietkara_domain::settings::AudioOutput::Beat},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if settings.audio_normalize {"✓  Chuẩn hóa âm thanh (-16 LUFS)"} else {"Chuẩn hóa âm thanh: tắt"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.audio_normalize = !settings.audio_normalize,cx))))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x748297)).child("Cài đặt được lưu cùng project."))),
                     ),
             )
             .child(
