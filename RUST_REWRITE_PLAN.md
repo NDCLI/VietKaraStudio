@@ -227,9 +227,10 @@
 >   hoa và input decomposed pass; lookup tables được cache một lần để không
 >   tạo bảng mới mỗi lần đo glyph. Workspace clippy và app build pass.
 > - Thêm nhóm TITLE CARD vào inspector GPUI: bật/tắt, lần bật đầu lấy tên
->   project nếu title trống, chọn template và hiệu ứng vào/ra. Settings đi qua
->   `SetSettings`, giữ dirty/autosave hiện có. Text custom, credit, thời gian,
->   màu và cỡ title chưa có control trong inspector.
+>   project nếu title trống, sửa nội dung title bằng GPUI text input, chọn
+>   template và hiệu ứng vào/ra. Settings đi qua `SetSettings`, giữ
+>   dirty/autosave hiện có. Credit, thời gian, màu và cỡ title chưa có control
+>   trong inspector.
 
 ## 1. Mục tiêu và phạm vi
 

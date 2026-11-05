@@ -504,6 +504,15 @@ impl Studio {
         };
         cx.notify();
     }
+    fn apply_title_text(&mut self, cx: &mut Context<Self>) {
+        let text = self.word_input.read(cx).value().trim().to_owned();
+        if text.chars().count() > 200 {
+            self.edit_status = "Title không được dài quá 200 ký tự".into();
+            cx.notify();
+            return;
+        }
+        self.update_setting("title_text", Value::String(text), cx);
+    }
     fn cycle_setting(&mut self, key: &str, values: &[&str], cx: &mut Context<Self>) {
         let current = self
             .editor
@@ -2649,11 +2658,21 @@ impl Render for Studio {
                                 .child(div().cursor_pointer().px_2().py_1().rounded_sm()
                                     .bg(rgb(if !self.inspector_design {0x34465b}else{0x17191f}))
                                     .child("Từ")
-                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.inspector_design=false;cx.notify();})))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        this.inspector_design=false;
+                                        let text=this.selected_word.as_ref().and_then(|id|this.editor.project().words.iter().find(|word|&word.id==id)).map(|word|word.text.clone()).unwrap_or_default();
+                                        this.set_word_input(&text,cx);
+                                        cx.notify();
+                                    })))
                                 .child(div().cursor_pointer().px_2().py_1().rounded_sm()
                                     .bg(rgb(if self.inspector_design {0x34465b}else{0x17191f}))
                                     .child("Thiết kế")
-                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{this.inspector_design=true;cx.notify();}))))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        this.inspector_design=true;
+                                        let text=this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").to_owned();
+                                        this.set_word_input(&text,cx);
+                                        cx.notify();
+                                    }))))
                             .when(!self.inspector_design,|panel|panel
                             .child("TỪ ĐANG CHỌN")
                             .child(div().mt_3().child("Lời bài hát"))
@@ -2732,11 +2751,19 @@ impl Render for Studio {
                                         let enabled=this.editor.project().settings.extra.get("title_enabled").and_then(Value::as_bool).unwrap_or(false);
                                         if !enabled && this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").trim().is_empty() {
                                             let project_name=this.editor.project().name.clone();
+                                            this.set_word_input(&project_name,cx);
                                             this.update_setting("title_text",Value::String(project_name),cx);
+                                        } else if !enabled {
+                                            let title=this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").to_owned();
+                                            this.set_word_input(&title,cx);
                                         }
                                         this.update_setting("title_enabled",Value::Bool(!enabled),cx);
                                     })))
                                 .when(title_enabled,|panel|panel
+                                    .child(div().mt_2().child(self.word_input.clone()))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2()
+                                        .child("Áp dụng title")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_title_text(cx))))
                                     .child(div().mt_1().text_size(px(11.)).text_color(rgb(0x748297)).child(if title_text.is_empty(){"Chưa có nội dung title".to_owned()}else{title_text.to_owned()}))
                                     .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                         .child(format!("Template: {title_template}"))
