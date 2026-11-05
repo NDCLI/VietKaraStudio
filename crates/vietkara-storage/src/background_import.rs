@@ -30,6 +30,41 @@ fn supported_video(path: &Path) -> bool {
         })
 }
 
+/// Extract one decoded video frame for the canvas without modifying project media.
+pub fn extract_video_frame(video: &Path, seconds: f64, output: &Path) -> Result<(), String> {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err("Vị trí frame không hợp lệ".into());
+    }
+    if !video.is_file() {
+        return Err("Không tìm thấy video nền trong project".into());
+    }
+    let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+    let output_result = Command::new(ffmpeg)
+        .args(["-y", "-v", "error", "-ss"])
+        .arg(format!("{seconds:.3}"))
+        .arg("-i")
+        .arg(video)
+        .args(["-frames:v", "1", "-q:v", "2", "-update", "1"])
+        .arg(output)
+        .output()
+        .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+    if !output_result.status.success() {
+        return Err(format!(
+            "Không trích xuất được frame video: {}",
+            String::from_utf8_lossy(&output_result.stderr).trim()
+        ));
+    }
+    if !output.is_file()
+        || std::fs::metadata(output)
+            .map(|meta| meta.len())
+            .unwrap_or(0)
+            == 0
+    {
+        return Err("FFmpeg không tạo được frame preview".into());
+    }
+    Ok(())
+}
+
 /// Import a project-local video source and a lightweight H.264 proxy. The
 /// first proxy frame is also published as `background.jpg` for the GPUI canvas.
 pub fn import_video_background(
@@ -362,6 +397,14 @@ mod tests {
         assert!(directory.path().join("background_source.mp4").is_file());
         assert!(directory.path().join("background_preview.mp4").is_file());
         assert!(directory.path().join("background.jpg").is_file());
+        let scrub_frame = directory.path().join("scrub-frame.jpg");
+        extract_video_frame(
+            &directory.path().join("background_preview.mp4"),
+            0.5,
+            &scrub_frame,
+        )
+        .unwrap();
+        assert!(scrub_frame.is_file());
         assert_eq!(saved.settings.extra["background_type"], "video");
         assert_eq!(
             saved.extra["background_video"]["preview_file"],

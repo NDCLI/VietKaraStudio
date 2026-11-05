@@ -57,6 +57,9 @@ struct Studio {
     tapping: Option<TapSession>,
     play_position: f64,
     play_duration: f64,
+    background_video_frame: Option<PathBuf>,
+    background_frame_requested_at: f64,
+    background_frame_pending: bool,
     playback_error: Option<String>,
     #[cfg(windows)]
     playback: Option<Playback>,
@@ -890,6 +893,88 @@ impl Studio {
         }
         #[cfg(not(windows))]
         let _ = cx;
+        self.request_background_frame(cx);
+    }
+
+    fn request_background_frame(&mut self, cx: &mut Context<Self>) {
+        let project = self.editor.project();
+        if project
+            .settings
+            .extra
+            .get("background_type")
+            .and_then(Value::as_str)
+            != Some("video")
+            || (self.play_position - self.background_frame_requested_at).abs() < 0.5
+            || self.background_frame_pending
+        {
+            return;
+        }
+        let (Some(main), Some(video_name)) = (
+            self.path.as_ref(),
+            project
+                .extra
+                .get("background_video")
+                .and_then(|video| video.get("source_file"))
+                .and_then(Value::as_str),
+        ) else {
+            return;
+        };
+        if PathBuf::from(video_name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            != Some(video_name)
+        {
+            return;
+        }
+        let Some(directory) = main.parent() else {
+            return;
+        };
+        let video = directory.join(video_name);
+        if !video.is_file() {
+            return;
+        }
+        let position = self.play_position.max(0.0);
+        let cache_dir = std::env::temp_dir().join(format!("vietkara-preview-{}", project.id));
+        let output = cache_dir.join(format!("frame-{}.jpg", (position * 1000.0) as u64));
+        self.background_frame_pending = true;
+        self.background_frame_requested_at = position;
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    std::fs::create_dir_all(&cache_dir).map_err(|error| error.to_string())?;
+                    vietkara_storage::background_import::extract_video_frame(
+                        &video, position, &output,
+                    )?;
+                    let mut cached = std::fs::read_dir(&cache_dir)
+                        .map_err(|error| error.to_string())?
+                        .flatten()
+                        .filter_map(|entry| {
+                            let path = entry.path();
+                            let modified = entry.metadata().ok()?.modified().ok()?;
+                            path.extension()
+                                .is_some_and(|extension| extension == "jpg")
+                                .then_some((path, modified))
+                        })
+                        .collect::<Vec<_>>();
+                    cached.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
+                    for (stale, _) in cached.into_iter().skip(16) {
+                        if stale != output {
+                            let _ = std::fs::remove_file(stale);
+                        }
+                    }
+                    Ok::<_, String>(output)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.background_frame_pending = false;
+                if let Ok(path) = result {
+                    this.background_video_frame = Some(path);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn import_srt(&mut self, cx: &mut Context<Self>) {
@@ -1384,7 +1469,15 @@ impl Render for Studio {
             .path
             .as_ref()
             .and_then(|path| path.parent())
-            .map(|directory| directory.join("background.jpg"))
+            .map(|directory| {
+                if background_type == "video" {
+                    self.background_video_frame
+                        .clone()
+                        .unwrap_or_else(|| directory.join("background.jpg"))
+                } else {
+                    directory.join("background.jpg")
+                }
+            })
             .filter(|path| path.is_file());
         let background_image = if background_type == "image"
             || background_type == "video"
@@ -2219,6 +2312,9 @@ fn main() {
                         tapping: None,
                         play_position: 0.,
                         play_duration: 0.,
+                        background_video_frame: None,
+                        background_frame_requested_at: -1.,
+                        background_frame_pending: false,
                         playback_error: None,
                         #[cfg(windows)]
                         playback: None,
