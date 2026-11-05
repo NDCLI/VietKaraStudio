@@ -94,18 +94,22 @@
 >   `cargo build -p vietkara-app` đều pass; Python baseline **167/167** và
 >   Node **17/17** cũng pass.
 > - Đây mới là lát giao diện/lyrics đầu tiên, chưa đạt parity thiết kế đầy đủ;
-> - Preview GPUI hiện lấy dòng theo từ đang phát/đang chọn, tô trạng thái từng
->   từ theo thời gian beat đã map sang bản hát và đổi cách trình bày theo mode.
->   Nó chưa phát hình nền/video và chưa dùng chung layout ASS với renderer.
+> - Preview GPUI lấy cửa sổ hiển thị theo thời gian lời và map beat/reference,
+>   chọn câu mới nhất đang hát hoặc vừa hát cho mỗi lane karaoke; hỗ trợ lane
+>   duet theo role/row và cửa sổ một câu cho subtitle. LyricsMV có stack/scroll
+>   lân cận. Đây mới là phần lựa chọn dòng và tô chữ, chưa phát hình nền/video
+>   hoặc dùng chung layout ASS với renderer.
 > - Tích hợp text input GPUI từ spike IME vào inspector; hỗ trợ chọn/sửa từ,
 >   paste và phím điều hướng. Sửa chữ cập nhật `words` + `project.text` trong
 >   một command undo/redo; đổi vai áp dụng cho toàn câu bằng một batch.
-> - Kiểm tra: Rust **78/78**, fmt/clippy/check/build pass; Python **167/167**,
+> - Kiểm tra sau cập nhật preview: Rust **80/80**, fmt/clippy/check/build pass;
+>   Python **167/167**, Node **17/17** pass.
+> - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
+>   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
+> - Kiểm tra lát trước: Rust **78/78**, fmt/clippy/check/build pass; Python **167/167**,
 >   Node **17/17** pass. App khởi chạy với fixture schema 2. Accessibility
 >   tree của cửa sổ GPUI không đọc được trong công cụ desktop, nên thao tác gõ
 >   IME trực tiếp trên input sản phẩm vẫn cần kiểm tra thủ công.
-> - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
->   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
 
 ## 1. Mục tiêu và phạm vi
 

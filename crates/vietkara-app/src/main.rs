@@ -1,3 +1,4 @@
+mod preview;
 mod text_input;
 mod timeline;
 use gpui::{
@@ -1204,18 +1205,20 @@ impl Render for Studio {
             .unwrap_or(false);
         let font_size = settings.font_size;
         let sung_color = setting_color(settings, "sung", 0x52efb9);
+        let unsung_color = setting_color(settings, "unsung", 0xffffff);
+        let duet = settings.extra.get("singing_mode").and_then(Value::as_str) == Some("duet");
         let reference_position = vietkara_domain::timing::map_time(
             self.play_position,
             &self.editor.project().anchors,
             true,
         );
-        let active_preview_word = display_words
-            .iter()
-            .find(|word| reference_position >= word.start && reference_position < word.end);
-        let preview_line = selected.or(active_preview_word).map(|word| word.line);
-        let previous_preview_line = preview_line
-            .and_then(|line| line.checked_sub(1))
-            .filter(|line| display_words.iter().any(|word| word.line == *line));
+        let active_lines = preview::visible_lines(
+            display_words,
+            &self.editor.project().anchors,
+            self.play_position,
+            display_mode,
+            duet,
+        );
         let selected_id = self.selected_word.as_deref();
         let preview_line_element = |line: u32, size: f32, subdued: bool| {
             div().flex().justify_center().gap_2().children(
@@ -1226,12 +1229,14 @@ impl Render for Studio {
                         let active =
                             reference_position >= word.start && reference_position < word.end;
                         let sung = reference_position >= word.end;
-                        let color = if active || sung {
+                        let color = if subdued {
+                            0xc4ccd5
+                        } else if display_mode == "subtitle" {
+                            unsung_color
+                        } else if display_mode == "lyricsmv" || active || sung {
                             sung_color
                         } else if Some(word.id.as_str()) == selected_id {
                             0xffdf79
-                        } else if subdued {
-                            0xc4ccd5
                         } else {
                             0xffffff
                         };
@@ -1243,19 +1248,76 @@ impl Render for Studio {
                     }),
             )
         };
-        let previous_preview =
-            previous_preview_line.map(|line| preview_line_element(line, 20., true));
-        let current_preview = preview_line.map(|line| {
-            preview_line_element(
-                line,
-                match display_mode {
-                    "lyricsmv" => 34.,
-                    "subtitle" => 28.,
-                    _ => (font_size as f32 / 3.).clamp(16., 42.),
-                },
-                false,
-            )
-        });
+        let mut preview_rows: Vec<(u32, f32, bool)> = if display_mode == "karaoke" {
+            active_lines
+                .iter()
+                .map(|row| (row.line, (font_size as f32 / 3.).clamp(16., 42.), false))
+                .collect()
+        } else {
+            active_lines
+                .first()
+                .map(|row| {
+                    vec![(
+                        row.line,
+                        if display_mode == "subtitle" { 28. } else { 34. },
+                        false,
+                    )]
+                })
+                .unwrap_or_default()
+        };
+        if self.play_duration <= 0.
+            && preview_rows.is_empty()
+            && let Some(word) = selected
+        {
+            preview_rows.push((word.line, (font_size as f32 / 3.).clamp(16., 42.), false));
+        }
+        if display_mode == "lyricsmv"
+            && settings.extra.get("mv_style").and_then(Value::as_str) != Some("single")
+            && let Some(active) = preview_rows.first().copied()
+        {
+            let mut lines: Vec<(f64, u32)> =
+                display_words.iter().fold(Vec::new(), |mut lines, word| {
+                    if !lines.iter().any(|(_, line)| *line == word.line) {
+                        lines.push((
+                            vietkara_domain::timing::map_time(
+                                word.start,
+                                &self.editor.project().anchors,
+                                false,
+                            ),
+                            word.line,
+                        ));
+                    }
+                    lines
+                });
+            lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+            if let Some(index) = lines.iter().position(|(_, line)| *line == active.0) {
+                let count =
+                    if settings.extra.get("mv_style").and_then(Value::as_str) == Some("scroll") {
+                        2isize
+                    } else {
+                        1isize
+                    };
+                let mut stack = Vec::new();
+                for offset in -count..=count {
+                    let Some(line) = index.checked_add_signed(offset) else {
+                        continue;
+                    };
+                    let Some((_, line_id)) = lines.get(line) else {
+                        continue;
+                    };
+                    if offset == 0 {
+                        stack.push((*line_id, 34., false));
+                    } else {
+                        stack.push((*line_id, 22., true));
+                    }
+                }
+                preview_rows = stack;
+            }
+        }
+        let current_preview: Vec<_> = preview_rows
+            .iter()
+            .map(|(line, size, subdued)| preview_line_element(*line, *size, *subdued))
+            .collect();
         let timeline = self.timeline_view(cx);
         let lyric_rows = display_words.iter().map(|line: &Word| {
             let id = line.id.clone();
@@ -1533,10 +1595,9 @@ impl Render for Studio {
                                                 .rounded_sm().bg(rgb(0x101d2b))
                                                 .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().flex().flex_col().gap_2().mt_4()
-                                                    .children(previous_preview)
                                                     .children(current_preview)
-                                                    .when(preview_line.is_none(),|empty|empty
-                                                        .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child("Nạp lời để xem trước karaoke"))))),
+                                                    .when(preview_rows.is_empty(),|empty|empty
+                                                        .child(div().text_size(px(15.)).text_color(rgb(0x9aa7b7)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
                                     ),
                             )
                             .child(
