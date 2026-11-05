@@ -323,6 +323,8 @@
 >   Preview waveform/lời cập nhật tạm trong lúc kéo; khi thả, `SetAnchors` đi
 >   qua editor transaction nên giữ validation, undo/redo và autosave hiện có.
 >   Test kiểm tra vị trí reference được nội suy và từ chối anchor gần trùng.
+>   Đường kéo kiểm tra riêng ràng buộc anchor để tránh clone/validate toàn bộ
+>   project ở mỗi mouse-move; domain validation đầy đủ vẫn chạy một lần khi thả.
 
 ## 1. Mục tiêu và phạm vi
 

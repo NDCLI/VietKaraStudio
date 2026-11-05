@@ -71,6 +71,19 @@ fn insert_anchor_at_beat(
     Ok(candidate)
 }
 
+fn anchors_valid(anchors: &[vietkara_domain::Anchor]) -> bool {
+    anchors.len() <= vietkara_domain::MAX_ANCHORS
+        && anchors.iter().all(|anchor| {
+            anchor.r#ref.is_finite()
+                && anchor.beat.is_finite()
+                && anchor.r#ref >= 0.0
+                && anchor.beat >= 0.0
+        })
+        && anchors.windows(2).all(|pair| {
+            pair[1].r#ref - pair[0].r#ref >= 0.02 && pair[1].beat - pair[0].beat >= 0.02
+        })
+}
+
 pub(super) fn project_timeline_duration(
     project: &Project,
     playback_duration: f64,
@@ -246,10 +259,8 @@ impl Studio {
             let mut anchors = project.anchors.clone();
             if let Some(anchor) = anchors.get_mut(anchor_index) {
                 anchor.beat = (drag.anchor_origin + delta).max(0.0);
-                if let Ok(mut preview) = Editor::new(project.clone())
-                    && preview.execute(Command::SetAnchors(anchors)).is_ok()
-                {
-                    drag.anchors = preview.project().anchors.clone();
+                if anchors_valid(&anchors) {
+                    drag.anchors = anchors.clone();
                     drag.command = Some(Command::SetAnchors(drag.anchors.clone()));
                 }
             }
@@ -526,8 +537,8 @@ impl Studio {
 mod tests {
     use super::super::AudioSlot;
     use super::{
-        clamp_seek_position, insert_anchor_at_beat, timeline_to_track_time, track_to_timeline_time,
-        waveform_timeline_interval,
+        anchors_valid, clamp_seek_position, insert_anchor_at_beat, timeline_to_track_time,
+        track_to_timeline_time, waveform_timeline_interval,
     };
     use vietkara_domain::Anchor;
 
@@ -614,5 +625,9 @@ mod tests {
         assert_eq!(inserted[1].r#ref, 15.0);
         assert_eq!(inserted[1].beat, 22.0);
         assert!(insert_anchor_at_beat(22.01, &inserted).is_err());
+        assert!(anchors_valid(&inserted));
+        let mut crossed = inserted;
+        crossed[1].beat = crossed[2].beat + 1.0;
+        assert!(!anchors_valid(&crossed));
     }
 }
