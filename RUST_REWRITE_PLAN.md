@@ -98,20 +98,23 @@
 >   chọn câu mới nhất đang hát hoặc vừa hát cho mỗi lane karaoke; hỗ trợ lane
 >   duet hai lane theo role/row, lấy màu theo role và cửa sổ một câu cho
 >   subtitle. LyricsMV có stack/scroll lân cận. Đây mới là phần lựa chọn dòng
->   và tô chữ, chưa phát hình nền/video hoặc dùng chung layout ASS với renderer.
+>   và tô chữ; preview chưa dùng chung layout ASS với renderer.
 > - Tích hợp text input GPUI từ spike IME vào inspector; hỗ trợ chọn/sửa từ,
 >   paste và phím điều hướng. Sửa chữ cập nhật `words` + `project.text` trong
 >   một command undo/redo; đổi vai áp dụng cho toàn câu bằng một batch.
 > - Kiểm tra sau cập nhật preview: Rust **81/81**, fmt/clippy/check/build pass;
 >   Python **167/167**, Node **17/17** pass.
-> - Lát này vẫn chưa đạt parity đầy đủ: preview chưa có nền/video, chưa dùng
->   chung layout ASS, và các panel/công cụ nâng cao còn thiếu.
+> - Preview hỗ trợ nền màu và ảnh `background.jpg`; import ảnh chuẩn hóa JPG,
+>   tạo version snapshot và rollback nếu lưu project lỗi. Nền video/original,
+>   scene, logo và layout ASS dùng chung vẫn còn thiếu.
+> - Lát này vẫn chưa đạt parity đầy đủ: scene/nền video và các panel/công cụ
+>   nâng cao còn thiếu.
 > - Bố cục ba cột và preview co theo logical viewport GPUI, giữ tỷ lệ 16:9/9:16;
 >   tham khảo pattern Tabs/Toolbar/Resizable của GPUI Kit nhưng chưa thêm Kit
 >   dependency vì version hiện tại yêu cầu snapshot GPUI mới hơn bản app đang ghim.
 > - Inspector có điều khiển vị trí lời (trên/giữa/dưới) và căn lề (trái/giữa/phải,
 >   hoặc đẩy hai lane karaoke ra hai bên), lưu qua Settings/undo/autosave.
-> - Kiểm tra UI/layout: Rust **83/83**, fmt/clippy/check/build pass; Python
+> - Kiểm tra UI/media: Rust **86/86**, fmt/clippy/check/build pass; Python
 >   **167/167**, Node **17/17** pass.
 > - Kiểm tra lát trước: Rust **78/78**, fmt/clippy/check/build pass; Python **167/167**,
 >   Node **17/17** pass. App khởi chạy với fixture schema 2. Accessibility

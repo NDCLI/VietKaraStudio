@@ -3,8 +3,8 @@ mod text_input;
 mod timeline;
 use gpui::{
     App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
-    MouseButton, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, size,
+    MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window,
+    WindowBounds, WindowOptions, actions, div, img, prelude::*, px, rgb, size,
 };
 use serde_json::Value;
 use vietkara_domain::{
@@ -303,6 +303,72 @@ impl Studio {
                     Ok(Err(error)) => this.edit_status = error.to_string(),
                     Err(error) => this.edit_status = error.to_string(),
                 }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn choose_background_image(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.recovery.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_lyrics.is_some()
+        {
+            return;
+        }
+        let Some(main) = self.path.clone() else {
+            self.edit_status = "Hãy lưu project trước khi thêm ảnh nền".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project().clone();
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn ảnh nền (PNG, JPG hoặc WebP)".into()),
+        });
+        self.saving = true;
+        self.edit_status = "Đang thêm ảnh nền và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(paths))) => {
+                    if let Some(source) = paths.into_iter().next() {
+                        cx.background_executor()
+                            .spawn(async move {
+                                vietkara_storage::background_import::import_image_background(
+                                    &project, &main, &source,
+                                )
+                            })
+                            .await
+                            .map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                }
+                Ok(Ok(None)) => Ok(None),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(Some(imported)) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!("Đã thêm ảnh nền • phiên bản trước: {}", imported.version_id)
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Ok(None) => "Đã hủy chọn ảnh nền".into(),
+                    Err(error) => error,
+                };
                 cx.notify();
             });
         })
@@ -1235,6 +1301,29 @@ impl Render for Studio {
             .get("display_mode")
             .and_then(Value::as_str)
             .unwrap_or("karaoke");
+        let background_type = settings
+            .extra
+            .get("background_type")
+            .and_then(Value::as_str)
+            .unwrap_or("auto");
+        let use_background = settings
+            .extra
+            .get("use_background")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let background_asset = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(|directory| directory.join("background.jpg"))
+            .filter(|path| path.is_file());
+        let background_image =
+            if background_type == "image" || (background_type == "auto" && use_background) {
+                background_asset.clone()
+            } else {
+                None
+            };
+        let background_color = setting_color(settings, "background", 0x101d2b);
         let display_position = settings
             .extra
             .get("position")
@@ -1661,6 +1750,9 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(if self.editor.project().reference.is_some(){"●  Bản hát · đã nạp"}else{"＋  Nạp bản hát / video"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_audio(AudioSlot::Reference,cx))))
+                                .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if background_asset.is_some() {"▧  Thay ảnh nền"} else {"＋  Nạp ảnh nền"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_background_image(cx))))
                                 .child(div().mt_4().text_color(rgb(0x9aa7b7)).child("Project JSON"))
                                 .child(div().mt_2().text_size(px(11.)).child(self.path.as_ref().map(|path|path.display().to_string()).unwrap_or_else(||"Chưa lưu project".into()))))
                             .when(!self.left_tab_media,|panel|panel
@@ -1702,7 +1794,13 @@ impl Render for Studio {
                                                 .when(display_align == "right", |frame| frame.items_end())
                                                 .w(if is_portrait {px(portrait_width)} else {px(workspace.preview)})
                                                 .h(px(preview_height))
-                                                .rounded_sm().bg(rgb(0x101d2b))
+                                                .relative().overflow_hidden().rounded_sm().bg(rgb(background_color))
+                                                .when(background_image.is_some(), |frame| {
+                                                    frame.child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
+                                                        .child(img(background_image.clone().unwrap()).size_full().object_fit(ObjectFit::Cover)))
+                                                        .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
+                                                            .bg(rgb(0x05080c)).opacity(0.32))
+                                                })
                                                 .child(div().text_size(px(12.)).text_color(rgb(0x8190a3)).child("PREVIEW · KHUNG VIDEO"))
                                                 .child(div().flex().flex_col().gap_2().mt_4()
                                                     .children(current_preview)
@@ -1788,6 +1886,17 @@ impl Render for Studio {
                                 .child(div().mt_3().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(if italic{"✓  Chữ nghiêng"}else{"Chữ nghiêng"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{let v=!this.editor.project().settings.extra.get("italic").and_then(Value::as_bool).unwrap_or(false);this.update_setting("italic",Value::Bool(v),cx);})))
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("NỀN KHUNG HÌNH"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                    .child(if background_type == "image" {"Đang dùng ảnh nền"} else {"Đang dùng nền màu"})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("background_type",&["color","image"],cx))))
+                                .child(div().mt_2().flex().gap_2()
+                                    .children([("Xanh đêm","#101d2b"),("Đen","#090c12"),("Tím","#221c35")].into_iter().map(|(label,color)|
+                                        div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
+                                            .child(div().flex().gap_1().items_center()
+                                                .child(div().w(px(10.)).h(px(10.)).rounded_sm().bg(rgb(match color {"#090c12"=>0x090c12,"#221c35"=>0x221c35,_=>0x101d2b})))
+                                                .child(label))
+                                            .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.update_setting("background",Value::String(color.into()),cx))))))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(0x9aa7b7)).child("VỊ TRÍ LỜI"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child(format!("Vị trí: {position_label}"))

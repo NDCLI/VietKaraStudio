@@ -19,6 +19,7 @@
 
 pub mod audio_import;
 pub mod autosave;
+pub mod background_import;
 pub mod copy;
 
 use serde::{Deserialize, Serialize};
