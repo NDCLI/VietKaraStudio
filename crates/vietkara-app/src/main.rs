@@ -1375,6 +1375,7 @@ impl Studio {
     }
     fn adjust_selected_scene_frame(
         &mut self,
+        endpoint: usize,
         key: &'static str,
         delta: f64,
         cx: &mut Context<Self>,
@@ -1414,18 +1415,76 @@ impl Studio {
             "scale" => (100.0, 200.0),
             _ => (0.0, 100.0),
         };
-        for frame in frames.iter_mut().take(2) {
-            let current = frame
-                .get(key)
-                .and_then(Value::as_f64)
-                .unwrap_or(if key == "x" || key == "y" { 0.0 } else { 100.0 });
-            frame[key] = serde_json::json!((current + delta).clamp(min, max));
+        if endpoint > 1 {
+            return;
         }
+        let frame = &mut frames[endpoint];
+        let current = frame
+            .get(key)
+            .and_then(Value::as_f64)
+            .unwrap_or(if key == "x" || key == "y" { 0.0 } else { 100.0 });
+        frame[key] = serde_json::json!((current + delta).clamp(min, max));
         self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
             Ok(_) => {
                 self.dirty = true;
                 self.autosave_pending = true;
                 "Đã cập nhật chuyển động scene • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+    fn adjust_selected_decoration_frame(
+        &mut self,
+        endpoint: usize,
+        key: &'static str,
+        delta: f64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.saving || self.autosaving || self.recovery.is_some() || endpoint > 1 {
+            return;
+        }
+        let Some(id) = self.selected_word.as_deref() else {
+            return;
+        };
+        let Some(section) = self
+            .editor
+            .project()
+            .words
+            .iter()
+            .find(|word| word.id == id)
+            .and_then(|word| word.section_name.clone())
+        else {
+            return;
+        };
+        let mut scenes = self.editor.project().scenes.clone();
+        let Some(scene) = scenes
+            .iter_mut()
+            .find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(&section))
+        else {
+            return;
+        };
+        if !scene
+            .get("decoration_keyframes")
+            .is_some_and(Value::is_array)
+        {
+            scene["decoration_keyframes"] = serde_json::json!([
+                {"x":50,"y":50,"scale":100,"opacity":100}, {"x":50,"y":50,"scale":100,"opacity":100}
+            ]);
+        }
+        let frame = &mut scene["decoration_keyframes"].as_array_mut().unwrap()[endpoint];
+        let (min, max, default) = match key {
+            "x" | "y" => (0.0, 100.0, 50.0),
+            "scale" => (100.0, 200.0, 100.0),
+            _ => (0.0, 100.0, 100.0),
+        };
+        let current = frame.get(key).and_then(Value::as_f64).unwrap_or(default);
+        frame[key] = serde_json::json!((current + delta).clamp(min, max));
+        self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã cập nhật chuyển động ảnh trang trí • chưa lưu".into()
             }
             Err(error) => error.to_string(),
         };
@@ -3070,56 +3129,120 @@ impl Render for Studio {
                                 == Some(active_section)
                         })
                         .and_then(|scene| {
+                            let (start, end) = display_words
+                                .iter()
+                                .filter(|word| word.section_name.as_deref() == Some(active_section))
+                                .fold((f64::INFINITY, f64::NEG_INFINITY), |(start, end), word| {
+                                    (
+                                        start.min(vietkara_domain::timing::map_time(
+                                            word.start,
+                                            &self.editor.project().anchors,
+                                            false,
+                                        )),
+                                        end.max(vietkara_domain::timing::map_time(
+                                            word.end,
+                                            &self.editor.project().anchors,
+                                            false,
+                                        )),
+                                    )
+                                });
+                            let progress = if end > start {
+                                ((preview_position - start) / (end - start)).clamp(0.0, 1.0)
+                            } else {
+                                0.0
+                            };
+                            let image_keyframes = scene.get("keyframes").unwrap_or(&Value::Null);
+                            let main_scale = interpolate_scene_keyframes(
+                                image_keyframes,
+                                "scale",
+                                progress,
+                                100.0,
+                            )
+                            .clamp(100.0, 200.0)
+                                as f32;
+                            let main_x =
+                                interpolate_scene_keyframes(image_keyframes, "x", progress, 0.0)
+                                    .clamp(-100.0, 100.0) as f32;
+                            let main_y =
+                                interpolate_scene_keyframes(image_keyframes, "y", progress, 0.0)
+                                    .clamp(-100.0, 100.0) as f32;
+                            let main_frame_opacity = interpolate_scene_keyframes(
+                                image_keyframes,
+                                "opacity",
+                                progress,
+                                100.0,
+                            )
+                            .clamp(0.0, 100.0)
+                                as f32
+                                / 100.0;
                             let id = scene.get("id").and_then(Value::as_str)?;
                             let image = directory.join(format!("scene_{id}.png"));
-                            image.is_file().then_some((image, scene))
+                            image.is_file().then_some((
+                                image,
+                                scene,
+                                main_scale,
+                                main_x,
+                                main_y,
+                                main_frame_opacity,
+                                progress,
+                            ))
                         })
-                        .map(|(image, scene)| {
-                            let opacity = scene
-                                .get("opacity")
-                                .and_then(Value::as_f64)
-                                .unwrap_or(100.0)
-                                .clamp(0.0, 100.0) as f32
-                                / 100.0;
-                            let decoration = scene
-                                .get("id")
-                                .and_then(Value::as_str)
-                                .map(|id| directory.join(format!("scene_decoration_{id}.png")))
-                                .filter(|path| path.is_file())
-                                .map(|path| {
-                                    let size = scene
-                                        .get("decoration_size")
-                                        .and_then(Value::as_f64)
-                                        .unwrap_or(28.0)
-                                        .clamp(5.0, 80.0)
-                                        as f32;
-                                    let frame = scene
-                                        .get("decoration_keyframes")
-                                        .and_then(Value::as_array)
-                                        .and_then(|frames| frames.first());
-                                    let x = frame
-                                        .and_then(|frame| frame.get("x"))
-                                        .and_then(Value::as_f64)
-                                        .unwrap_or(50.0)
-                                        .clamp(0.0, 100.0)
-                                        as f32;
-                                    let y = frame
-                                        .and_then(|frame| frame.get("y"))
-                                        .and_then(Value::as_f64)
-                                        .unwrap_or(50.0)
-                                        .clamp(0.0, 100.0)
-                                        as f32;
-                                    let decoration_opacity = frame
-                                        .and_then(|frame| frame.get("opacity"))
-                                        .and_then(Value::as_f64)
-                                        .unwrap_or(100.0)
-                                        .clamp(0.0, 100.0)
-                                        as f32
-                                        / 100.0;
-                                    (path, size, x, y, decoration_opacity)
-                                });
-                            (image, opacity, decoration)
-                        })
+                        .map(
+                            |(
+                                image,
+                                scene,
+                                main_scale,
+                                main_x,
+                                main_y,
+                                main_frame_opacity,
+                                progress,
+                            )| {
+                                let opacity = scene
+                                    .get("opacity")
+                                    .and_then(Value::as_f64)
+                                    .unwrap_or(100.0)
+                                    .clamp(0.0, 100.0)
+                                    as f32
+                                    / 100.0;
+                                let decoration = scene
+                                    .get("id")
+                                    .and_then(Value::as_str)
+                                    .map(|id| directory.join(format!("scene_decoration_{id}.png")))
+                                    .filter(|path| path.is_file())
+                                    .map(|path| {
+                                        let base_size = scene
+                                            .get("decoration_size")
+                                            .and_then(Value::as_f64)
+                                            .unwrap_or(28.0)
+                                            .clamp(5.0, 80.0)
+                                            as f32;
+                                        let keyframes = scene
+                                            .get("decoration_keyframes")
+                                            .unwrap_or(&Value::Null);
+                                        let lerp = |key: &str, default: f64| {
+                                            interpolate_scene_keyframes(
+                                                keyframes, key, progress, default,
+                                            )
+                                        };
+                                        let size = base_size
+                                            * lerp("scale", 100.0).clamp(100.0, 200.0) as f32
+                                            / 100.0;
+                                        let x = lerp("x", 50.0).clamp(0.0, 100.0) as f32;
+                                        let y = lerp("y", 50.0).clamp(0.0, 100.0) as f32;
+                                        let decoration_opacity =
+                                            lerp("opacity", 100.0).clamp(0.0, 100.0) as f32 / 100.0;
+                                        (path, size, x, y, decoration_opacity)
+                                    });
+                                (
+                                    image,
+                                    opacity * main_frame_opacity,
+                                    decoration,
+                                    main_scale,
+                                    main_x,
+                                    main_y,
+                                )
+                            },
+                        )
                 });
         let title_visible = layout
             .title
@@ -3618,9 +3741,13 @@ impl Render for Studio {
                                                             .bg(rgb(0x05080c)).opacity(0.32))
                                                 })
                                                 .when(scene_preview.is_some(), |frame| {
-                                                    let (path, opacity, decoration) = scene_preview.clone().unwrap();
-                                                    frame.child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full()
-                                                        .child(img(path).size_full().object_fit(ObjectFit::Cover).opacity(opacity)))
+                                                    let (path, opacity, decoration, scale, x, y) = scene_preview.clone().unwrap();
+                                                    let image_width = preview_width * scale / 100.0;
+                                                    let image_height = preview_height * scale / 100.0;
+                                                    let image_left = (preview_width-image_width)/2.0 + x*(image_width-preview_width)/100.0;
+                                                    let image_top = (preview_height-image_height)/2.0 + y*(image_height-preview_height)/100.0;
+                                                    frame.child(img(path).absolute().w(px(image_width)).h(px(image_height)).object_fit(ObjectFit::Cover)
+                                                        .left(px(image_left)).top(px(image_top)).opacity(opacity))
                                                         .when(decoration.is_some(), |frame| {
                                                             let (path, size, x, y, opacity) = decoration.unwrap();
                                                             let width = preview_width * size / 100.0;
@@ -3742,15 +3869,24 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2()
                                     .child("Đổi chế độ tương phản lời")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_selected_scene_option("contrast_mode", &["auto","always","off"],cx))))
-                                .child(div().mt_2().child("Chuyển động ảnh scene")
+                                .child(div().mt_2().child("Keyframe đầu")
                                     .child(div().flex().gap_2()
-                                        .child(div().flex_1().cursor_pointer().child("− Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("scale",-5.0,cx))))
-                                        .child(div().flex_1().cursor_pointer().child("+ Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("scale",5.0,cx)))))
+                                        .child(div().flex_1().cursor_pointer().child("− Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"scale",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("+ Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"scale",5.0,cx)))))
                                     .child(div().flex().gap_2()
-                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("x",-5.0,cx))))
-                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("x",5.0,cx))))
-                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("y",-5.0,cx))))
-                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame("y",5.0,cx))))))
+                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"x",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"x",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"y",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(0,"y",5.0,cx))))))
+                                .child(div().mt_2().child("Keyframe cuối")
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("− Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"scale",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("+ Zoom").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"scale",5.0,cx)))))
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"x",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"x",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"y",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_frame(1,"y",5.0,cx))))))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(0x183226)).px_2().py_2().child("＋  Nạp/thay ảnh trang trí")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_scene_decoration(cx))))
                                 .child(div().mt_2().flex().gap_2()
@@ -3758,6 +3894,22 @@ impl Render for Studio {
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("decoration_size",-2.0,5.0,80.0,cx))))
                                     .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Trang trí +")
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("decoration_size",2.0,5.0,80.0,cx)))))
+                                .child(div().mt_2().child("Keyframe trang trí đầu")
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"x",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"x",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"y",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"y",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("mờ −").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"opacity",-10.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("mờ +").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(0,"opacity",10.0,cx))))))
+                                .child(div().mt_2().child("Keyframe trang trí cuối")
+                                    .child(div().flex().gap_2()
+                                        .child(div().flex_1().cursor_pointer().child("←").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"x",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("→").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"x",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↑").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"y",-5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("↓").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"y",5.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("mờ −").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"opacity",-10.0,cx))))
+                                        .child(div().flex_1().cursor_pointer().child("mờ +").on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_decoration_frame(1,"opacity",10.0,cx))))))
                                 .child(div().mt_2().flex().gap_2()
                                     .child(div().flex_1().cursor_pointer().rounded_sm().bg(rgb(0x17191f)).px_2().py_2().child("Scene mờ −")
                                         .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.adjust_selected_scene_number("opacity",-5.0,0.0,100.0,cx))))
@@ -4055,6 +4207,19 @@ fn preview_alignment(
 
 fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
+}
+
+fn interpolate_scene_keyframes(frames: &Value, key: &str, progress: f64, default: f64) -> f64 {
+    let read = |index: usize| {
+        frames
+            .as_array()
+            .and_then(|frames| frames.get(index))
+            .and_then(|frame| frame.get(key))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+            .unwrap_or(default)
+    };
+    read(0) + (read(1) - read(0)) * progress.clamp(0.0, 1.0)
 }
 
 fn set_section_name_on_line(words: &mut [Word], line: u32, name: &str) {
@@ -4402,6 +4567,28 @@ mod workspace_tests {
         assert_eq!(preview_alignment("justify", 7, &rows), "left");
         assert_eq!(preview_alignment("justify", 8, &rows), "right");
         assert_eq!(preview_alignment("center", 7, &rows), "center");
+    }
+
+    #[test]
+    fn scene_keyframes_interpolate_between_start_and_end_and_clamp_progress() {
+        let frames = serde_json::json!([
+            {"x":10,"scale":100,"opacity":20},
+            {"x":70,"scale":150,"opacity":80}
+        ]);
+        assert_eq!(interpolate_scene_keyframes(&frames, "x", 0.0, 50.0), 10.0);
+        assert_eq!(interpolate_scene_keyframes(&frames, "x", 0.5, 50.0), 40.0);
+        assert_eq!(
+            interpolate_scene_keyframes(&frames, "scale", 1.0, 100.0),
+            150.0
+        );
+        assert_eq!(
+            interpolate_scene_keyframes(&frames, "opacity", 2.0, 100.0),
+            80.0
+        );
+        assert_eq!(
+            interpolate_scene_keyframes(&Value::Null, "x", 0.5, 42.0),
+            42.0
+        );
     }
 
     #[test]
