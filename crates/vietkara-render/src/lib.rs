@@ -15,8 +15,7 @@
 //! * `RenderProfile` / `frame_size` / `fps_value` / `encoding_options`
 //!   — the rules from `render_info.describe` / `encoding_options`.
 //! * `ffmpeg_command` — a pure argv builder for color/image/video
-//!   backgrounds, section-image scene overlays and guide audio, so tests
-//!   can assert the exact command.
+//!   backgrounds, scene layers, logo/countdown overlays and guide audio.
 //! * `verify_output` — runs `ffprobe` on a rendered file.
 //!
 //! # Explicitly NOT in scope (Phase 4, after the layout contract
@@ -28,8 +27,9 @@
 //!   Linux with different fonts, would produce different layout and
 //!   different golden ASS output. Do not try to port `display_plan`
 //!   here.
-//! * Scene image and decoration position/scale/alpha are supported; logo and
-//!   countdown overlays and the NVENC fallback remain outside this slice.
+//! * Scene image and decoration position/scale/alpha, logo effects and custom
+//!   image countdown overlays are supported. Full ASS `display_plan`, text or
+//!   glyph countdown modes and the NVENC fallback remain outside this slice.
 //! * Audio normalisation (`loudnorm`) — the simple builder omits it;
 //!   the Python trailer only adds `-af loudnorm=...` when the
 //!   `audio_normalize` setting is on.
@@ -632,6 +632,10 @@ pub enum RenderError {
     MissingBackgroundVideo,
     #[error("Chưa có ảnh nền hợp lệ trong project.")]
     MissingBackgroundImage,
+    #[error("Không tìm thấy logo trong project.")]
+    MissingLogoImage,
+    #[error("Không tìm thấy ảnh đếm ngược trong project.")]
+    MissingCountdownImage,
     #[error("Thời lượng render không hợp lệ: {0}")]
     InvalidDuration(f64),
     #[error("Lỗi đọc/ghi file: {0}")]
@@ -677,6 +681,27 @@ pub struct RenderSceneDecoration {
     pub keyframes: [SceneKeyframe; 2],
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderLogo {
+    pub image: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub opacity: f64,
+    pub x: f64,
+    pub y: f64,
+    pub effect: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderCountdown {
+    pub image: PathBuf,
+    pub start: f64,
+    pub end: f64,
+    pub x: f64,
+    pub y: f64,
+    pub size: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SceneKeyframe {
     pub x: f64,
@@ -718,6 +743,8 @@ pub struct RenderInputs {
     pub beat: PathBuf,
     pub background: Option<RenderBackground>,
     pub scenes: Vec<RenderScene>,
+    pub logo: Option<RenderLogo>,
+    pub countdown: Vec<RenderCountdown>,
     /// Guide vocal file; required only when
     /// `profile.audio_output == AudioOutput::Guide`.
     pub vocals: Option<PathBuf>,
@@ -736,6 +763,8 @@ impl RenderInputs {
             beat: beat.into(),
             background: None,
             scenes: Vec::new(),
+            logo: None,
+            countdown: Vec::new(),
             vocals: None,
             ass_file: PathBuf::from("lyrics.ass"),
             fonts_dir: PathBuf::from("fonts"),
@@ -1032,6 +1061,127 @@ impl RenderInputs {
         }
         self.scenes = resolved;
     }
+
+    /// Resolve project logo and custom image countdown overlays.
+    pub fn configure_overlays_from_project(
+        &mut self,
+        project: &vietkara_domain::Project,
+        directory: &Path,
+        width: u32,
+        height: u32,
+    ) -> Result<(), RenderError> {
+        use std::collections::BTreeMap;
+        let settings = &project.settings.extra;
+        let number = |key: &str, default: f64| {
+            settings
+                .get(key)
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite())
+                .unwrap_or(default)
+        };
+        let enabled = settings
+            .get("logo_enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        self.logo = None;
+        if enabled {
+            if project
+                .extra
+                .get("logo_name")
+                .and_then(serde_json::Value::as_str)
+                .is_none()
+            {
+                return Err(RenderError::MissingLogoImage);
+            }
+            let image = directory.join("logo.png");
+            let Some((image_width, image_height)) = png_dimensions(&image) else {
+                return Err(RenderError::MissingLogoImage);
+            };
+            let ratio = image_width as f64 / image_height as f64;
+            let size = number("logo_size", 12.0).clamp(3.0, 40.0) / 100.0;
+            let logo_width = ((width as f64 * size).min(height as f64 * 0.4 * ratio))
+                .round()
+                .max(2.0) as u32;
+            let logo_height = (logo_width as f64 / ratio).round().max(2.0) as u32;
+            let effect = settings
+                .get("logo_effect")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("none");
+            self.logo = Some(RenderLogo {
+                image,
+                width: logo_width,
+                height: logo_height,
+                opacity: number("logo_opacity", 100.0).clamp(0.0, 100.0) / 100.0,
+                x: number("logo_x", 96.0).clamp(0.0, 100.0) / 100.0,
+                y: number("logo_y", 4.0).clamp(0.0, 100.0) / 100.0,
+                effect: if ["none", "fade", "float", "pulse"].contains(&effect) {
+                    effect.to_owned()
+                } else {
+                    "none".into()
+                },
+            });
+        }
+
+        self.countdown.clear();
+        let countdown_image = settings
+            .get("countdown")
+            .and_then(serde_json::Value::as_str)
+            == Some("image");
+        let karaoke = settings
+            .get("display_mode")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("karaoke")
+            == "karaoke";
+        if countdown_image && karaoke {
+            let cd_path = directory.join("countdown.png");
+            let duration = number("countdown_seconds", 4.0).clamp(1.0, 8.0);
+            let scale = width as f64 / 1920.0;
+            let font_size = project.settings.font_size * scale;
+            let position = settings
+                .get("position")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("bottom");
+            let baseline = match position {
+                "top" => font_size * 2.0,
+                "center" => height as f64 / 2.0 + font_size * 0.5,
+                _ => height as f64 - font_size * 1.25,
+            };
+            let y = (baseline - font_size * 2.05).max(0.0);
+            let size = (font_size * 0.7).round().max(2.0) as u32;
+            let mut lines: BTreeMap<u32, (f64, f64)> = BTreeMap::new();
+            for word in &project.words {
+                let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
+                let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
+                let line = lines.entry(word.line).or_insert((start, end));
+                line.0 = line.0.min(start);
+                line.1 = line.1.max(end);
+            }
+            let ordered = lines.into_values().collect::<Vec<_>>();
+            let mut previous_end: f64 = 0.0;
+            for (index, (start, end)) in ordered.iter().enumerate() {
+                let count_in = index == 0 || start - previous_end >= 8.0;
+                if count_in {
+                    let window_end = (start - 0.05).max(0.0);
+                    let window_start = 0.0_f64.max(previous_end).max(window_end - duration);
+                    if window_end - window_start >= 0.4 {
+                        self.countdown.push(RenderCountdown {
+                            image: cd_path.clone(),
+                            start: window_start,
+                            end: window_end,
+                            x: width as f64 * 0.05,
+                            y,
+                            size,
+                        });
+                    }
+                }
+                previous_end = previous_end.max(*end);
+            }
+            if !self.countdown.is_empty() && png_dimensions(&cd_path).is_none() {
+                return Err(RenderError::MissingCountdownImage);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Build the render command from
@@ -1077,8 +1227,11 @@ pub fn ffmpeg_command(
     let fps = py_float(profile.fps_value());
     let (width, height) = profile.frame_size();
     let bg = &profile.background_color[1..];
+    let background_filter = format!(
+        "setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1"
+    );
     let visual_filter = format!(
-        "setpts=PTS-STARTPTS,fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},setsar=1,ass={}:fontsdir={}",
+        "{background_filter},ass={}:fontsdir={}",
         inputs.ass_file.display(),
         inputs.fonts_dir.display(),
     );
@@ -1163,8 +1316,50 @@ pub fn ffmpeg_command(
             next_input += 1;
         }
     }
-    if guide || !scene_inputs.is_empty() || !decoration_inputs.is_empty() {
-        let mut graph = format!("[{background_input}:v:0]{visual_filter}[scene_base]");
+    let countdown_events = inputs
+        .countdown
+        .iter()
+        .flat_map(|event| {
+            (0..4).filter_map(move |slot| {
+                (event.end - slot as f64 > event.start).then_some((event, slot))
+            })
+        })
+        .collect::<Vec<_>>();
+    let countdown_input = if let Some(event) = countdown_events.first().map(|(event, _)| event) {
+        args.extend([
+            "-loop".into(),
+            "1".into(),
+            "-framerate".into(),
+            fps.clone(),
+            "-i".into(),
+            event.image.display().to_string(),
+        ]);
+        let index = next_input;
+        next_input += 1;
+        Some(index)
+    } else {
+        None
+    };
+    let logo_input = if let Some(logo) = &inputs.logo {
+        args.extend([
+            "-loop".into(),
+            "1".into(),
+            "-framerate".into(),
+            fps.clone(),
+            "-i".into(),
+            logo.image.display().to_string(),
+        ]);
+        Some(next_input)
+    } else {
+        None
+    };
+    if guide
+        || !scene_inputs.is_empty()
+        || !decoration_inputs.is_empty()
+        || countdown_input.is_some()
+        || logo_input.is_some()
+    {
+        let mut graph = format!("[{background_input}:v:0]{background_filter}[scene_base]");
         let mut last_background = "scene_base".to_owned();
         for (index, (input_index, scene)) in scene_inputs.iter().enumerate() {
             let start = scene.start.max(0.0);
@@ -1286,6 +1481,58 @@ pub fn ffmpeg_command(
             inputs.ass_file.display(),
             inputs.fonts_dir.display()
         ));
+        let mut last = "base".to_owned();
+        if let Some(input_index) = countdown_input {
+            let count = countdown_events.len();
+            graph.push_str(&format!(";[{input_index}:v:0]format=rgba,split={count}"));
+            for index in 0..count {
+                graph.push_str(&format!("[countdown_source{index}]"));
+            }
+            for (index, (event, slot)) in countdown_events.iter().enumerate() {
+                let size = event.size.max(2);
+                graph.push_str(&format!(
+                    ";[countdown_source{index}]scale={size}:{size}:force_original_aspect_ratio=decrease,pad={size}:{size}:(ow-iw)/2:(oh-ih)/2:color=black@0[countdown_icon{index}]"
+                ));
+                graph.push_str(&format!(
+                    ";[{last}][countdown_icon{index}]overlay=x={:.2}:y={:.2}:enable='between(t\\,{:.4}\\,{:.4})'[countdown_overlay{index}]",
+                    event.x + *slot as f64 * size as f64 * 1.28,
+                    event.y,
+                    event.start,
+                    event.end - *slot as f64
+                ));
+                last = format!("countdown_overlay{index}");
+            }
+        }
+        if let (Some(input_index), Some(logo)) = (logo_input, &inputs.logo) {
+            let mut logo_filter = format!(
+                "[{input_index}:v:0]setpts=PTS-STARTPTS,scale={}:{},format=rgba,colorchannelmixer=aa={:.4}",
+                logo.width,
+                logo.height,
+                logo.opacity.clamp(0.0, 1.0)
+            );
+            match logo.effect.as_str() {
+                "fade" => logo_filter.push_str(",fade=t=in:st=0:d=1:alpha=1"),
+                "pulse" => logo_filter.push_str(",geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*(0.8+0.2*sin(PI*T/2))'"),
+                _ => {}
+            }
+            graph.push(';');
+            graph.push_str(&logo_filter);
+            graph.push_str("[watermark]");
+            let x = format!("(W-w)*{:.6}", logo.x.clamp(0.0, 1.0));
+            let y = if logo.effect == "float" {
+                format!(
+                    "max(0\\,min(H-h\\,(H-h)*{:.6}+{:.4}*sin(PI*t/2)))",
+                    logo.y.clamp(0.0, 1.0),
+                    8.0 * height as f64 / 1080.0
+                )
+            } else {
+                format!("(H-h)*{:.6}", logo.y.clamp(0.0, 1.0))
+            };
+            graph.push_str(&format!(
+                ";[{last}][watermark]overlay=x='{x}':y='{y}':format=auto[withlogo]"
+            ));
+            last = "withlogo".into();
+        }
         if guide {
             graph.push_str(&format!(
                 ";[{beat_input}:a:0][{vocals_input}:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1[audio]"
@@ -1294,7 +1541,7 @@ pub fn ffmpeg_command(
         args.push("-filter_complex".into());
         args.push(graph);
         args.push("-map".into());
-        args.push("[base]".into());
+        args.push(format!("[{last}]"));
         args.push("-map".into());
         args.push(if guide {
             "[audio]".into()
@@ -1455,6 +1702,13 @@ pub fn verify_output_with_ffprobe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_png_header(path: &Path, width: u32, height: u32) {
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.extend(width.to_be_bytes());
+        png.extend(height.to_be_bytes());
+        std::fs::write(path, png).unwrap();
+    }
 
     fn row() -> RowAnim {
         RowAnim {
@@ -1938,6 +2192,68 @@ mod tests {
     }
 
     #[test]
+    fn project_overlay_resolves_logo_and_custom_countdown_events() {
+        let directory = tempfile::tempdir().unwrap();
+        write_png_header(&directory.path().join("logo.png"), 200, 100);
+        write_png_header(&directory.path().join("countdown.png"), 64, 64);
+        let mut project = vietkara_domain::Project::new("overlays");
+        project
+            .extra
+            .insert("logo_name".into(), serde_json::json!("brand.png"));
+        project.settings.extra.extend(
+            serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(
+                serde_json::json!({
+                    "logo_enabled":true,"logo_size":12,"logo_x":96,"logo_y":4,
+                    "logo_opacity":80,"logo_effect":"pulse","countdown":"image",
+                    "countdown_seconds":4,"display_mode":"karaoke","position":"bottom"
+                }),
+            )
+            .unwrap(),
+        );
+        for (index, start) in [5.0, 15.0].into_iter().enumerate() {
+            project.words.push(
+                serde_json::from_value(serde_json::json!({
+                    "id":format!("{:032x}", index + 1),
+                    "line_uid":format!("{:032x}", index + 10),
+                    "text":"Xin",
+                    "start":start,
+                    "end":start+0.5,
+                    "line":index,
+                    "role":"all"
+                }))
+                .unwrap(),
+            );
+        }
+        let mut inputs = RenderInputs::new("beat.wav", 20.0);
+        inputs
+            .configure_overlays_from_project(&project, directory.path(), 1920, 1080)
+            .unwrap();
+        let logo = inputs.logo.as_ref().unwrap();
+        assert_eq!((logo.width, logo.height), (230, 115));
+        assert_eq!(logo.opacity, 0.8);
+        assert_eq!(logo.effect, "pulse");
+        assert_eq!(inputs.countdown.len(), 2);
+        assert!((inputs.countdown[0].start - 0.95).abs() < 0.001);
+        assert!((inputs.countdown[1].start - 10.95).abs() < 0.001);
+        assert_eq!(
+            inputs.countdown[0].size,
+            (project.settings.font_size * 0.7).round() as u32
+        );
+
+        let command = ffmpeg_command(&RenderProfile::default(), &inputs).unwrap();
+        let graph_index = command
+            .iter()
+            .position(|arg| arg == "-filter_complex")
+            .unwrap();
+        let graph = &command[graph_index + 1];
+        assert!(graph.contains("split=8[countdown_source0]"));
+        assert!(graph.contains("between(t\\,0.9500\\,4.9500)"));
+        assert!(graph.contains("colorchannelmixer=aa=0.8000"));
+        assert!(graph.contains("sin(PI*T/2)"));
+        assert!(graph.contains("[withlogo]"));
+    }
+
+    #[test]
     fn ffmpeg_command_beat_only_matches_engine() {
         let profile = RenderProfile {
             fps: Fps::Fixed(30.0),
@@ -2213,7 +2529,7 @@ mod tests {
                 },
             ],
             decoration: Some(RenderSceneDecoration {
-                image: decoration_image,
+                image: decoration_image.clone(),
                 image_width: 32,
                 image_height: 32,
                 size: 28.0,
@@ -2248,6 +2564,51 @@ mod tests {
                 .and_then(|index| argv.get(index + 1))
                 .map(String::as_str)
                 .unwrap_or("")
+        );
+        assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
+        let mut overlay_inputs = scene_inputs.clone();
+        overlay_inputs.countdown.push(RenderCountdown {
+            image: decoration_image.clone(),
+            start: 0.1,
+            end: 0.8,
+            x: 10.0,
+            y: 20.0,
+            size: 24,
+        });
+        overlay_inputs.logo = Some(RenderLogo {
+            image: decoration_image,
+            width: 48,
+            height: 48,
+            opacity: 0.8,
+            x: 0.92,
+            y: 0.04,
+            effect: "pulse".into(),
+        });
+        let argv = ffmpeg_command(&profile, &overlay_inputs).unwrap();
+        let render = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            render.status.success(),
+            "logo/countdown render failed ({:?}): {}",
+            render.status.code(),
+            String::from_utf8_lossy(&render.stderr)
+        );
+        assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
+        overlay_inputs.logo.as_mut().unwrap().effect = "float".into();
+        let argv = ffmpeg_command(&profile, &overlay_inputs).unwrap();
+        let render = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            render.status.success(),
+            "floating logo render failed ({:?}): {}",
+            render.status.code(),
+            String::from_utf8_lossy(&render.stderr)
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
     }

@@ -126,8 +126,8 @@
 >   trong khi phát hoặc tua; cache frame tạm giới hạn 16 ảnh. Không phát audio
 >   nền video; soundtrack vẫn theo beat.
 > - `cargo test --workspace` **88/88**, workspace fmt/clippy/check và app build
->   pass. Chưa có phát video liên tục, original-video source, scene/logo/
->   countdown compositing hoặc layout ASS dùng chung.
+>   pass. Chưa có phát video liên tục, original-video source hoặc layout ASS
+>   dùng chung.
 
 > **Tiến độ 2026-11-06 — renderer nhận nền project:**
 > - `RenderInputs::configure_background_from_project` đọc `background_type`
@@ -148,6 +148,12 @@
 >   và fade. Scale decoration chạy qua canvas có kích thước cố định và `zoompan`
 >   để tránh crash của `scale=eval=frame` trên FFmpeg bundled Windows; test
 >   render thật xác nhận zoom/opacity/position keyframe cùng hoạt động.
+> - Nối logo theo kích thước/tọa độ/độ mờ và hiệu ứng none/fade/pulse/float;
+>   nối custom countdown PNG theo khoảng nghỉ lời, slots và vị trí khung.
+>   Sửa filter graph để scene/compositing nằm dưới ASS một lần duy nhất.
+>   Integration test FFmpeg dựng scene + decoration + countdown + logo pulse
+>   và float. Workspace **95/95**; fmt/clippy/check/build pass. Countdown dạng
+>   glyph/ASS và nút/job export GPUI vẫn chưa có.
 
 ## 1. Mục tiêu và phạm vi
 
