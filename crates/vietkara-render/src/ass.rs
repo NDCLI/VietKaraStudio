@@ -1,7 +1,8 @@
 //! ASS lyric serialization from the shared measured display plan.
 //!
-//! This native pass covers line timing/animation, karaoke word sweeps and
-//! vector count-in icons. Gradients, title cards and role artwork remain open.
+//! This native pass covers line timing/animation, karaoke word sweeps,
+//! gradients, subtitle backing and vector count-in icons. Title cards and role
+//! artwork remain open.
 
 use serde_json::Value;
 use vietkara_domain::Project;
@@ -90,7 +91,6 @@ fn row_anim(row: &DisplayRow) -> RowAnim {
 
 #[derive(Clone, Copy)]
 struct AssStyle<'a> {
-    sung: &'a str,
     unsung: &'a str,
     outline_unsung: &'a str,
     outline_sung: &'a str,
@@ -126,11 +126,50 @@ fn dialogue(layer: u8, start: f64, end: f64, tags: &str, text: &str) -> Option<S
     })
 }
 
+fn gradient_bands(
+    row: &DisplayRow,
+    settings: &serde_json::Map<String, Value>,
+    fallback: &str,
+    height: u32,
+) -> Vec<(f64, f64, String)> {
+    if !boolean(settings, "sung_gradient", false) || row.role != "all" {
+        return vec![(
+            row.y - row.font_size * 0.12,
+            row.y + row.height,
+            fallback.to_owned(),
+        )];
+    }
+    let top_color = color(settings, "gradient_top", "#ffffff");
+    let bottom_color = color(settings, "gradient_bottom", "#1a3ad6");
+    let start = number(settings, "gradient_start", 0.0).clamp(0.0, 99.0);
+    let end = number(settings, "gradient_end", 100.0).clamp(start + 1.0, 100.0);
+    let top = row.y - row.font_size * 0.12;
+    let bottom = row.y + row.height;
+    let mut bands = (0..10)
+        .map(|index| {
+            let fraction = (index as f64 + 0.5) / 10.0;
+            let amount = (100.0 - fraction * 100.0 - start) / (end - start).max(1.0);
+            let y1 = (top + (bottom - top) * index as f64 / 10.0).max(0.0);
+            let y2 =
+                (top + (bottom - top) * (index + 1) as f64 / 10.0 + 0.5).min(f64::from(height));
+            (y1, y2, crate::blend(bottom_color, top_color, amount))
+        })
+        .collect::<Vec<_>>();
+    if let Some(first) = bands.first_mut() {
+        first.0 = 0.0;
+    }
+    if let Some(last) = bands.last_mut() {
+        last.1 = f64::from(height);
+    }
+    bands
+}
+
 fn word_event(
     row: &DisplayRow,
     word: &PlannedWord,
     opts: &AnimOpts,
     style: &AssStyle<'_>,
+    sung_bands: &[(f64, f64, String)],
 ) -> Vec<String> {
     let mut output = Vec::with_capacity(2);
     let mut anim = row_anim(row);
@@ -157,28 +196,28 @@ fn word_event(
     let end = word.end.min(row.show_end);
     if end > start {
         let duration = ((end - start) * 1000.0).round_ties_even().max(1.0);
-        let top = row.y - row.font_size * 0.12;
-        let bottom = row.y + row.height;
         let left = word.x;
         let right = word.x + word.width;
-        let clip = format!(
-            "\\clip({left:.2},{top:.2},{left:.2},{bottom:.2})\\t(0,{duration:.0},\\clip({left:.2},{top:.2},{right:.2},{bottom:.2}))"
-        );
-        let sung = paint(
-            style.sung,
-            style.outline_sung,
-            style.outline_sung_opacity,
-            row.font_size,
-            style,
-        );
-        if let Some(event) = dialogue(
-            2,
-            start,
-            end,
-            &format!("{motion}{sung}{clip}"),
-            &literal(&word.word.text),
-        ) {
-            output.push(event);
+        for (top, bottom, hex_color) in sung_bands {
+            let clip = format!(
+                "\\clip({left:.2},{top:.2},{left:.2},{bottom:.2})\\t(0,{duration:.0},\\clip({left:.2},{top:.2},{right:.2},{bottom:.2}))"
+            );
+            let sung = paint(
+                hex_color,
+                style.outline_sung,
+                style.outline_sung_opacity,
+                row.font_size,
+                style,
+            );
+            if let Some(event) = dialogue(
+                2,
+                start,
+                end,
+                &format!("{motion}{sung}{clip}"),
+                &literal(&word.word.text),
+            ) {
+                output.push(event);
+            }
         }
     }
     output
@@ -209,7 +248,6 @@ pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
         horizontal_scale: hscale,
     };
     let base_style = AssStyle {
-        sung,
         unsung,
         outline_unsung,
         outline_sung,
@@ -246,26 +284,59 @@ pub fn build_lyrics_ass(project: &Project, plan: &DisplayPlan) -> String {
             sung.to_owned()
         };
         if mode != "karaoke" {
-            let tags = format!(
-                "{anim}\\fs{:.3}\\fscx{hscale:.2}\\1c{}\\3c{}\\bord{outline_width:.2}\\shad{shadow:.2}\\i{}",
-                row.font_size,
-                ass_color(unsung, 100),
-                ass_color(outline_unsung, outline_unsung_opacity),
-                if italic { -1 } else { 0 }
-            );
-            if let Some(event) =
-                dialogue(2, row.show_start, row.show_end, &tags, &literal(&row.text))
-            {
-                lines.push(event);
+            if mode == "subtitle" && boolean(settings, "subtitle_box", true) {
+                let pad = row.font_size * 0.18;
+                let shape = crate::rounded_box(
+                    0.0,
+                    0.0,
+                    row.width + 2.0 * pad,
+                    row.height + 2.0 * pad,
+                    number(settings, "subtitle_box_radius", 8.0).clamp(0.0, 40.0),
+                );
+                let mut box_row = row_anim(row);
+                box_row.x -= pad;
+                box_row.y -= pad;
+                let box_color = color(settings, "subtitle_box_color", "#000000");
+                let box_opacity = opacity(settings, "subtitle_box_opacity", 50);
+                let tags = format!(
+                    "\\fscx100\\fscy100{}\\p1\\bord0\\shad0\\1c{}\\1a&H{:02X}&",
+                    animation(&box_row, &options),
+                    ass_color(box_color, 100),
+                    255 - (255.0 * f64::from(box_opacity) / 100.0).round_ties_even() as u8,
+                );
+                if let Some(event) = dialogue(0, row.show_start, row.show_end, &tags, &shape) {
+                    lines.push(event);
+                }
+            }
+            for (top, bottom, hex_color) in gradient_bands(row, settings, unsung, plan.height) {
+                let clip = if boolean(settings, "sung_gradient", false) && row.role == "all" {
+                    format!("\\clip(0,{top:.2},{},{bottom:.2})", plan.width)
+                } else {
+                    String::new()
+                };
+                let row_tags = format!(
+                    "{anim}\\fs{:.3}\\fscx{hscale:.2}\\1c{}\\3c{}\\bord{outline_width:.2}\\shad{shadow:.2}\\i{}",
+                    row.font_size,
+                    ass_color(&hex_color, 100),
+                    ass_color(outline_unsung, outline_unsung_opacity),
+                    if italic { -1 } else { 0 }
+                );
+                if let Some(event) = dialogue(
+                    2,
+                    row.show_start,
+                    row.show_end,
+                    &format!("{row_tags}{clip}"),
+                    &literal(&row.text),
+                ) {
+                    lines.push(event);
+                }
             }
             continue;
         }
-        let row_style = AssStyle {
-            sung: &sung_color,
-            ..base_style
-        };
+        let row_style = base_style;
+        let bands = gradient_bands(row, settings, &sung_color, plan.height);
         for word in &row.words {
-            lines.extend(word_event(row, word, &options, &row_style));
+            lines.extend(word_event(row, word, &options, &row_style, &bands));
         }
     }
     lines.extend(countdown_events(
@@ -401,9 +472,37 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("Dialogue:"))
             .collect::<Vec<_>>();
-        assert_eq!(dialogues.len(), 1);
-        assert!(dialogues[0].ends_with("Xin chào"));
+        assert_eq!(dialogues.len(), 2);
+        assert!(dialogues[0].starts_with("Dialogue: 0,"));
+        assert!(dialogues[0].contains("\\p1\\bord0\\shad0"));
+        assert!(dialogues[1].starts_with("Dialogue: 2,"));
+        assert!(dialogues[1].ends_with("Xin chào"));
         assert!(!ass.contains("\\clip("));
+    }
+
+    #[test]
+    fn sung_gradient_emits_ten_clipped_color_bands_per_karaoke_word() {
+        let mut project = project();
+        project.settings.extra.extend(
+            serde_json::from_value::<serde_json::Map<String, Value>>(serde_json::json!({
+                "sung_gradient":true,
+                "gradient_top":"#ff0000",
+                "gradient_bottom":"#0000ff",
+                "gradient_start":0,
+                "gradient_end":100
+            }))
+            .unwrap(),
+        );
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        let sung = ass
+            .lines()
+            .filter(|line| line.starts_with("Dialogue: 2,"))
+            .collect::<Vec<_>>();
+        assert_eq!(sung.len(), 20);
+        assert!(sung.iter().all(|line| line.contains("\\clip(")));
+        assert!(ass.contains("\\1c&H000d00f2"));
+        assert!(ass.contains("\\1c&H00f2000d"));
     }
 
     #[test]
@@ -500,6 +599,10 @@ mod tests {
             .settings
             .extra
             .insert("countdown".into(), Value::String("mic".into()));
+        project
+            .settings
+            .extra
+            .insert("sung_gradient".into(), Value::Bool(true));
         let plan = crate::layout::display_plan(&project, &FixedWidth);
         let mut inputs = crate::RenderInputs::new(root.join("beat.wav"), 2.0);
         inputs

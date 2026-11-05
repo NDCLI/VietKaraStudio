@@ -190,6 +190,11 @@
 >   readability backing và bundled fonts vẫn còn thiếu để đạt parity.
 > - Đồng bộ kích thước layout ASS với aspect typed của project: portrait dùng
 >   PlayRes 1080×1920 thay vì đọc nhầm field đã được domain parser tiêu thụ.
+> - Port gradient chữ đã hát theo 10 dải clip và hộp nền bo góc cho subtitle,
+>   đọc đúng màu/opacity/radius từ settings. Test xác minh dải màu và layer
+>   backing; integration render FFmpeg chạy gradient cùng countdown vector.
+>   Workspace **109/109**; title cards, role artwork, readability backing
+>   theo scene và bundled fonts vẫn còn thiếu.
 
 ## 1. Mục tiêu và phạm vi
 
