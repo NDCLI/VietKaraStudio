@@ -3585,7 +3585,7 @@ impl Render for Studio {
                 );
             }
         }
-        let timeline = self.timeline_view(cx);
+        let timeline = self.timeline_view(window, cx);
         let active_reference_position = reference_position;
         let lyric_rows = uniform_list(
             "lyric-list",

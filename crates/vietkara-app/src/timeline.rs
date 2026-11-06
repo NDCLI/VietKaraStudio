@@ -8,6 +8,34 @@ fn clamp_seek_position(position: f64, duration: f64) -> f64 {
     position.clamp(0.0, duration.max(0.0))
 }
 
+fn visible_timeline_interval(
+    scroll_offset: f32,
+    viewport_width: f32,
+    zoom: f32,
+    duration: f64,
+) -> (f64, f64) {
+    if !scroll_offset.is_finite()
+        || !viewport_width.is_finite()
+        || viewport_width <= 0.0
+        || !zoom.is_finite()
+        || zoom <= 0.0
+        || !duration.is_finite()
+        || duration <= 0.0
+    {
+        return (0.0, duration.max(0.0));
+    }
+
+    // GPUI scroll offsets are zero at the start and negative as content moves
+    // left. Render one viewport of overscan on either side to avoid edge pop-in.
+    let viewport_seconds = f64::from(viewport_width / zoom);
+    let left = f64::from((-scroll_offset).max(0.0) / zoom);
+    let overscan = viewport_seconds.max(1.0);
+    (
+        (left - overscan).max(0.0),
+        (left + viewport_seconds + overscan).min(duration),
+    )
+}
+
 pub(super) fn track_to_timeline_time(
     slot: AudioSlot,
     position: f64,
@@ -535,7 +563,7 @@ impl Studio {
         cx.notify();
     }
 
-    pub(super) fn timeline_view(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn timeline_view(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let project = self.editor.project();
         let anchors = self
             .timeline_drag
@@ -564,6 +592,15 @@ impl Studio {
             .unwrap_or_else(|| "Chọn vạch anchor để xem và chỉnh mốc sync".into());
         let width = (duration as f32 * self.timeline_zoom).max(800.);
         let zoom = self.timeline_zoom;
+        let scroll_offset = f32::from(self.timeline_scroll.offset().x);
+        let scroll_bounds_width = f32::from(self.timeline_scroll.bounds().size.width);
+        let viewport_width = if scroll_bounds_width > 0.0 {
+            scroll_bounds_width
+        } else {
+            f32::from(window.viewport_size().width)
+        };
+        let (visible_start, visible_end) =
+            visible_timeline_interval(scroll_offset, viewport_width, zoom, duration);
         let mut content = div().relative().w(px(width)).h(px(178.)).bg(rgb(0x151820));
         let step = (duration / 100.).ceil().max(1.);
         for tick in 0..=(duration / step) as usize {
@@ -617,6 +654,9 @@ impl Studio {
                         ) else {
                             continue;
                         };
+                        if end < visible_start || start > visible_end {
+                            continue;
+                        }
                         content = content.child(
                             div()
                                 .absolute()
@@ -662,9 +702,12 @@ impl Studio {
             );
         }
         for (index, word) in words.iter().enumerate() {
-            let id = word.id.clone();
             let start = map(word.start).max(0.);
             let end = map(word.end).max(start);
+            if end < visible_start || start > visible_end {
+                continue;
+            }
+            let id = word.id.clone();
             let selected = Some(&word.id) == self.selected_word.as_ref();
             content = content.child(
                 div()
@@ -815,7 +858,7 @@ mod tests {
     use super::{
         anchors_valid, clamp_seek_position, insert_anchor_at_beat, remove_anchor_at,
         suggest_anchor_alignment, timeline_to_track_time, track_to_timeline_time,
-        waveform_timeline_interval,
+        visible_timeline_interval, waveform_timeline_interval,
     };
     use vietkara_domain::Anchor;
 
@@ -827,6 +870,22 @@ mod tests {
         assert_eq!(clamp_seek_position(8.5, -1.0), 0.0);
         assert_eq!(clamp_seek_position(f64::NAN, 20.0), 0.0);
         assert_eq!(clamp_seek_position(8.5, f64::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn timeline_culling_uses_negative_scroll_and_one_viewport_overscan() {
+        assert_eq!(
+            visible_timeline_interval(-1_000.0, 500.0, 100.0, 60.0),
+            (5.0, 20.0)
+        );
+        assert_eq!(
+            visible_timeline_interval(0.0, 800.0, 100.0, 10.0),
+            (0.0, 10.0)
+        );
+        assert_eq!(
+            visible_timeline_interval(0.0, 0.0, 100.0, 20.0),
+            (0.0, 20.0)
+        );
     }
 
     #[test]

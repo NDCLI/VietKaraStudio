@@ -648,6 +648,15 @@ từ: app mở project bằng dialog, hiện đúng tổng số từ, cuộn dan
 xác nhận scroll/selection của UniformList; chưa đo thời gian render hay xác
 nhận culling riêng của các khối timeline.
 
+Đã culling block lời và bin waveform theo vùng timeline đang thấy, cộng một
+viewport overscan ở mỗi bên; vùng này tính từ scroll offset âm, độ rộng
+scroll viewport và timeline zoom. GPUI scroll wheel notify view nên range
+được tính lại ở lần render kế tiếp. Test helper xác nhận offset/overscan/
+clamp; runtime với fixture trên mở timeline ở các block đầu, cuộn ngang rồi
+thấy block quanh từ 123–146. Culling giảm số node được tạo/layout, nhưng
+hiện vẫn quét toàn bộ words để tìm phần giao viewport; waveform bins được
+quét tối đa 1.600 bin mỗi nguồn.
+
 ### W3: kiểm thử gom mốc (sau commit 516dd2d)
 
 Lượt gom kiểm thử đầu tiên cho code viết chưa build trước đó. `cargo check`
