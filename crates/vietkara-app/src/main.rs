@@ -732,6 +732,13 @@ struct PreparedBatchRender {
     plan: vietkara_render::layout::DisplayPlan,
 }
 
+struct BatchProjectSnapshot {
+    project_path: PathBuf,
+    project_hash: String,
+    media_paths: Vec<PathBuf>,
+    media_hashes: serde_json::Map<String, Value>,
+}
+
 enum BatchRenderEvent {
     ItemStarted(usize, String),
     Progress(usize, f64),
@@ -5344,6 +5351,69 @@ fn unique_batch_target_for_record(
     directory.join(format!("{stem} {}.{extension}", vietkara_domain::new_id()))
 }
 
+fn snapshot_batch_project(
+    data_root: &std::path::Path,
+    batch_id: &str,
+    render_id: &str,
+    project: &Project,
+    source_project_path: &std::path::Path,
+) -> Result<BatchProjectSnapshot, String> {
+    let snapshot_directory = data_root
+        .join("batch-renders")
+        .join(batch_id)
+        .join("items")
+        .join(render_id);
+    let items_directory = snapshot_directory
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục snapshot batch".to_owned())?;
+    std::fs::create_dir_all(items_directory).map_err(|error| error.to_string())?;
+    // A render id is immutable. Never reuse or clean a directory that may
+    // already contain a valid snapshot from an earlier attempt.
+    std::fs::create_dir(&snapshot_directory).map_err(|error| error.to_string())?;
+    let result = (|| {
+        let snapshot_path = snapshot_directory.join("project.json");
+        vietkara_storage::copy::save_project_copy(
+            project,
+            Some(source_project_path),
+            &snapshot_path,
+        )
+        .map_err(|error| error.to_string())?;
+        let project_hash =
+            vietkara_storage::sha256_file(&snapshot_path).map_err(|error| error.to_string())?;
+        let media_paths = vietkara_storage::managed_media(&snapshot_directory);
+        let mut media_hashes = serde_json::Map::new();
+        for path in &media_paths {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| "Tên file media snapshot không hợp lệ".to_owned())?;
+            let hash = vietkara_storage::sha256_file(path).map_err(|error| error.to_string())?;
+            media_hashes.insert(name.to_owned(), Value::String(hash));
+        }
+        let beat_name = project
+            .beat
+            .as_ref()
+            .and_then(|beat| beat.get("filename"))
+            .and_then(Value::as_str)
+            .and_then(|name| PathBuf::from(name).file_name().map(|name| name.to_owned()))
+            .and_then(|name| name.to_str().map(str::to_owned))
+            .ok_or_else(|| "Không xác định được tên beat trong project snapshot".to_owned())?;
+        if !media_hashes.contains_key(&beat_name) {
+            return Err("Không tạo được snapshot beat cho hàng đợi".into());
+        }
+        Ok(BatchProjectSnapshot {
+            project_path: snapshot_path,
+            project_hash,
+            media_paths,
+            media_hashes,
+        })
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&snapshot_directory);
+    }
+    result
+}
+
 fn prepare_batch_item(
     project_path: PathBuf,
     record: &mut BatchRecord,
@@ -5360,7 +5430,7 @@ fn prepare_batch_item(
         .and_then(Value::as_f64)
         .filter(|duration| duration.is_finite() && *duration > 0.0)
         .ok_or_else(|| "Project chưa có beat hợp lệ để xuất video".to_owned())?;
-    let beat_path = batch_beat_path(&project, &project_path)?;
+    batch_beat_path(&project, &project_path)?;
     let project_hash =
         vietkara_storage::sha256_file(&project_path).map_err(|error| error.to_string())?;
     let directory = project_path
@@ -5374,38 +5444,13 @@ fn prepare_batch_item(
     let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
     let index = record.items.len();
     let render_id = vietkara_domain::new_id();
-    let snapshot_directory = batch_data_root()
-        .join("batch-renders")
-        .join(&record.id)
-        .join("items")
-        .join(&render_id);
-    std::fs::create_dir_all(&snapshot_directory).map_err(|error| error.to_string())?;
-    let snapshot_path = snapshot_directory.join("project.json");
-    if let Err(error) =
-        vietkara_storage::copy::save_project_copy(&project, Some(&project_path), &snapshot_path)
-    {
-        let _ = std::fs::remove_dir_all(&snapshot_directory);
-        return Err(error.to_string());
-    }
-    let snapshot_project_hash =
-        vietkara_storage::sha256_file(&snapshot_path).map_err(|error| error.to_string())?;
-    let snapshot_media_paths = vietkara_storage::managed_media(&snapshot_directory);
-    let mut snapshot_media = serde_json::Map::new();
-    for path in &snapshot_media_paths {
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| "Tên file media snapshot không hợp lệ".to_owned())?;
-        let hash = vietkara_storage::sha256_file(path).map_err(|error| error.to_string())?;
-        snapshot_media.insert(name.to_owned(), Value::String(hash));
-    }
-    let beat_name = beat_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-    if !snapshot_media.contains_key(beat_name) {
-        return Err("Không tạo được snapshot beat cho hàng đợi".into());
-    }
+    let snapshot = snapshot_batch_project(
+        &batch_data_root(),
+        &record.id,
+        &render_id,
+        &project,
+        &project_path,
+    )?;
     record.items.push(BatchItem {
         project_id: project.id.clone(),
         render_id,
@@ -5413,13 +5458,14 @@ fn prepare_batch_item(
         variant: serde_json::json!({
             "source_project_path": project_path,
             "source_project_sha256": project_hash,
-            "snapshot_project_path": snapshot_path,
-            "snapshot_project_sha256": snapshot_project_hash,
-            "snapshot_media": snapshot_media,
+            "snapshot_project_path": snapshot.project_path,
+            "snapshot_project_sha256": snapshot.project_hash,
+            "snapshot_media": snapshot.media_hashes,
             "output_path": target,
         }),
         directory: directory.to_string_lossy().into_owned(),
-        assets: snapshot_media_paths
+        assets: snapshot
+            .media_paths
             .iter()
             .map(|path| path.to_string_lossy().into_owned())
             .collect(),
@@ -8850,6 +8896,97 @@ mod workspace_tests {
         assert_eq!(
             unique_batch_target_for_record(dir.path(), "song.mp4", &[reserved]),
             dir.path().join("song (2).mp4")
+        );
+    }
+
+    #[test]
+    fn batch_snapshot_copies_managed_media_and_never_clobbers_or_tracks_source_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let source_dir = root.path().join("Bài hát fixture");
+        let data_root = root.path().join("app-data");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(source_dir.join("beat_source.wav"), b"fixture beat bytes").unwrap();
+        std::fs::write(
+            source_dir.join("reference_source.wav"),
+            b"fixture reference bytes",
+        )
+        .unwrap();
+        std::fs::write(source_dir.join("notes.txt"), b"not managed media").unwrap();
+        let source_project_path = source_dir.join("project.json");
+        let mut project = Project::new("Snapshot fixture");
+        project.beat = Some(serde_json::json!({"filename":"beat_source.wav","duration":2.0}));
+        project.reference =
+            Some(serde_json::json!({"filename":"reference_source.wav","duration":2.0}));
+        vietkara_storage::save_project(&project, &source_project_path).unwrap();
+
+        let batch_id = vietkara_domain::new_id();
+        let render_id = vietkara_domain::new_id();
+        let snapshot = snapshot_batch_project(
+            &data_root,
+            &batch_id,
+            &render_id,
+            &project,
+            &source_project_path,
+        )
+        .unwrap();
+        let snapshot_dir = snapshot.project_path.parent().unwrap();
+        assert!(snapshot.project_path.is_file());
+        assert_eq!(snapshot.media_paths.len(), 2);
+        assert!(snapshot_dir.join("beat_source.wav").is_file());
+        assert!(snapshot_dir.join("reference_source.wav").is_file());
+        assert!(!snapshot_dir.join("notes.txt").exists());
+        assert_eq!(snapshot.media_hashes.len(), 2);
+
+        let item = BatchItem {
+            project_id: project.id.clone(),
+            render_id: render_id.clone(),
+            name: project.name.clone(),
+            variant: serde_json::json!({
+                "source_project_path":source_project_path,
+                "snapshot_project_path":snapshot.project_path,
+                "snapshot_project_sha256":snapshot.project_hash,
+                "snapshot_media":snapshot.media_hashes,
+                "output_path":root.path().join("karaoke.mp4"),
+            }),
+            directory: source_dir.to_string_lossy().into_owned(),
+            assets: snapshot
+                .media_paths
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+            status: ItemStatus::Queued,
+            result: None,
+            error: None,
+        };
+        assert!(validate_batch_snapshot(&item).is_ok());
+
+        std::fs::write(
+            source_dir.join("beat_source.wav"),
+            b"source changed after queueing",
+        )
+        .unwrap();
+        assert!(validate_batch_snapshot(&item).is_ok());
+        let original_snapshot_beat = std::fs::read(snapshot_dir.join("beat_source.wav")).unwrap();
+        assert_eq!(original_snapshot_beat, b"fixture beat bytes");
+
+        let retry = snapshot_batch_project(
+            &data_root,
+            &batch_id,
+            &render_id,
+            &project,
+            &source_project_path,
+        );
+        assert!(retry.is_err(), "an existing render id must not be reused");
+        assert_eq!(
+            std::fs::read(snapshot_dir.join("beat_source.wav")).unwrap(),
+            original_snapshot_beat
+        );
+
+        std::fs::write(snapshot_dir.join("beat_source.wav"), b"tampered snapshot").unwrap();
+        assert!(
+            validate_batch_snapshot(&item)
+                .unwrap_err()
+                .contains("Media snapshot bị thay đổi: beat_source.wav")
         );
     }
 

@@ -12,7 +12,10 @@
 > model test vẫn ignored vì cần model/fixture riêng; UI batch, runtime NVENC,
 > QA cài đặt máy sạch và phát hành/update E2E còn mở. Node tapping/timeline
 > 14/14 pass. Python suite baseline riêng 162/173 pass; 11 fail ở test export,
-> phân vai vocal và UI/video baseline, không thuộc workspace Rust.
+> phân vai vocal và UI/video baseline, không thuộc workspace Rust. Batch
+> snapshot được tách khỏi GPUI và có regression test cho media allowlist, hash,
+> source đổi sau khi queue, retry không ghi đè và tamper snapshot; UI batch
+> runtime vẫn chưa được xác minh.
 >
 > **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
 >

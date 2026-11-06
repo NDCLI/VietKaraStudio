@@ -432,6 +432,13 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   giữ nguyên kết quả đã xong và chỉ requeue mục đang chạy; sửa source sau crash
   vẫn dùng media snapshot, còn snapshot bị đổi sẽ bị fingerprint từ chối. Đây
   chưa thay cho thao tác Cancel/đóng cửa sổ khi batch đang render trong runtime.
+  Thêm test `batch_snapshot_copies_managed_media_and_never_clobbers_or_tracks_source_changes`:
+  copy hai media allowlist vào data root, xác minh hash, loại file ghi chú,
+  giữ snapshot sau khi source đổi, từ chối render ID trùng và báo lỗi khi media
+  snapshot bị sửa. UI smoke với hai project tổng hợp chưa khởi chạy batch; quá
+  trình điều khiển native dialog lệch focus sang ứng dụng khác, không có record
+  hay output được tạo. Cần chạy lại qua UI trên phiên desktop ổn định rồi thử
+  cancel/restart giữa render.
 - [x] Cấu hình AI lưu local cho `Tự động · NVIDIA/CPU` hoặc CPU, cùng các
   model Whisper small/medium/large-v3-turbo. Chế độ tự động chọn CUDA chỉ sau
   khi hardware probe kiểm tra được backend; Demucs giữ `--jobs 1`, model và
