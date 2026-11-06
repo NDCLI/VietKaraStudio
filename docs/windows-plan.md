@@ -683,4 +683,15 @@ bản copy; UI báo `Đã mở project`, nội dung 4 từ vẫn hiện. Ctrl+Sp
 trên audio device Windows, playhead chạy tới khoảng 5 giây; Escape dừng và
 đưa playhead về 0. Tiến trình test đã đóng. Đây là smoke test Open/Save As/
 playback, chưa kiểm tra relink thực tế (reference fixture vẫn thiếu
-`source.wav`), tapping, SRT, seek/pause-resume, timer autosave hoặc crash UI.
+`source.wav`), SRT, seek/pause-resume, timer autosave hoặc crash UI.
+
+### W3: runtime tap-sync trên Windows
+
+Fixture Save As ban đầu có một từ `locked=true`; UI từ chối bắt đầu phiên
+tap cho đến khi mở khóa lời. Tạo bản riêng `target/runtime-w3/tap-fixture/`
+không có cờ khóa. Ctrl+T bắt đầu session, Space khi beat đang phát ghi một
+mốc (UI báo `Đã căn nhịp • chưa lưu`, thời điểm lấy từ snapshot playback),
+Escape kết thúc session; Ctrl+Z hoàn tác đúng một bước và khôi phục từ
+`Xin` về 0.20–0.60s. Recovery status chỉ ghi trong thư mục fixture test.
+Đây là smoke test một tap + undo; nhiều từ liên tiếp, giữ Space ≥180ms,
+Backspace, blur, hết audio và mapping khi nghe reference vẫn cần kiểm tra.

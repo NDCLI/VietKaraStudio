@@ -1783,10 +1783,8 @@ impl Studio {
     }
     fn finish_tapping(&mut self, finalize: bool, cx: &mut Context<Self>) {
         if finalize {
-            let tap = self
-                .tapping
-                .as_mut()
-                .and_then(|s| s.clock.finish(self.play_position));
+            let position = self.playback_position();
+            let tap = self.tapping.as_mut().and_then(|s| s.clock.finish(position));
             self.accept_tap(tap, cx);
         }
         let Some(session) = self.tapping.take() else {
@@ -1823,7 +1821,7 @@ impl Studio {
             cx.stop_propagation();
             return;
         }
-        if event.keystroke.key != "space" || !self.playing {
+        if event.keystroke.key != "space" || !self.playback_is_playing() {
             return;
         }
         let time = self.playback_position();
@@ -1852,8 +1850,33 @@ impl Studio {
         }
         cx.stop_propagation();
     }
+    #[cfg(windows)]
+    fn playback_position(&self) -> f64 {
+        self.playback.as_ref().map_or(self.play_position, |worker| {
+            let snapshot = worker.snapshot();
+            timeline::track_to_timeline_time(
+                self.listen_track,
+                snapshot.position,
+                &self.editor.project().anchors,
+            )
+        })
+    }
+
+    #[cfg(not(windows))]
     fn playback_position(&self) -> f64 {
         self.play_position
+    }
+
+    #[cfg(windows)]
+    fn playback_is_playing(&self) -> bool {
+        self.playback
+            .as_ref()
+            .is_some_and(|worker| worker.snapshot().state == vietkara_media::PlayerState::Playing)
+    }
+
+    #[cfg(not(windows))]
+    fn playback_is_playing(&self) -> bool {
+        self.playing
     }
 
     fn select_word(&mut self, id: String, cx: &mut Context<Self>) {
