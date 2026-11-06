@@ -15,6 +15,15 @@ otherwise valid, smoke-tested stage could not be archived.
 The archiver now excludes those bytecode paths from both the manifest file-set
 comparison and the ZIP payload, matching `build_rust_installer.py`.
 
+The updater now has a Cancel action while downloading/verifying/joining. It
+checks cancellation between stream blocks, removes only its own partial file,
+and keeps already verified parts for a later retry. The action is disabled
+once Setup is being launched because interrupting an installer is unsafe.
+
+The updater now treats a non-zero Setup process exit code as an installation
+failure instead of always showing success. It keeps the verified installer on
+failure so the user can retry it.
+
 Evidence:
 
 - `releases/VietKaraStudio-Rust-Portable-x64-build4` contains runtime
@@ -28,7 +37,8 @@ Evidence:
 
 - `tests/test_rust_update_helper.ps1` passed. It compiles the helper and checks
   valid and invalid downloads, interrupted streams, part joining, missing
-  parts, and cleanup of partial files created by the helper.
+  parts, cancellation cleanup, Setup exit-code handling, and cleanup of
+  partial files created by the helper.
 - `packaging/build_rust_installer.py releases/<stage> --verify-only` passed for
   the existing build4 stage.
 - Static review found the downloader validates HTTPS/allowed GitHub hosts,
@@ -53,12 +63,7 @@ Evidence:
    the same GitHub release account and is not a publisher signature. A
    production release still needs signing and clean-machine SmartScreen QA.
 
-3. **The updater has no cancel action while downloading.** The dialog prevents
-   closing before completion. Failed transfers remove the helper-owned partial
-   file; verified completed parts can be reused on retry. Consider adding an
-   explicit cancel action if long multi-gigabyte updates need user control.
-
-4. **Installer runtime coverage remains scoped to the existing Windows smoke
+3. **Installer runtime coverage remains scoped to the existing Windows smoke
    records.** This audit did not reinstall or uninstall build4; the prior
    `docs/windows-plan.md` records install/uninstall smoke passes, while a clean
    Windows VM and update/rollback E2E remain outstanding.

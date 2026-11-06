@@ -243,10 +243,11 @@ internal static class RustUpdateHelper
     private static string DownloadAndVerify(string url, string target, long expectedSize, string expectedHash,
         long baseBytes, long totalBytes, BackgroundWorker worker)
     {
+        ThrowIfCancellationRequested(worker);
         if (File.Exists(target))
         {
             FileInfo cached = new FileInfo(target);
-            if (cached.Length == expectedSize && HashFile(target) == expectedHash) return target;
+            if (cached.Length == expectedSize && HashFile(target, worker) == expectedHash) return target;
             throw new IOException("Tệp tải đã tồn tại nhưng SHA-256 sai; hãy bỏ tệp lỗi rồi thử lại.");
         }
         string partial = target + ".partial";
@@ -280,6 +281,7 @@ internal static class RustUpdateHelper
                     int read;
                     while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
                     {
+                        ThrowIfCancellationRequested(worker);
                         written += read;
                         if (written > expectedSize) throw new IOException("Asset tải vượt kích thước manifest.");
                         output.Write(buffer, 0, read);
@@ -292,6 +294,7 @@ internal static class RustUpdateHelper
                                 (expectedSize / (1024 * 1024)).ToString("N0") + " MiB");
                         }
                     }
+                    ThrowIfCancellationRequested(worker);
                     hash.TransformFinalBlock(new byte[0], 0, 0);
                     output.Flush(true);
                     if (written != expectedSize || ToHex(hash.Hash) != expectedHash)
@@ -319,7 +322,7 @@ internal static class RustUpdateHelper
         string final = Path.Combine(folder, update.SetupName);
         if (File.Exists(final))
         {
-            if (new FileInfo(final).Length != update.Size || HashFile(final) != update.Sha256)
+            if (new FileInfo(final).Length != update.Size || HashFile(final, worker) != update.Sha256)
                 throw new IOException("Bộ cài đã tải có SHA-256 sai; hãy bỏ tệp lỗi rồi thử lại.");
         }
         else
@@ -331,28 +334,40 @@ internal static class RustUpdateHelper
             List<string> parts = new List<string>();
             foreach (UpdatePart part in update.Parts)
             {
+                ThrowIfCancellationRequested(worker);
                 string path = Path.Combine(folder, part.Name);
                 DownloadAndVerify(part.Url, path, part.Size, part.Sha256, downloaded, update.Size, worker);
                 parts.Add(path);
                 downloaded += part.Size;
             }
-            JoinAndVerifyParts(parts, final, update.Size, update.Sha256);
+            ThrowIfCancellationRequested(worker);
+            JoinAndVerifyParts(parts, final, update.Size, update.Sha256, worker);
+            ThrowIfCancellationRequested(worker);
             foreach (string part in parts)
                 try { File.Delete(part); } catch { }
         }
+        ThrowIfCancellationRequested(worker);
         worker.ReportProgress(100, "Đã xác minh bộ cài. Đang mở Setup…");
+        ThrowIfCancellationRequested(worker);
         using (Process installer = Process.Start(new ProcessStartInfo {
             FileName = final, WorkingDirectory = folder, UseShellExecute = true }))
         {
             if (installer == null) throw new InvalidOperationException("Không mở được bộ cài.");
             installer.WaitForExit();
-            if (installer.ExitCode == 0)
-                try { File.Delete(final); } catch { }
+            EnsureInstallerSucceeded(installer.ExitCode, final);
+            try { File.Delete(final); } catch { }
         }
     }
 
+    private static void EnsureInstallerSucceeded(int exitCode, string installerPath)
+    {
+        if (exitCode != 0)
+            throw new InvalidOperationException("Setup kết thúc với mã " + exitCode +
+                ". Bộ cài đã xác minh được giữ tại: " + installerPath);
+    }
+
     private static void JoinAndVerifyParts(List<string> parts, string target, long expectedSize,
-        string expectedHash)
+        string expectedHash, BackgroundWorker worker)
     {
         string partial = target + ".partial";
         bool ownsPartial = false;
@@ -371,6 +386,7 @@ internal static class RustUpdateHelper
                         int read;
                         while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
                         {
+                            ThrowIfCancellationRequested(worker);
                             output.Write(buffer, 0, read);
                             hash.TransformBlock(buffer, 0, read, buffer, 0);
                             written += read;
@@ -378,6 +394,7 @@ internal static class RustUpdateHelper
                                 throw new IOException("Các phần ghép vượt kích thước bộ cài trong manifest.");
                         }
                     }
+                    ThrowIfCancellationRequested(worker);
                     hash.TransformFinalBlock(new byte[0], 0, 0);
                     output.Flush(true);
                     if (written != expectedSize || ToHex(hash.Hash) != expectedHash)
@@ -396,10 +413,28 @@ internal static class RustUpdateHelper
         }
     }
 
-    private static string HashFile(string path)
+    private static string HashFile(string path, BackgroundWorker worker)
     {
         using (FileStream input = File.OpenRead(path))
-        using (SHA256 hash = SHA256.Create()) return ToHex(hash.ComputeHash(input));
+        using (SHA256 hash = SHA256.Create())
+        {
+            byte[] buffer = new byte[1024 * 1024];
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                ThrowIfCancellationRequested(worker);
+                hash.TransformBlock(buffer, 0, read, buffer, 0);
+            }
+            ThrowIfCancellationRequested(worker);
+            hash.TransformFinalBlock(new byte[0], 0, 0);
+            return ToHex(hash.Hash);
+        }
+    }
+
+    private static void ThrowIfCancellationRequested(BackgroundWorker worker)
+    {
+        if (worker != null && worker.CancellationPending)
+            throw new OperationCanceledException("Người dùng đã hủy tải bản cập nhật.");
     }
 
     private static string ToHex(byte[] bytes)
@@ -448,6 +483,7 @@ internal static class RustUpdateHelper
         private readonly Button close = new Button();
         private readonly BackgroundWorker worker = new BackgroundWorker();
         private bool finished;
+        private bool installing;
 
         internal DownloadForm(string appRoot, RustUpdate selected)
         {
@@ -466,24 +502,49 @@ internal static class RustUpdateHelper
             progress.Minimum = 0;
             progress.Maximum = 100;
             close.SetBounds(391, 82, 100, 28);
-            close.Text = "Đóng";
-            close.Enabled = false;
-            close.Click += delegate { Close(); };
+            close.Text = "Hủy";
+            close.Enabled = true;
+            close.Click += delegate
+            {
+                if (finished) { Close(); return; }
+                RequestCancel();
+            };
             Controls.Add(message);
             Controls.Add(progress);
             Controls.Add(close);
             worker.WorkerReportsProgress = true;
+            worker.WorkerSupportsCancellation = true;
             worker.DoWork += delegate(object sender, DoWorkEventArgs args)
-            { DownloadAndLaunch(root, update, worker); };
+            {
+                try { DownloadAndLaunch(root, update, worker); }
+                catch (OperationCanceledException) { args.Cancel = true; }
+            };
             worker.ProgressChanged += delegate(object sender, ProgressChangedEventArgs args)
             {
+                if (worker.CancellationPending)
+                {
+                    message.Text = "Đang hủy tải và dọn file tạm…";
+                    return;
+                }
                 progress.Value = Math.Max(0, Math.Min(100, args.ProgressPercentage));
                 message.Text = Convert.ToString(args.UserState);
+                if (args.ProgressPercentage >= 100)
+                {
+                    installing = true;
+                    close.Enabled = false;
+                    close.Text = "Đang cài…";
+                }
             };
             worker.RunWorkerCompleted += delegate(object sender, RunWorkerCompletedEventArgs args)
             {
                 finished = true;
                 close.Enabled = true;
+                close.Text = "Đóng";
+                if (args.Cancelled)
+                {
+                    message.Text = "Đã hủy. Các phần tải đã xác minh được giữ để thử lại sau.";
+                    return;
+                }
                 if (args.Error != null)
                 {
                     message.Text = "Không tải/cài được bản cập nhật.";
@@ -494,7 +555,22 @@ internal static class RustUpdateHelper
             };
             Shown += delegate { worker.RunWorkerAsync(); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
-            { if (!finished) args.Cancel = true; };
+            {
+                if (!finished)
+                {
+                    args.Cancel = true;
+                    if (!installing) RequestCancel();
+                }
+            };
+        }
+
+        private void RequestCancel()
+        {
+            if (!worker.IsBusy || worker.CancellationPending || installing) return;
+            close.Enabled = false;
+            close.Text = "Đang hủy…";
+            message.Text = "Đang hủy tải và dọn file tạm…";
+            worker.CancelAsync();
         }
     }
 }

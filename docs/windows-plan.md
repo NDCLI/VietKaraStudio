@@ -583,7 +583,11 @@ part `.001…`, kiểm tra HTTPS/host, size và SHA-256 từng part, ghép rồi
 SHA-256 nguyên bộ cài trước khi chạy Setup. Inno Setup tạo `installed.flag`
 để phân biệt bản cài với portable; data/cache/model vẫn nằm ngoài app folder.
 `split_rust_release.py` tạo part + manifest cho GitHub upload. C# updater biên
-dịch được và app workspace check pass; chưa có Rust Release công khai nên chưa
+dịch được; hộp tải có thể hủy giữa lúc tải/ghép, dọn `.partial` do helper tạo
+và giữ các part đã xác minh để thử lại. Nút hủy bị khóa khi Setup bắt đầu.
+Mã thoát Setup khác 0 được báo lỗi, giữ installer đã xác minh để chạy lại.
+Archive portable bỏ qua `__pycache__`/`.pyc` phát sinh sau smoke giống installer.
+Chưa có Rust Release công khai nên chưa
 thể kiểm tra network/download/update end-to-end.
 
 Lượt kiểm thử gom gần nhất (2026-11-06): `cargo test --workspace`,
