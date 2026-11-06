@@ -1540,7 +1540,7 @@ pub fn ffmpeg_command(
                 let opacity_curve =
                     lerp(first.opacity, last.opacity, &alpha_progress).replace(',', "\\,");
                 layer.push_str(&format!(
-                    ",geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*({opacity:.4}*{opacity_curve}/100)/100'"
+                    ",geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='alpha(X\\,Y)*({opacity:.4}*{opacity_curve}/100)'"
                 ));
             }
             if fade >= 0.05 {
@@ -2924,6 +2924,54 @@ mod tests {
                 .unwrap_or("")
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
+        let scene_pixel = |time: f64| {
+            let rendered_frame = std::process::Command::new(&argv[0])
+                .args(["-v", "error", "-ss"])
+                .arg(format!("{time:.3}"))
+                .args(["-i"])
+                .arg(out.file_name().unwrap())
+                .args([
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "rawvideo",
+                    "-pix_fmt",
+                    "rgb24",
+                    "pipe:1",
+                ])
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(
+                rendered_frame.status.success(),
+                "could not decode scene frame: {}",
+                String::from_utf8_lossy(&rendered_frame.stderr)
+            );
+            let offset = (10 * 320 + 10) * 3;
+            let pixel = &rendered_frame.stdout[offset..offset + 3];
+            [pixel[0], pixel[1], pixel[2]]
+        };
+        let before_scene = scene_pixel(0.1);
+        let during_scene = scene_pixel(0.5);
+        let scene_graph = &argv[argv
+            .iter()
+            .position(|argument| argument == "-filter_complex")
+            .unwrap()
+            + 1];
+        for (actual, expected) in before_scene.into_iter().zip([16, 29, 43]) {
+            assert!(
+                actual.abs_diff(expected) <= 8,
+                "scene appeared before its start: pixel={before_scene:?}"
+            );
+        }
+        // At 0.5 s the fade-in has completed and opacity has interpolated from
+        // 100% to 35%; its effective alpha over the 0x101d2b base is ~53.5%.
+        for (actual, expected) in during_scene.into_iter().zip([144, 14, 20]) {
+            assert!(
+                actual.abs_diff(expected) <= 14,
+                "scene raster opacity/timing differs: pixel={during_scene:?}; graph={scene_graph}"
+            );
+        }
         let mut overlay_inputs = scene_inputs.clone();
         overlay_inputs.countdown.push(RenderCountdown {
             image: decoration_image.clone(),

@@ -297,12 +297,12 @@ kiểm tra runtime có FFmpeg trên Windows.
 > cố định geometry để cô lập ASS; checklist full layout/font và render dưới
 > đây vẫn còn nguyên.
 
-- [ ] Port `layout.display_plan` sang Rust, dùng font đo được trên
+- [ ] Chốt parity đầy đủ cho `layout.display_plan` với font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):
   `frame_size`, `split_tokens`/`split_text`, `regroup_words`,
   vị trí từng từ, role icon, countdown, title.
-- [ ] Port `subtitles.build_ass` đầy đủ (hiện `vietkara-render` mới có
-  helper + builder lệnh FFmpeg cho trường hợp nền màu đơn giản):
+- [ ] Chốt parity golden cho `subtitles.build_ass` đầy đủ; Rust hiện đã có
+  builder lyric/title/role artwork/scene/countdown và các mode:
   karaoke sweep, gradient, duet colors/icons, title/logo/background/
   countdown, subtitle/lyricsmv mode, shadow/outline.
 - [ ] Quy tắc: preview và export dùng **chung một** layout model, không
@@ -312,7 +312,7 @@ kiểm tra runtime có FFmpeg trên Windows.
 
 ### 5.3. Render thật và kiểm chứng
 
-- [ ] Mở rộng `vietkara-render`: scene/logo/countdown overlays,
+- [x] Mở rộng `vietkara-render`: scene/logo/countdown overlays,
   video/image background, guide audio (`amix`), audio normalize
   (`loudnorm`), NVENC fallback sang libx264 khi lỗi (như `engine.render`).
 - [ ] Xuất MP4 tối thiểu đạt parity fixture, audio dùng đúng beat gốc;
@@ -320,6 +320,12 @@ kiểm tra runtime có FFmpeg trên Windows.
   `sample_frames`) phải pass.
 - [ ] Lỗi FFmpeg hiển thị được nguyên nhân có thể hành động (không chỉ
   mã lỗi).
+
+> **Tiến độ 2026-11-06:** test `verify_output_accepts_real_render_and_rejects_wrong_expectations`
+> giờ giải mã frame từ MP4 FFmpeg thật và kiểm tra pixel trước/trong scene.
+> Phép đo phát hiện dynamic scene opacity bị chia 100 hai lần (scene gần như
+> trong suốt); đã sửa và xác nhận pixel theo alpha nội suy. Đây là kiểm tra
+> runtime hẹp cho compositing scene, chưa thay cho golden MP4/audio đầy đủ.
 
 **Hoàn tất khi:** preview/export không lệch các thuộc tính đã cam kết,
 progress/cancel hoạt động, export folder + render info đúng.
