@@ -498,6 +498,11 @@ Lượt kiểm thử gom gần nhất (2026-11-06): `cargo test --workspace`,
 `cargo fmt --all -- --check`, Python **188/188**, Node **17/17**,
 `git diff --check` đều pass. Đã smoke joiner thật bằng PowerShell 5.1.
 Storage scene removal có test cho cả trường hợp giữ decoration và xóa record.
+Updater đã có smoke harness Windows riêng (`powershell -File
+tests/test_rust_update_helper.ps1`): kiểm tra ghi part thành công, hash sai,
+stream bị ngắt, ghép nhiều part, part thiếu và file `.partial` có sẵn. Asset
+hoặc bộ cài ghép dở do chính updater tạo sẽ được dọn khi lỗi; file partial có
+sẵn của tiến trình khác được giữ nguyên. Harness pass trên Windows.
 
 Build3 local được dựng sau khi thêm updater (không phải canonical GitHub release):
 
@@ -513,9 +518,17 @@ Build3 local được dựng sau khi thêm updater (không phải canonical GitH
 - Reinstall to `target/installer-launch-smoke/app` opened the full GPUI Studio
   window. Desktop shortcut target matched the installed launcher, and silent
   uninstall exited 0; temporary install payload was removed.
+- After hardening updater partial-file cleanup, rebuilt the installer from the
+  same verified stage as `releases/VietKaraStudio-Rust-0.1.0-Setup-x64-build4.exe`
+  (2,980,180,357 bytes), SHA-256
+  `e870c8df3ed66bfda722bf262bca315bd83edd82f332d0ad3a9d58088b6567fe`.
+  Silent install/uninstall exited 0; `installed.flag` and the new
+  `VietKaraUpdater.exe` (20,992 bytes) were present after install.
 
-Chưa xác minh trên Windows sạch, IME/DPI sau cài chưa được chạy lại, và updater
-chưa thể chạy E2E khi chưa có Rust GitHub Release công khai.
+Trang [GitHub Releases](https://github.com/NDCLI/VietKaraStudio/releases) ngày
+2026-11-06 vẫn hiển thị latest `v1.1.7` của baseline Python, chưa có Rust
+release với `downloads.json`; vì vậy updater network/update E2E chưa thể chạy.
+Chưa xác minh trên Windows sạch; IME/DPI sau cài cũng chưa được chạy lại.
 
 Script chia release Rust giờ cũng đóng gói `Ghep-File.ps1`, `Ghep-File.cmd` và
 hướng dẫn vào thư mục upload. Joiner xác minh tên file, kích thước/hash từng

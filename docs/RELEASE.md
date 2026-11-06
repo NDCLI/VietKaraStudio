@@ -57,8 +57,8 @@ ghép và kiểm tra artifact trực tiếp trên Windows.
 Không đưa thư mục `data/`, model hoặc cache cá nhân vào artifact. Build portable
 và installer cần cùng phiên bản; kiểm `BUILD-INFO.json` trước khi upload.
 Updater Rust compile được nhưng chưa kiểm download thật vì chưa có Rust Release
-trên GitHub. Local build3 trong `releases/` đã được dựng sau khi thêm updater
-và qua smoke install/uninstall; hash và giới hạn kiểm chứng được ghi trong
+trên GitHub. Local build4 trong `releases/` có sửa cleanup file tải dở và đã
+qua smoke install/uninstall; hash và giới hạn kiểm chứng được ghi trong
 `docs/windows-plan.md`. Đây là snapshot kiểm thử, chưa phải artifact phát hành
 GitHub; trước khi public cần hoàn tất QA máy sạch và kiểm tra update E2E với
 release thật.

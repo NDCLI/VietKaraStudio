@@ -256,30 +256,59 @@ internal static class RustUpdateHelper
         {
             ValidateResponseHost(response.ResponseUri.Host, false);
             using (Stream input = response.GetResponseStream())
-            using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (SHA256 hash = SHA256.Create())
             {
-                byte[] buffer = new byte[1024 * 1024];
-                long written = 0;
-                int read;
-                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    written += read;
-                    if (written > expectedSize) throw new IOException("Asset tải vượt kích thước manifest.");
-                    output.Write(buffer, 0, read);
-                    hash.TransformBlock(buffer, 0, read, buffer, 0);
-                    int percent = (int)Math.Min(99, ((baseBytes + written) * 100L) / totalBytes);
-                    worker.ReportProgress(percent, "Đang tải " + Path.GetFileName(target) + " · " +
-                        (written / (1024 * 1024)).ToString("N0") + " / " + (expectedSize / (1024 * 1024)).ToString("N0") + " MiB");
-                }
-                hash.TransformFinalBlock(new byte[0], 0, 0);
-                output.Flush(true);
-                if (written != expectedSize || ToHex(hash.Hash) != expectedHash)
-                    throw new IOException("Dung lượng hoặc SHA-256 của asset không khớp.");
+                return SaveAndVerifyStream(input, target, expectedSize, expectedHash,
+                    baseBytes, totalBytes, worker);
             }
         }
-        File.Move(partial, target);
-        return target;
+    }
+
+    private static string SaveAndVerifyStream(Stream input, string target, long expectedSize,
+        string expectedHash, long baseBytes, long totalBytes, BackgroundWorker worker)
+    {
+        string partial = target + ".partial";
+        bool ownsPartial = false;
+        try
+        {
+            using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                ownsPartial = true;
+                using (SHA256 hash = SHA256.Create())
+                {
+                    byte[] buffer = new byte[1024 * 1024];
+                    long written = 0;
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        written += read;
+                        if (written > expectedSize) throw new IOException("Asset tải vượt kích thước manifest.");
+                        output.Write(buffer, 0, read);
+                        hash.TransformBlock(buffer, 0, read, buffer, 0);
+                        if (worker != null)
+                        {
+                            int percent = (int)Math.Min(99, ((baseBytes + written) * 100L) / totalBytes);
+                            worker.ReportProgress(percent, "Đang tải " + Path.GetFileName(target) + " · " +
+                                (written / (1024 * 1024)).ToString("N0") + " / " +
+                                (expectedSize / (1024 * 1024)).ToString("N0") + " MiB");
+                        }
+                    }
+                    hash.TransformFinalBlock(new byte[0], 0, 0);
+                    output.Flush(true);
+                    if (written != expectedSize || ToHex(hash.Hash) != expectedHash)
+                        throw new IOException("Dung lượng hoặc SHA-256 của asset không khớp.");
+                }
+            }
+            File.Move(partial, target);
+            ownsPartial = false;
+            return target;
+        }
+        finally
+        {
+            if (ownsPartial)
+            {
+                try { File.Delete(partial); } catch { }
+            }
+        }
     }
 
     private static void DownloadAndLaunch(string root, RustUpdate update, BackgroundWorker worker)
@@ -307,30 +336,7 @@ internal static class RustUpdateHelper
                 parts.Add(path);
                 downloaded += part.Size;
             }
-            string partial = final + ".partial";
-            if (File.Exists(partial)) throw new IOException("Đã có bộ cài ghép dở; hãy bỏ tệp .partial rồi thử lại.");
-            using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (SHA256 hash = SHA256.Create())
-            {
-                byte[] buffer = new byte[1024 * 1024];
-                long written = 0;
-                foreach (string part in parts)
-                using (FileStream input = File.OpenRead(part))
-                {
-                    int read;
-                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        output.Write(buffer, 0, read);
-                        hash.TransformBlock(buffer, 0, read, buffer, 0);
-                        written += read;
-                    }
-                }
-                hash.TransformFinalBlock(new byte[0], 0, 0);
-                output.Flush(true);
-                if (written != update.Size || ToHex(hash.Hash) != update.Sha256)
-                    throw new IOException("SHA-256 của bộ cài đã ghép không khớp.");
-            }
-            File.Move(partial, final);
+            JoinAndVerifyParts(parts, final, update.Size, update.Sha256);
             foreach (string part in parts)
                 try { File.Delete(part); } catch { }
         }
@@ -342,6 +348,51 @@ internal static class RustUpdateHelper
             installer.WaitForExit();
             if (installer.ExitCode == 0)
                 try { File.Delete(final); } catch { }
+        }
+    }
+
+    private static void JoinAndVerifyParts(List<string> parts, string target, long expectedSize,
+        string expectedHash)
+    {
+        string partial = target + ".partial";
+        bool ownsPartial = false;
+        try
+        {
+            using (FileStream output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                ownsPartial = true;
+                using (SHA256 hash = SHA256.Create())
+                {
+                    byte[] buffer = new byte[1024 * 1024];
+                    long written = 0;
+                    foreach (string part in parts)
+                    using (FileStream input = File.OpenRead(part))
+                    {
+                        int read;
+                        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            output.Write(buffer, 0, read);
+                            hash.TransformBlock(buffer, 0, read, buffer, 0);
+                            written += read;
+                            if (written > expectedSize)
+                                throw new IOException("Các phần ghép vượt kích thước bộ cài trong manifest.");
+                        }
+                    }
+                    hash.TransformFinalBlock(new byte[0], 0, 0);
+                    output.Flush(true);
+                    if (written != expectedSize || ToHex(hash.Hash) != expectedHash)
+                        throw new IOException("SHA-256 của bộ cài đã ghép không khớp.");
+                }
+            }
+            File.Move(partial, target);
+            ownsPartial = false;
+        }
+        finally
+        {
+            if (ownsPartial)
+            {
+                try { File.Delete(partial); } catch { }
+            }
         }
     }
 

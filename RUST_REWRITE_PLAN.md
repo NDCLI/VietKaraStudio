@@ -16,7 +16,7 @@
 >   timeout, không đọc media/project hay gửi mạng; báo cáo nằm trong app data.
 > - Inspector cho gỡ ảnh nền scene riêng với artwork trang trí. Thao tác tạo
 >   version snapshot, giữ metadata và decoration nếu còn, dọn record khi scene
->   không còn artwork; test transaction đã thêm, chờ lượt kiểm thử tổng.
+>   không còn artwork; hai nhánh transaction đã pass test storage.
 > - Workspace check/clippy, Python syntax và Windows release build pass.
 > - Thêm `packaging/build_rust_portable.py`: dựng stage portable từ app release,
 >   Python runtime + AI dependencies và FFmpeg do người build chỉ định; tạo
@@ -34,21 +34,25 @@
 >   riêng để cài song song baseline; launcher cấp runtime paths và lưu data
 >   tại `%LOCALAPPDATA%/VietKaraStudio-Rust`, bên ngoài thư mục uninstall.
 >   Setup 2,98 GB và SHA-256 pass; silent install/uninstall trên thư mục thử
->   pass, sentinel app-data còn nguyên sau gỡ và đã được dọn. Shortcut/post-
->   install launch và Windows sạch chưa xác minh.
+>   pass; build3 cũng đã mở app và xác nhận shortcut Desktop trỏ đúng launcher.
+>   Build4 mới nhất silent install/uninstall pass; payload chứa updater helper
+>   mới. Windows sạch vẫn chưa xác minh.
 > - Thêm updater helper C# vào installer; nút “Cập nhật” trong Studio chỉ mở
 >   helper khi project sạch. Helper chọn đúng stable Rust release (bỏ qua tag
 >   baseline Python), tải các part GitHub, xác minh HTTPS/host, size/hash từng
 >   part và hash installer ghép rồi mới mở Setup. `split_rust_release.py` tạo
 >   asset parts/manifest; C# compile và cargo check pass. Chưa có Rust release
->   trên GitHub nên download/update end-to-end chưa chạy. Build3 local Setup/ZIP
->   đã được dựng lại sau khi thêm updater; SHA-256 và chi tiết smoke nằm trong
+>   trên GitHub nên download/update end-to-end chưa chạy. Build4 local Setup
+>   gồm cleanup cho `.partial`; SHA-256 và chi tiết smoke nằm trong
 >   `docs/windows-plan.md`. Đây là snapshot kiểm thử, chưa phải GitHub release.
 > - Lượt test gom đã chạy: Rust workspace, Clippy `-D warnings`, fmt check,
 >   Python **188/188**, Node **17/17**, cùng smoke ghép part bằng PowerShell 5.1.
->   Build3 Setup cài/gỡ silent pass; cài lại trong workspace cho thấy app mở
->   được, shortcut Desktop trỏ đúng launcher. Còn QA máy sạch, IME/DPI đầy đủ
->   sau cài và updater E2E với release thật.
+>   Bổ sung smoke harness cho updater: tải/ghép hợp lệ, hash sai, stream/part
+>   lỗi và giữ nguyên `.partial` không thuộc updater; pass trên Windows.
+>   Build3/4 Setup cài/gỡ silent pass; build3 mở app/shortcut, build4 có helper
+>   updater mới và cài/gỡ thành công.
+>   Latest GitHub release kiểm tra ngày 2026-11-06 vẫn là baseline Python 1.1.7;
+>   còn QA máy sạch, IME/DPI đầy đủ sau cài và updater E2E với release Rust thật.
 >
 > **Tiến độ 2026-11-06 — artwork vai hát và hai lane:**
 > - Đóng gói đủ chín role icon PNG của baseline vào `vietkara-render`; lượng tử
