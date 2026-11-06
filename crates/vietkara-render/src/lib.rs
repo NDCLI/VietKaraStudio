@@ -1974,6 +1974,7 @@ mod tests {
         root: &Path,
         output: &Path,
         time: f64,
+        frame_width: usize,
         x: usize,
         y: usize,
     ) -> [u8; 3] {
@@ -1999,7 +2000,7 @@ mod tests {
             "could not decode frame at {time}s: {}",
             String::from_utf8_lossy(&rendered_frame.stderr)
         );
-        let offset = (y * 320 + x) * 3;
+        let offset = (y * frame_width + x) * 3;
         let pixel = &rendered_frame.stdout[offset..offset + 3];
         [pixel[0], pixel[1], pixel[2]]
     }
@@ -2960,8 +2961,8 @@ mod tests {
                 .unwrap_or("")
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
-        let before_scene = render_pixel(&argv[0], root, &out, 0.1, 10, 10);
-        let during_scene = render_pixel(&argv[0], root, &out, 0.5, 10, 10);
+        let before_scene = render_pixel(&argv[0], root, &out, 0.1, 320, 10, 10);
+        let during_scene = render_pixel(&argv[0], root, &out, 0.5, 320, 10, 10);
         let scene_graph = &argv[argv
             .iter()
             .position(|argument| argument == "-filter_complex")
@@ -3012,8 +3013,8 @@ mod tests {
             String::from_utf8_lossy(&render.stderr)
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
-        let countdown_on = render_pixel(&argv[0], root, &out, 0.5, 15, 25);
-        let countdown_off = render_pixel(&argv[0], root, &out, 0.9, 15, 25);
+        let countdown_on = render_pixel(&argv[0], root, &out, 0.5, 320, 15, 25);
+        let countdown_off = render_pixel(&argv[0], root, &out, 0.9, 320, 15, 25);
         assert!(
             countdown_on[1] > 140 && countdown_on[2] < 45,
             "countdown image should be visible during its interval: {countdown_on:?}"
@@ -3022,15 +3023,15 @@ mod tests {
             countdown_on[1].abs_diff(countdown_off[1]) > 90,
             "countdown should disappear after its interval: on={countdown_on:?}, off={countdown_off:?}"
         );
-        let logo_pixel = render_pixel(&argv[0], root, &out, 0.5, 255, 12);
-        let outside_logo = render_pixel(&argv[0], root, &out, 0.5, 230, 12);
+        let logo_pixel = render_pixel(&argv[0], root, &out, 0.5, 320, 255, 12);
+        let outside_logo = render_pixel(&argv[0], root, &out, 0.5, 320, 230, 12);
         assert!(
             logo_pixel[1] > outside_logo[1].saturating_add(70),
             "pulsing logo should composite at its configured position: logo={logo_pixel:?}, outside={outside_logo:?}"
         );
-        let decoration_early = render_pixel(&argv[0], root, &out, 0.5, 107, 104);
-        let decoration_late = render_pixel(&argv[0], root, &out, 0.9, 107, 104);
-        let outside_decoration = render_pixel(&argv[0], root, &out, 0.5, 190, 104);
+        let decoration_early = render_pixel(&argv[0], root, &out, 0.5, 320, 107, 104);
+        let decoration_late = render_pixel(&argv[0], root, &out, 0.9, 320, 107, 104);
+        let outside_decoration = render_pixel(&argv[0], root, &out, 0.5, 320, 190, 104);
         assert!(
             decoration_early[1] > outside_decoration[1].saturating_add(30),
             "scene decoration should composite over the scene: decoration={decoration_early:?}, outside={outside_decoration:?}"
@@ -3145,7 +3146,7 @@ mod tests {
         assert_eq!(verified.height, 240);
         assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
         for (time, red) in [(0.25, true), (0.75, false), (1.25, true), (1.75, false)] {
-            let pixel = render_pixel(&command[0], root, &output_path, time, 10, 10);
+            let pixel = render_pixel(&command[0], root, &output_path, time, 320, 10, 10);
             if red {
                 assert!(
                     pixel[0] > 180 && pixel[2] < 70,
@@ -3155,6 +3156,81 @@ mod tests {
                 assert!(
                     pixel[2] > 180 && pixel[0] < 70,
                     "expected blue at {time}s: {pixel:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn portrait_and_4k_profiles_render_expected_frame_geometry() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        std::fs::create_dir(root.join("fonts")).unwrap();
+        std::fs::write(
+            root.join("lyrics.ass"),
+            "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Main,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,7,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
+        )
+        .unwrap();
+        let audio = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=1",
+                "-ar",
+                "44100",
+            ])
+            .arg(root.join("beat.wav"))
+            .output()
+            .unwrap();
+        assert!(audio.status.success(), "beat generation failed");
+
+        for (aspect, resolution, expected_size) in [
+            (Aspect::Portrait, Resolution::P1080, (1080, 1920)),
+            (Aspect::Landscape, Resolution::K4, (3840, 2160)),
+        ] {
+            let profile = RenderProfile {
+                aspect,
+                resolution,
+                fps: Fps::Fixed(1.0),
+                quality: RenderQuality::Standard,
+                ..RenderProfile::default()
+            };
+            let inputs = RenderInputs::new("beat.wav", 1.0);
+            let command = ffmpeg_command(&profile, &inputs).unwrap();
+            let rendered = std::process::Command::new(&command[0])
+                .args(&command[1..])
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(
+                rendered.status.success(),
+                "profile render failed for {:?} {:?}: {}",
+                aspect,
+                resolution,
+                String::from_utf8_lossy(&rendered.stderr)
+            );
+            let output = root.join("karaoke.mp4");
+            let verified = verify_output(&output, 1.0, expected_size.0, expected_size.1).unwrap();
+            assert_eq!((verified.width, verified.height), expected_size);
+            let pixel = render_pixel(
+                &command[0],
+                root,
+                &output,
+                0.0,
+                expected_size.0 as usize,
+                expected_size.0 as usize / 2,
+                expected_size.1 as usize / 2,
+            );
+            for (actual, expected) in pixel.into_iter().zip([16, 29, 43]) {
+                assert!(
+                    actual.abs_diff(expected) <= 10,
+                    "profile background pixel differs for {:?} {:?}: {pixel:?}",
+                    aspect,
+                    resolution
                 );
             }
         }

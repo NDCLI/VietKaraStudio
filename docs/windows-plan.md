@@ -329,7 +329,8 @@ kiểm tra runtime có FFmpeg trên Windows.
 > pixel theo alpha nội suy. Decoration opacity cũng được kiểm tra qua hai
 > keyframe. Nền video được lấy mẫu bốn thời điểm qua hai vòng lặp; MP4 giữ thời
 > lượng beat và audio AAC. Đây là các kiểm tra runtime compositing/source hẹp,
-> chưa thay cho golden MP4/audio đầy đủ.
+> chưa thay cho golden MP4/audio đầy đủ. Test render thật cũng xác nhận frame
+> portrait 1080×1920 và landscape 4K 3840×2160 cùng pixel nền dự kiến.
 
 **Hoàn tất khi:** preview/export không lệch các thuộc tính đã cam kết,
 progress/cancel hoạt động, export folder + render info đúng.
