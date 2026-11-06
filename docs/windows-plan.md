@@ -483,8 +483,10 @@ giữ các câu không chọn nguyên trạng, kể cả câu khóa; chỉ dòng
   dùng Python/runtime trong stage nhận dạng Whisper small trên RTX 3060; Setup
   build5 tạo được, 3.005.170.583 byte, SHA-256
   `8f46586dd431481e8ed883f0455828ccff8790ebb2512b441a1e638741df8a19`.
-  Đây chưa phải kiểm thử cài đặt/nâng cấp trên máy Windows sạch; model tải
-  riêng và không được đóng gói.
+  Setup build5 cài và gỡ thành công trong thư mục QA tạm; app Rust mở được từ
+  thư mục đã cài với data QA riêng. Uninstaller bỏ thư mục app và giữ nguyên
+  LocalAppData đã có. Đây chưa phải kiểm thử nâng cấp trên máy Windows sạch,
+  launcher/association hay rollback; model tải riêng và không được đóng gói.
 - [ ] Test trên máy sạch Windows 10/11 x64, đường dẫn Unicode, CPU-only
   và NVIDIA; kiểm tra upgrade từ bản cũ (1.1.1 → 1.1.7 → bản Rust).
 - [ ] Smoke test sau cài đặt, crash recovery, file association,
