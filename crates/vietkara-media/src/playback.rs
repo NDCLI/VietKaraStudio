@@ -114,9 +114,18 @@ fn worker_loop(
 ) {
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
-    let mut error = None;
-    let (output_devices, default_output_device) =
-        DevicePlayer::output_device_names().unwrap_or_default();
+    let (output_devices, default_output_device, mut error) =
+        match DevicePlayer::output_device_names() {
+            Ok((devices, default_device)) if devices.is_empty() => (
+                devices,
+                default_device,
+                Some(
+                    "Windows chưa phát hiện thiết bị đầu ra âm thanh. Kết nối loa/tai nghe hoặc kiểm tra Windows Sound settings rồi thử nạp lại track.".into(),
+                ),
+            ),
+            Ok((devices, default_device)) => (devices, default_device, None),
+            Err(message) => (Vec::new(), None, Some(message)),
+        };
     let mut pending_commands = VecDeque::new();
     while !shutdown.load(Ordering::Acquire) {
         let command = if pending_commands.is_empty() {
