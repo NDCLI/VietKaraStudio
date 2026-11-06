@@ -669,4 +669,18 @@ Snapshot `loading` được publish trước khi decode/mở device; các lệnh
 trong giai đoạn chuẩn bị được giữ FIFO. Worker panic được đổi thành lỗi
 snapshot và đánh dấu worker đã dừng để lệnh gửi sau báo lỗi ngay. Windows
 target check, workspace clippy và test load-failure/unload pass. Playback
-thiết bị thật, seek/clock và interaction UI vẫn cần runtime có audio device.
+thiết bị thật/playhead đã smoke test trên máy này; seek và pause/resume vẫn
+cần kiểm tra riêng (xem phần runtime bên dưới).
+
+### W3: runtime Save As/Open/playback trên Windows
+
+Mở app với fixture ở `target/runtime-w3/Bài hát W3/project.json` (đường dẫn
+thư mục có dấu, project `Bài hát tiếng Việt`), xác nhận lời và timeline hiển
+thị. Ctrl+Shift+S mở native Save As; lưu thành
+`target/runtime-w3/saveas-vietnam/project-copy.json`, UI báo `Đã lưu project`,
+thư mục có `project-copy.json` và `beat.wav` (882078 bytes). Ctrl+O mở lại
+bản copy; UI báo `Đã mở project`, nội dung 4 từ vẫn hiện. Ctrl+Space phát beat
+trên audio device Windows, playhead chạy tới khoảng 5 giây; Escape dừng và
+đưa playhead về 0. Tiến trình test đã đóng. Đây là smoke test Open/Save As/
+playback, chưa kiểm tra relink thực tế (reference fixture vẫn thiếu
+`source.wav`), tapping, SRT, seek/pause-resume, timer autosave hoặc crash UI.
