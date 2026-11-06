@@ -1,6 +1,7 @@
 //! Real device backend. Construct and operate on the playback worker, not the UI thread.
 //! API reference: https://docs.rs/rodio/0.21.1/rodio/struct.Sink.html
 use crate::{Player, PlayerState};
+use cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 use std::{
     fs::File,
@@ -17,14 +18,25 @@ pub struct DevicePlayer {
     error: Option<String>,
 }
 impl DevicePlayer {
-    pub fn open(path: &Path) -> Result<Self, String> {
+    pub fn open(path: &Path, output_device: Option<&str>) -> Result<Self, String> {
         let decoder = Decoder::try_from(File::open(path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
         let duration = decoder
             .total_duration()
             .ok_or("Không đọc được thời lượng audio")?
             .as_secs_f64();
-        let mut stream = OutputStreamBuilder::open_default_stream().map_err(|e| e.to_string())?;
+        let mut stream = if let Some(output_device) = output_device {
+            let device = cpal::default_host()
+                .output_devices()
+                .map_err(|e| e.to_string())?
+                .find(|device| device.name().is_ok_and(|name| name == output_device))
+                .ok_or_else(|| format!("Không tìm thấy thiết bị âm thanh: {output_device}"))?;
+            OutputStreamBuilder::from_device(device)
+                .and_then(OutputStreamBuilder::open_stream)
+                .map_err(|e| e.to_string())?
+        } else {
+            OutputStreamBuilder::open_default_stream().map_err(|e| e.to_string())?
+        };
         stream.log_on_drop(false);
         let sink = Sink::connect_new(stream.mixer());
         sink.pause();
@@ -37,6 +49,27 @@ impl DevicePlayer {
             stopped: true,
             error: None,
         })
+    }
+    pub fn output_device_names() -> Result<Vec<String>, String> {
+        let host = cpal::default_host();
+        let default_name = host
+            .default_output_device()
+            .and_then(|device| device.name().ok());
+        let mut names = host
+            .output_devices()
+            .map_err(|e| e.to_string())?
+            .filter_map(|device| device.name().ok())
+            .collect::<Vec<_>>();
+        names.sort();
+        names.dedup();
+        // Keep default first so the UI can offer a stable “system default” choice.
+        if let Some(default_name) = default_name
+            && let Some(index) = names.iter().position(|name| name == &default_name)
+        {
+            names.remove(index);
+            names.insert(0, default_name);
+        }
+        Ok(names)
     }
     pub fn take_error(&mut self) -> Option<String> {
         self.error.take()

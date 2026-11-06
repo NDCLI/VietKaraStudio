@@ -219,7 +219,7 @@ sửa khi migration/import/restore lỗi.
 
 ### 4.2. Playback thật bằng thiết bị Windows
 
-- [ ] Thêm player thiết bị thật vào `vietkara-media` (trait `Player` đã
+- [x] Thêm player thiết bị thật vào `vietkara-media` (trait `Player` đã
   có, `NullPlayer` chỉ là fake clock): chọn thiết bị audio Windows,
   play/pause/seek, clock là nguồn thời gian chuẩn (plan §3.5), UI/timeline
   chỉ nhận snapshot clock, không tự chạy clock theo frame render.
@@ -733,6 +733,15 @@ trên audio device Windows, playhead chạy tới khoảng 5 giây; Escape dừn
 đưa playhead về 0. Tiến trình test đã đóng. Đây là smoke test Open/Save As/
 playback, chưa kiểm tra relink thực tế (reference fixture vẫn thiếu
 `source.wav`), SRT, seek/pause-resume, timer autosave hoặc crash UI.
+
+### W4: chọn thiết bị phát audio
+
+`vietkara-media` liệt kê thiết bị output trên playback worker; thanh
+transport cho phép chuyển vòng giữa Windows default và các output device
+khác. Đổi thiết bị sẽ nạp lại track hiện tại trên worker, không mở stream
+hay enumerate thiết bị trên UI thread. Mới qua compile/Clippy; cần kiểm tra
+runtime với ít nhất hai thiết bị, đồng thời test lỗi khi thiết bị đã chọn
+bị rút khỏi máy.
 
 ### W3: runtime tap-sync trên Windows
 

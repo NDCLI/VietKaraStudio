@@ -13,6 +13,7 @@ use std::{
 
 pub enum PlaybackCommand {
     Load(PathBuf),
+    LoadOnDevice { path: PathBuf, device: String },
     Unload,
     Play,
     Pause,
@@ -28,6 +29,7 @@ pub struct PlaybackSnapshot {
     pub position: f64,
     pub duration: f64,
     pub error: Option<String>,
+    pub output_devices: Vec<String>,
 }
 impl Default for PlaybackSnapshot {
     fn default() -> Self {
@@ -39,6 +41,7 @@ impl Default for PlaybackSnapshot {
             position: 0.,
             duration: 0.,
             error: None,
+            output_devices: Vec::new(),
         }
     }
 }
@@ -110,6 +113,7 @@ fn worker_loop(
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
     let mut error = None;
+    let output_devices = DevicePlayer::output_device_names().unwrap_or_default();
     let mut pending_commands = VecDeque::new();
     while !shutdown.load(Ordering::Acquire) {
         let command = if pending_commands.is_empty() {
@@ -126,64 +130,34 @@ fn worker_loop(
         }
         match command {
             Some(PlaybackCommand::Load(path)) => {
-                player = None;
-                current_path = Some(path.clone());
-                publish(
+                let mut output_device = None;
+                load_device(
+                    &mut player,
+                    &mut current_path,
+                    &mut error,
+                    path,
+                    &mut output_device,
+                    &receiver,
+                    &mut pending_commands,
                     &shared,
-                    PlaybackSnapshot {
-                        path: current_path.clone(),
-                        loading: true,
-                        ..Default::default()
-                    },
+                    &shutdown,
+                    &output_devices,
                 );
-
-                // Publish loading before touching the decoder/device. If another Load or
-                // Unload arrived while that work was in progress, prefer the newest request.
-                let mut requested_path = Some(path);
-                loop {
-                    if shutdown.load(Ordering::Acquire) {
-                        break;
-                    }
-                    match receiver.try_recv() {
-                        Ok(PlaybackCommand::Load(new_path)) => {
-                            pending_commands.clear();
-                            requested_path = Some(new_path);
-                            current_path = requested_path.clone();
-                            publish(
-                                &shared,
-                                PlaybackSnapshot {
-                                    path: current_path.clone(),
-                                    loading: true,
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                        Ok(PlaybackCommand::Unload) => {
-                            pending_commands.clear();
-                            requested_path = None;
-                            current_path = None;
-                            break;
-                        }
-                        Ok(command) => {
-                            pending_commands.push_back(command);
-                        }
-                        Err(mpsc::TryRecvError::Empty) => break,
-                        Err(mpsc::TryRecvError::Disconnected) => return,
-                    }
-                }
-                let Some(requested_path) = requested_path else {
-                    continue;
-                };
-                match DevicePlayer::open(&requested_path) {
-                    Ok(device) => {
-                        player = Some(device);
-                        current_path = Some(requested_path);
-                    }
-                    Err(message) => {
-                        error = Some(message);
-                        current_path = Some(requested_path);
-                    }
-                }
+            }
+            Some(PlaybackCommand::LoadOnDevice { path, device }) => {
+                let mut output_device = Some(device);
+                load_device(
+                    &mut player,
+                    &mut current_path,
+                    &mut error,
+                    path,
+                    &mut output_device,
+                    &receiver,
+                    &mut pending_commands,
+                    &shared,
+                    &shutdown,
+                    &output_devices,
+                );
             }
             Some(PlaybackCommand::Unload) => {
                 player = None;
@@ -196,7 +170,9 @@ fn worker_loop(
                         PlaybackCommand::Pause => device.pause(),
                         PlaybackCommand::Stop => device.stop(),
                         PlaybackCommand::Seek(seconds) => device.seek(seconds),
-                        PlaybackCommand::Load(_) | PlaybackCommand::Unload => unreachable!(),
+                        PlaybackCommand::Load(_)
+                        | PlaybackCommand::LoadOnDevice { .. }
+                        | PlaybackCommand::Unload => unreachable!(),
                     }
                 } else {
                     error = Some("Chưa có audio hợp lệ để phát".into());
@@ -212,6 +188,7 @@ fn worker_loop(
         let mut state = PlaybackSnapshot {
             path: current_path.clone(),
             error: error.clone(),
+            output_devices: output_devices.clone(),
             ..Default::default()
         };
         if let Some(device) = &player {
@@ -224,6 +201,70 @@ fn worker_loop(
     }
     // Dropping the device stops its sink. No detached audio survives the controller.
     drop(player);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn load_device(
+    player: &mut Option<DevicePlayer>,
+    current_path: &mut Option<PathBuf>,
+    error: &mut Option<String>,
+    path: PathBuf,
+    output_device: &mut Option<String>,
+    receiver: &mpsc::Receiver<PlaybackCommand>,
+    pending_commands: &mut VecDeque<PlaybackCommand>,
+    shared: &Arc<Mutex<PlaybackSnapshot>>,
+    shutdown: &AtomicBool,
+    output_devices: &[String],
+) {
+    *player = None;
+    *current_path = Some(path.clone());
+    publish(
+        shared,
+        PlaybackSnapshot {
+            path: current_path.clone(),
+            loading: true,
+            output_devices: output_devices.to_vec(),
+            ..Default::default()
+        },
+    );
+
+    // Prefer the newest request if another load arrived while the device was opening.
+    let mut requested = Some((path, output_device.clone()));
+    loop {
+        if shutdown.load(Ordering::Acquire) {
+            return;
+        }
+        match receiver.try_recv() {
+            Ok(PlaybackCommand::Load(path)) => {
+                pending_commands.clear();
+                requested = Some((path, None));
+            }
+            Ok(PlaybackCommand::LoadOnDevice { path, device }) => {
+                pending_commands.clear();
+                requested = Some((path, Some(device)));
+            }
+            Ok(PlaybackCommand::Unload) => {
+                pending_commands.clear();
+                requested = None;
+                *current_path = None;
+                break;
+            }
+            Ok(command) => pending_commands.push_back(command),
+            Err(mpsc::TryRecvError::Empty) => break,
+            Err(mpsc::TryRecvError::Disconnected) => return,
+        }
+    }
+    let Some((path, device_name)) = requested else {
+        *player = None;
+        return;
+    };
+    *output_device = device_name.clone();
+    *current_path = Some(path.clone());
+    *error = None;
+    match DevicePlayer::open(&path, device_name.as_deref()) {
+        Ok(device) => *player = Some(device),
+        Err(message) => *error = Some(message),
+    }
 }
 impl Drop for Playback {
     fn drop(&mut self) {

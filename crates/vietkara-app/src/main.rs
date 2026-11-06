@@ -79,6 +79,7 @@ struct Studio {
     background_frame_pending: bool,
     playback_error: Option<String>,
     listen_track: AudioSlot,
+    output_device: Option<String>,
     #[cfg(windows)]
     playback: Option<Playback>,
     _playback_task: Task<()>,
@@ -2030,7 +2031,14 @@ impl Studio {
             }
             match Playback::new() {
                 Ok(worker) => {
-                    if let Err(error) = worker.send(PlaybackCommand::Load(path)) {
+                    let command = self.output_device.clone().map_or_else(
+                        || PlaybackCommand::Load(path.clone()),
+                        |device| PlaybackCommand::LoadOnDevice {
+                            path: path.clone(),
+                            device,
+                        },
+                    );
+                    if let Err(error) = worker.send(command) {
                         self.playback_error = Some(error);
                     }
                     self.playback = Some(worker);
@@ -2049,6 +2057,41 @@ impl Studio {
         }
         self.listen_track = slot;
         self.reset_playback();
+        cx.notify();
+    }
+    fn cycle_output_device(&mut self, cx: &mut Context<Self>) {
+        #[cfg(windows)]
+        {
+            let devices = self
+                .playback
+                .as_ref()
+                .map(|playback| playback.snapshot().output_devices)
+                .unwrap_or_default();
+            let choices = devices.iter().skip(1).collect::<Vec<_>>();
+            if choices.is_empty() {
+                self.edit_status = "Không tìm thấy thiết bị đầu ra audio bổ sung".into();
+                cx.notify();
+                return;
+            }
+            self.output_device = match self.output_device.as_ref() {
+                None => Some((*choices[0]).clone()),
+                Some(current) => choices
+                    .iter()
+                    .position(|device| *device == current)
+                    .and_then(|index| choices.get(index + 1))
+                    .map(|device| (*device).clone())
+                    .or(None),
+            };
+            self.reset_playback();
+            self.edit_status = self.output_device.as_ref().map_or_else(
+                || "Đang dùng thiết bị mặc định của Windows".into(),
+                |name| format!("Đang dùng thiết bị: {name}"),
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            self.edit_status = "Chọn thiết bị audio hiện chỉ hỗ trợ Windows".into();
+        }
         cx.notify();
     }
     fn transport(&mut self, operation: u8, cx: &mut Context<Self>) {
@@ -2958,6 +3001,12 @@ impl Render for Studio {
         } else {
             "▶  Phát"
         };
+        let output_device_label = self
+            .output_device
+            .as_deref()
+            .map_or("Thiết bị: Mặc định".to_owned(), |name| {
+                format!("Thiết bị: {name}")
+            });
         let display_words = self
             .timeline_drag
             .as_ref()
@@ -4551,6 +4600,9 @@ impl Render for Studio {
                         .bg(rgb(if self.listen_track == AudioSlot::Reference { theme::ACCENT_SURFACE } else { theme::CANVAS }))
                         .child("Nghe bản hát")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.select_listen_track(AudioSlot::Reference,cx))))
+                    .when(cfg!(windows), |root| root.child(div().cursor_pointer().px_2().rounded_sm()
+                        .child(output_device_label)
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.cycle_output_device(cx)))))
                     .child(format!("{:.2} / {:.2} s",self.play_position,self.play_duration))
                     .child(self.playback_error.clone().unwrap_or_default())
                     .child(status),
@@ -5267,6 +5319,7 @@ fn main() {
                         background_frame_pending: false,
                         playback_error: None,
                         listen_track: AudioSlot::Beat,
+                        output_device: None,
                         #[cfg(windows)]
                         playback: None,
                         _playback_task: playback_task,
