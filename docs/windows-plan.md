@@ -632,8 +632,11 @@ hiện vẫn dựng toàn bộ; cần culling/virtualization khi project lớn.
 
 Đã triển khai kéo đầu/cuối khối từ: preview riêng, commit Batch một lần khi
 mouseup/up-out; delta tính zoom và scroll. Khóa các lệnh đổi state trong
-gesture, zoom giữ nguyên trong gesture. Code đã qua workspace build/test;
-runtime drag vẫn cần kiểm tra bằng thao tác chuột thật.
+gesture, zoom giữ nguyên trong gesture. Code đã qua workspace build/test.
+Runtime Windows với fixture 3.000 từ: kéo mép phải từ 0.35s lên 0.55s,
+Ctrl+Z trả về 0.35s; kéo mép trái từ 0s lên 0.10s, Ctrl+Z trả về 0s.
+UI cập nhật panel thời gian/trạng thái dirty tương ứng; fixture được lưu lại
+và đọc JSON xác nhận giá trị gốc 0.00–0.35s, không giữ thay đổi test.
 
 Đã chuyển danh sách lời bên trái sang `gpui::uniform_list` của GPUI 0.2.2:
 callback chỉ tạo row trong visible range, selection vẫn gọi cùng action và
