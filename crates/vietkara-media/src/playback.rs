@@ -315,6 +315,7 @@ mod tests {
         assert_eq!(failed.path, Some(missing));
         assert!(!failed.loading);
         assert!(!failed.loaded);
+        assert!(failed.error.as_deref().unwrap().contains("relink track"));
 
         playback.send(PlaybackCommand::Unload).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);

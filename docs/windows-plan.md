@@ -755,6 +755,11 @@ khi danh sách xác nhận được thiết bị đó; nếu Windows không có 
 vẫn enumerate output khác, thiết bị đầu tiên không bị ẩn. Có unit test cho
 cả hai trường hợp; runtime nhiều thiết bị vẫn chưa thực hiện.
 
+Lỗi mở file/giải mã, mở output mặc định hoặc output bị ngắt/bận có thêm ngữ
+cảnh và bước xử lý tiếng Việt trong snapshot hiển thị ở transport. Worker test
+xác nhận lỗi file thiếu có gợi ý relink; cần kiểm tra trực tiếp lỗi driver và
+thiết bị bị rút trên Windows.
+
 Runtime Windows trên build mới: khi mở fixture v2, thanh transport hiển thị
 `Thiết bị: Mặc định`. Fixture này thiếu `beat.wav`, vì vậy chưa kiểm tra
 enumerate từ playback worker hay đổi output device.

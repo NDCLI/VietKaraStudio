@@ -19,11 +19,26 @@ pub struct DevicePlayer {
 }
 impl DevicePlayer {
     pub fn open(path: &Path, output_device: Option<&str>) -> Result<Self, String> {
-        let decoder = Decoder::try_from(File::open(path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        let file = File::open(path).map_err(|error| {
+            format!(
+                "Không mở được audio '{}': {error}. Kiểm tra file hoặc relink track.",
+                path.display()
+            )
+        })?;
+        let decoder = Decoder::try_from(file).map_err(|error| {
+            format!(
+                "Audio '{}' bị lỗi hoặc không hỗ trợ định dạng: {error}. Hãy chuyển đổi hoặc relink file.",
+                path.display()
+            )
+        })?;
         let duration = decoder
             .total_duration()
-            .ok_or("Không đọc được thời lượng audio")?
+            .ok_or_else(|| {
+                format!(
+                    "Không đọc được thời lượng audio '{}'. Hãy kiểm tra hoặc chuyển đổi file.",
+                    path.display()
+                )
+            })?
             .as_secs_f64();
         let mut stream = if let Some(output_device) = output_device {
             let device = cpal::default_host()
@@ -33,9 +48,17 @@ impl DevicePlayer {
                 .ok_or_else(|| format!("Không tìm thấy thiết bị âm thanh: {output_device}"))?;
             OutputStreamBuilder::from_device(device)
                 .and_then(OutputStreamBuilder::open_stream)
-                .map_err(|e| e.to_string())?
+                .map_err(|error| {
+                    format!(
+                        "Không mở được thiết bị audio '{output_device}': {error}. Kiểm tra thiết bị có đang bận hoặc đã bị ngắt kết nối không."
+                    )
+                })?
         } else {
-            OutputStreamBuilder::open_default_stream().map_err(|e| e.to_string())?
+            OutputStreamBuilder::open_default_stream().map_err(|error| {
+                format!(
+                    "Không mở được thiết bị phát mặc định của Windows: {error}. Kiểm tra thiết bị âm thanh và chọn lại output."
+                )
+            })?
         };
         stream.log_on_drop(false);
         let sink = Sink::connect_new(stream.mixer());
@@ -57,7 +80,7 @@ impl DevicePlayer {
             .and_then(|device| device.name().ok());
         let mut names = host
             .output_devices()
-            .map_err(|e| e.to_string())?
+            .map_err(|error| format!("Windows không liệt kê được thiết bị audio: {error}"))?
             .filter_map(|device| device.name().ok())
             .collect::<Vec<_>>();
         names.sort();
@@ -75,8 +98,18 @@ impl DevicePlayer {
         self.error.take()
     }
     fn reload(&mut self) -> Result<(), String> {
-        let decoder = Decoder::try_from(File::open(&self.path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        let file = File::open(&self.path).map_err(|error| {
+            format!(
+                "Không mở lại được audio '{}': {error}. Hãy relink track.",
+                self.path.display()
+            )
+        })?;
+        let decoder = Decoder::try_from(file).map_err(|error| {
+            format!(
+                "Không giải mã lại được audio '{}': {error}. Hãy chuyển đổi hoặc relink file.",
+                self.path.display()
+            )
+        })?;
         self.sink = Sink::connect_new(self._stream.mixer());
         self.sink.pause();
         self.sink.append(decoder);
@@ -92,7 +125,7 @@ impl DevicePlayer {
         }
         self.sink
             .try_seek(Duration::from_secs_f64(seconds.clamp(0., self.duration)))
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| format!("Không tua được audio: {error}. Thử dừng rồi phát lại."))?;
         self.stopped = false;
         if playing {
             self.sink.play();
