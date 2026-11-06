@@ -750,6 +750,11 @@ hay enumerate thiết bị trên UI thread. Mới qua compile/Clippy; cần ki�
 runtime với ít nhất hai thiết bị, đồng thời test lỗi khi thiết bị đã chọn
 bị rút khỏi máy.
 
+Snapshot playback giữ riêng tên default device. UI chỉ loại thiết bị mặc định
+khi danh sách xác nhận được thiết bị đó; nếu Windows không có default nhưng
+vẫn enumerate output khác, thiết bị đầu tiên không bị ẩn. Có unit test cho
+cả hai trường hợp; runtime nhiều thiết bị vẫn chưa thực hiện.
+
 Runtime Windows trên build mới: khi mở fixture v2, thanh transport hiển thị
 `Thiết bị: Mặc định`. Fixture này thiếu `beat.wav`, vì vậy chưa kiểm tra
 enumerate từ playback worker hay đổi output device.

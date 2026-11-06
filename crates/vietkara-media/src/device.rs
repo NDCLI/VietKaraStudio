@@ -50,7 +50,7 @@ impl DevicePlayer {
             error: None,
         })
     }
-    pub fn output_device_names() -> Result<Vec<String>, String> {
+    pub fn output_device_names() -> Result<(Vec<String>, Option<String>), String> {
         let host = cpal::default_host();
         let default_name = host
             .default_output_device()
@@ -63,13 +63,13 @@ impl DevicePlayer {
         names.sort();
         names.dedup();
         // Keep default first so the UI can offer a stable “system default” choice.
-        if let Some(default_name) = default_name
-            && let Some(index) = names.iter().position(|name| name == &default_name)
+        if let Some(default_name) = default_name.as_ref()
+            && let Some(index) = names.iter().position(|name| name == default_name)
         {
             names.remove(index);
-            names.insert(0, default_name);
+            names.insert(0, default_name.clone());
         }
-        Ok(names)
+        Ok((names, default_name))
     }
     pub fn take_error(&mut self) -> Option<String> {
         self.error.take()

@@ -2063,24 +2063,27 @@ impl Studio {
     fn cycle_output_device(&mut self, cx: &mut Context<Self>) {
         #[cfg(windows)]
         {
-            let devices = self
+            let snapshot = self
                 .playback
                 .as_ref()
-                .map(|playback| playback.snapshot().output_devices)
+                .map(Playback::snapshot)
                 .unwrap_or_default();
-            let choices = devices.iter().skip(1).collect::<Vec<_>>();
+            let choices = additional_output_devices(
+                &snapshot.output_devices,
+                snapshot.default_output_device.as_deref(),
+            );
             if choices.is_empty() {
                 self.edit_status = "Không tìm thấy thiết bị đầu ra audio bổ sung".into();
                 cx.notify();
                 return;
             }
             self.output_device = match self.output_device.as_ref() {
-                None => Some((*choices[0]).clone()),
+                None => Some(choices[0].clone()),
                 Some(current) => choices
                     .iter()
-                    .position(|device| *device == current)
+                    .position(|device| device == current)
                     .and_then(|index| choices.get(index + 1))
-                    .map(|device| (*device).clone())
+                    .cloned()
                     .or(None),
             };
             self.reset_playback();
@@ -4614,6 +4617,14 @@ fn audio_slot_filename(slot: AudioSlot) -> &'static str {
     }
 }
 
+fn additional_output_devices(devices: &[String], default_device: Option<&str>) -> Vec<String> {
+    devices
+        .iter()
+        .filter(|device| Some(device.as_str()) != default_device)
+        .cloned()
+        .collect()
+}
+
 fn audio_metadata(project: &Project, slot: AudioSlot) -> Option<&Value> {
     match slot {
         AudioSlot::Beat => project.beat.as_ref(),
@@ -5337,6 +5348,19 @@ mod workspace_tests {
         assert_eq!(role_label("voice_e"), "Nam");
         assert_eq!(role_label("voice_d"), "Nữ");
         assert_eq!(role_label("voice_f"), "Nữ");
+    }
+
+    #[test]
+    fn output_device_choices_exclude_default_only_when_it_is_known() {
+        let devices = vec!["Speakers".into(), "Headphones".into()];
+        assert_eq!(
+            additional_output_devices(&devices, Some("Speakers")),
+            ["Headphones"]
+        );
+        assert_eq!(
+            additional_output_devices(&devices, None),
+            ["Speakers", "Headphones"]
+        );
     }
 
     #[test]

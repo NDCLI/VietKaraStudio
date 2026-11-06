@@ -30,6 +30,7 @@ pub struct PlaybackSnapshot {
     pub duration: f64,
     pub error: Option<String>,
     pub output_devices: Vec<String>,
+    pub default_output_device: Option<String>,
 }
 impl Default for PlaybackSnapshot {
     fn default() -> Self {
@@ -42,6 +43,7 @@ impl Default for PlaybackSnapshot {
             duration: 0.,
             error: None,
             output_devices: Vec::new(),
+            default_output_device: None,
         }
     }
 }
@@ -113,7 +115,8 @@ fn worker_loop(
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
     let mut error = None;
-    let output_devices = DevicePlayer::output_device_names().unwrap_or_default();
+    let (output_devices, default_output_device) =
+        DevicePlayer::output_device_names().unwrap_or_default();
     let mut pending_commands = VecDeque::new();
     while !shutdown.load(Ordering::Acquire) {
         let command = if pending_commands.is_empty() {
@@ -142,6 +145,7 @@ fn worker_loop(
                     &shared,
                     &shutdown,
                     &output_devices,
+                    &default_output_device,
                 );
             }
             Some(PlaybackCommand::LoadOnDevice { path, device }) => {
@@ -157,6 +161,7 @@ fn worker_loop(
                     &shared,
                     &shutdown,
                     &output_devices,
+                    &default_output_device,
                 );
             }
             Some(PlaybackCommand::Unload) => {
@@ -189,6 +194,7 @@ fn worker_loop(
             path: current_path.clone(),
             error: error.clone(),
             output_devices: output_devices.clone(),
+            default_output_device: default_output_device.clone(),
             ..Default::default()
         };
         if let Some(device) = &player {
@@ -215,6 +221,7 @@ fn load_device(
     shared: &Arc<Mutex<PlaybackSnapshot>>,
     shutdown: &AtomicBool,
     output_devices: &[String],
+    default_output_device: &Option<String>,
 ) {
     *player = None;
     *current_path = Some(path.clone());
@@ -224,6 +231,7 @@ fn load_device(
             path: current_path.clone(),
             loading: true,
             output_devices: output_devices.to_vec(),
+            default_output_device: default_output_device.clone(),
             ..Default::default()
         },
     );
