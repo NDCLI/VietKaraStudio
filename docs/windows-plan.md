@@ -651,3 +651,20 @@ playback thật và playhead, Space tap-sync, kéo khối từ, undo/redo, Lưu,
 Save As, Mở, nhập SRT/beat, autosave 30 giây. Các mục đó cần thao tác tay
 hoặc công cụ UI automation; không coi bằng chứng hiển thị này là parity
 tương tác.
+
+### Tham khảo GPUI Kit
+
+`https://gpui-kit.com/` (trang hiện giới thiệu gpui-kit 0.9.0) hữu ích làm
+tham khảo về component controls có trạng thái rõ, semantic theme tokens,
+focus/accessibility và virtualized list cho lyric/timeline dài. Chưa thêm
+dependency: app đang ghim GPUI 0.2.2 và chưa xác minh tương thích API/version
+giữa hai dự án. Giữ GPUI hiện tại; áp dụng các nguyên tắc interaction/theme
+bằng component nội bộ, chỉ đánh giá thư viện sau khi có spike tương thích.
+
+### W3: playback worker hardening
+
+Snapshot `loading` được publish trước khi decode/mở device; các lệnh đến
+trong giai đoạn chuẩn bị được giữ FIFO. Worker panic được đổi thành lỗi
+snapshot và đánh dấu worker đã dừng để lệnh gửi sau báo lỗi ngay. Windows
+target check, workspace clippy và test load-failure/unload pass. Playback
+thiết bị thật, seek/clock và interaction UI vẫn cần runtime có audio device.
