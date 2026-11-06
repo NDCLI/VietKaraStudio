@@ -6755,16 +6755,16 @@ impl Render for Studio {
                     )
                 },
             )
-            .child(div().flex().gap_3().px_5().py_2()
-                .child(div().cursor_pointer().child("Bắt đầu căn nhịp (Ctrl+T)")
+            .child(div().flex().items_center().gap_2().px_5().py_2().bg(rgb(theme::SURFACE))
+                .child(div().cursor_pointer().rounded_md().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Bắt đầu căn nhịp · Ctrl+T")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.begin_tapping(cx))))
                 .when(self.tapping.is_some(),|bar|bar
-                    .child(div().cursor_pointer().child("Từ trước (Backspace)")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Từ trước · Backspace")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.previous_tap(cx))))
-                    .child(div().cursor_pointer().child("Hoàn tất (Enter)")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::SUCCESS_ACTIVE)).hover(|style|style.bg(rgb(theme::SUCCESS))).px_3().py_2().text_size(px(12.)).child("Hoàn tất · Enter")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.finish_tapping(true,cx))))
                     .child(format!("Từ {} / {}",self.tapping.as_ref().map(|s|s.clock.index+1).unwrap_or(0),self.editor.project().words.len()))))
-            .child(div().flex().items_center().gap_3().px_5().py_2()
+            .child(div().flex().items_center().flex_wrap().gap_2().px_5().py_2()
                 .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
                     .child(if self.sync_running && !self.role_suggest_running && !self.lyrics_ai_running { "Hủy phân tích đồng bộ" } else { "Gợi ý đồng bộ bản hát/beat" })
                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.suggest_audio_sync(cx))))
@@ -6920,12 +6920,19 @@ impl Render for Studio {
             .child(
                 div()
                     .flex()
-                    .gap_3()
+                    .items_center()
+                    .flex_wrap()
+                    .gap_2()
                     .px_5()
                     .py_2()
+                    .bg(rgb(theme::SURFACE))
                     .child(
                         div()
                             .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(rgb(theme::CANVAS))
+                            .hover(|style| style.bg(rgb(theme::SURFACE_HOVER)))
                             .cursor_pointer()
                             .opacity(if self.editor.can_undo() { 1. } else { 0.4 })
                             .on_mouse_down(
@@ -6937,6 +6944,10 @@ impl Render for Studio {
                     .child(
                         div()
                             .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(rgb(theme::CANVAS))
+                            .hover(|style| style.bg(rgb(theme::SURFACE_HOVER)))
                             .cursor_pointer()
                             .opacity(if self.editor.can_redo() { 1. } else { 0.4 })
                             .on_mouse_down(
@@ -6948,6 +6959,10 @@ impl Render for Studio {
                     .child(
                         div()
                             .px_3()
+                            .py_2()
+                            .rounded_md()
+                            .bg(rgb(theme::CANVAS))
+                            .hover(|style| style.bg(rgb(theme::SURFACE_HOVER)))
                             .cursor_pointer()
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -6958,7 +6973,7 @@ impl Render for Studio {
                     .child(format!("{}", self.editor.project().settings.font_size))
                     .child(
                         div()
-                            .px_3()
+                            .px_2()
                             .cursor_pointer()
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -6973,6 +6988,7 @@ impl Render for Studio {
                 div()
                     .flex()
                     .flex_1()
+                    .min_h(px(0.))
                     .gap_3()
                     .p_3()
                     .child(
@@ -7017,10 +7033,21 @@ impl Render for Studio {
                             .when(!self.left_tab_media,|panel|panel
                                 .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED))
                                     .child(format!("{} từ · {} dòng",self.editor.project().words.len(),self.editor.project().words.iter().map(|w|w.line).max().map(|line|line+1).unwrap_or(0))))
-                                .child(lyric_rows.flex_1().mt_2())
-                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
-                                    .child("✎  Ước lượng mốc từ TXT")
-                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_plain_lyrics(cx))))),
+                                .when(display_words.is_empty(),|panel|panel.child(
+                                    div().flex_1().flex().flex_col().items_center().justify_center().gap_3().px_3()
+                                        .child(div().w(px(44.)).h(px(44.)).flex().items_center().justify_center().rounded_lg().bg(rgb(theme::ACCENT_SURFACE)).text_size(px(23.)).text_color(rgb(theme::ACCENT)).child("♫"))
+                                        .child(div().text_size(px(14.)).child("Bắt đầu với lời bài hát"))
+                                        .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("Nhập SRT hoặc TXT để tạo các dòng karaoke."))
+                                        .child(div().w_full().cursor_pointer().rounded_md().bg(rgb(theme::ACCENT)).hover(|style|style.bg(rgb(0x4b8bea))).px_3().py_2().text_size(px(12.)).text_color(rgb(0xffffff)).text_center().child("Nhập lời · SRT")
+                                            .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_srt(cx))))
+                                        .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Nhập lời · TXT")
+                                            .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_plain_lyrics(cx))))
+                                )))
+                                .when(!display_words.is_empty(),|panel|panel
+                                    .child(lyric_rows.flex_1().mt_2())
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                        .child("✎  Ước lượng mốc từ TXT")
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_plain_lyrics(cx))))),
                     )
                     .child(
                         div()
@@ -7040,11 +7067,13 @@ impl Render for Studio {
                             .flex()
                             .flex_col()
                             .flex_1()
+                            .min_h(px(0.))
                             .overflow_hidden()
                             .gap_3()
                             .child(
                                 div()
                                     .flex_1()
+                                    .min_h(px(0.))
                                     .bg(rgb(theme::SURFACE))
                                     .rounded_md()
                                     .p_4()
@@ -7128,7 +7157,13 @@ impl Render for Studio {
                                                             })))
                                                     })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
-                                                        .child(div().rounded_md().bg(rgb(0x192431)).px_4().py_3().text_size(px(15.)).text_color(rgb(theme::TEXT_MUTED)).child(if display_words.is_empty(){"Nhập lời · SRT để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
+                                                    .child(div().absolute().left(px(0.)).top(px(0.)).w_full().h_full().flex().items_center().justify_center()
+                                                        .child(div().flex().flex_col().items_center().gap_3().rounded_lg().bg(rgb(0x192431)).px_6().py_5()
+                                                            .child(div().w(px(48.)).h(px(48.)).flex().items_center().justify_center().rounded_lg().bg(rgb(theme::ACCENT_SURFACE)).text_size(px(25.)).text_color(rgb(theme::ACCENT)).child("♫"))
+                                                            .child(div().text_size(px(15.)).child(if display_words.is_empty(){"Tạo preview karaoke"}else{"Chọn một câu để xem trước"}))
+                                                            .child(div().text_size(px(12.)).text_color(rgb(theme::TEXT_MUTED)).child(if display_words.is_empty(){"Nhập lời bài hát để bắt đầu căn nhịp."}else{"Di chuyển playhead đến câu muốn xem."}))
+                                                            .when(display_words.is_empty(),|card|card.child(div().cursor_pointer().rounded_md().bg(rgb(theme::ACCENT)).hover(|style|style.bg(rgb(0x4b8bea))).px_4().py_2().text_size(px(12.)).text_color(rgb(0xffffff)).child("Nhập lời · SRT")
+                                                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_srt(cx)))))))))),
                                     ),
                             )
                             .child(

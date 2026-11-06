@@ -1172,3 +1172,12 @@ resize pass; toàn bộ `cargo test --workspace` pass với FFmpeg build4 và Py
 `.venv` (một test Whisper bị ignore vì cần model và WAV fixture riêng).
 Cần mở lại app để xác nhận trực quan sau thay đổi; toàn bộ parity giao diện
 với bản cũ vẫn chưa hoàn tất.
+
+Tiếp nối phản hồi project mới còn trống: danh sách lời và preview nay có empty
+state theo cùng bộ màu, giải thích bước đầu và nút nhập SRT/TXT ngay tại vùng
+làm việc. Các thao tác căn nhịp/hoàn tất và thanh AI được nhóm, wrap theo chiều
+rộng cửa sổ; preferences GPUI cũ có Inspector dưới 280 px được nâng lên 300 px
+khi nạp để sửa bố cục đã lưu trước đây. Workspace Clippy và test pass sau
+thay đổi (app 58/58); release build lại pass. Screenshot QA ở viewport
+1442×932 xác nhận empty state mới hiển thị và timeline còn trong vùng nhìn
+thấy sau khi thêm giới hạn co dọc cho workspace/preview.

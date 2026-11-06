@@ -34,7 +34,17 @@ fn preferences_path() -> Option<PathBuf> {
 
 pub(crate) fn load_workspace_layout() -> Option<WorkspaceSize> {
     let path = preferences_path()?;
-    read_workspace_layout(&path)
+    read_workspace_layout(&path).map(migrate_workspace_layout)
+}
+
+fn migrate_workspace_layout(mut layout: WorkspaceSize) -> WorkspaceSize {
+    // Older GPUI defaults used a 204–270 px inspector. Move those layouts to
+    // the width needed by the current two-tab controls while preserving wider
+    // layouts that the user has resized deliberately.
+    if layout.right < 280.0 {
+        layout.right = 300.0;
+    }
+    layout
 }
 
 fn read_workspace_layout(path: &std::path::Path) -> Option<WorkspaceSize> {
@@ -153,6 +163,19 @@ mod tests {
         };
         write_workspace_layout(&path, expected).unwrap();
         assert_eq!(read_workspace_layout(&path), Some(expected));
+    }
+
+    #[test]
+    fn older_narrow_inspector_preferences_expand_on_load() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ui-preferences.json");
+        std::fs::write(&path, r#"{"left":210,"preview":410,"right":236}"#).unwrap();
+
+        let loaded = migrate_workspace_layout(read_workspace_layout(&path).unwrap());
+
+        assert_eq!(loaded.left, 210.0);
+        assert_eq!(loaded.preview, 410.0);
+        assert_eq!(loaded.right, 300.0);
     }
 
     #[test]
