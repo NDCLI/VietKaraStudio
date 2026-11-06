@@ -621,6 +621,17 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
     let display_mode = string(settings, "display_mode", "karaoke");
     let duet = string(settings, "singing_mode", "solo") == "duet";
     let role_icons = boolean(settings, "role_icons", true) && duet && display_mode == "karaoke";
+    let marker_ratio = if role_icons {
+        ["male", "female", "all"]
+            .into_iter()
+            .filter_map(|role| {
+                crate::role_icons::role_icon(crate::role_icons::role_icon_setting(role, settings))
+            })
+            .map(|icon| icon.width)
+            .fold(1.0_f64, f64::max)
+    } else {
+        0.0
+    };
     let alignment = string(settings, "align", "center");
     let position = string(settings, "position", "bottom");
     let vertical_offset = number(settings, "vertical_offset", 0.0).clamp(0.0, 75.0);
@@ -659,7 +670,13 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             .collect::<Vec<_>>()
             .join(" ");
         let extra = 2.0 * outline + shadow + if italic { font_size * 0.15 } else { 0.0 };
-        let marker_space = if role_icons { font_size * 0.94 } else { 0.0 };
+        // Match layout.py::role_icon_space: reserve the selected widest
+        // artwork plus a small gap so lyric text cannot touch the marker.
+        let marker_space = if role_icons {
+            font_size * (0.72 * marker_ratio + 0.22)
+        } else {
+            0.0
+        };
         text_width(measure, &text, font, font_size, italic, horizontal_scale) + extra + marker_space
             <= f64::from(width) * 0.9
     };
@@ -780,7 +797,7 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             && matches!(role.as_str(), "male" | "female" | "all")
             && previous_role.as_deref() != Some(role.as_str())
         {
-            font_size * 0.94
+            font_size * (0.72 * marker_ratio + 0.22)
         } else {
             0.0
         };
@@ -980,6 +997,27 @@ mod tests {
             );
             assert!(row.show_start <= row.start && row.start < row.show_end);
         }
+    }
+
+    #[test]
+    fn planner_reserves_space_for_widest_selected_duet_artwork() {
+        let mut project = Project::new("duet marker spacing");
+        project.settings.font_size = 60.0;
+        project
+            .settings
+            .extra
+            .insert("singing_mode".into(), Value::String("duet".into()));
+        project
+            .settings
+            .extra
+            .insert("role_icons".into(), Value::Bool(true));
+        project.words = vec![word("Xin", 0, 1.0, "male", None)];
+
+        let plan = display_plan(&project, &FixedWidth);
+        let row = &plan.rows[0];
+        let expected_space = row.font_size * (0.72 * (122.0 / 90.0) + 0.22);
+        assert!((row.words[0].x - row.x - expected_space).abs() < 0.01);
+        assert!(row.width >= expected_space + row.words[0].width);
     }
 
     #[test]
