@@ -49,6 +49,13 @@ struct TapSession {
     words: Vec<Word>,
     wall: std::time::Instant,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingNavigation {
+    NewProject,
+    OpenProject,
+}
+
 struct Studio {
     editor: Editor,
     word_input: Entity<text_input::TextInput>,
@@ -85,6 +92,7 @@ struct Studio {
     confirm_open: bool,
     confirm_new: bool,
     confirm_close: bool,
+    navigate_after_save: Option<PendingNavigation>,
     pending_lyrics: Option<Command>,
     pending_audio: Option<(AudioSlot, PathBuf)>,
     autosave_status: String,
@@ -2391,6 +2399,7 @@ impl Studio {
                 self.confirm_open = false;
                 self.confirm_new = false;
                 self.confirm_close = false;
+                self.navigate_after_save = None;
                 self.selected_word = None;
                 self.selected_anchor = None;
                 self.timeline_drag = None;
@@ -2419,6 +2428,27 @@ impl Studio {
             self.choose_open(cx);
         }
     }
+
+    fn save_and_navigate(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving {
+            return;
+        }
+        self.navigate_after_save = if self.confirm_new {
+            Some(PendingNavigation::NewProject)
+        } else if self.confirm_open {
+            Some(PendingNavigation::OpenProject)
+        } else {
+            None
+        };
+        if self.navigate_after_save.is_none() {
+            return;
+        }
+        self.save(cx);
+        if !self.saving {
+            self.navigate_after_save = None;
+        }
+    }
+
     fn choose_open(&mut self, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
@@ -2434,6 +2464,7 @@ impl Studio {
         }
         self.confirm_open = false;
         self.confirm_new = false;
+        self.navigate_after_save = None;
         self.saving = true;
         let selection = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -2560,14 +2591,17 @@ impl Studio {
                 match selection {
                     Ok(Ok(Some(path))) => this.save_to(path, cx),
                     Ok(Ok(None)) => {
+                        this.navigate_after_save = None;
                         this.edit_status = "Đã hủy chọn nơi lưu".into();
                         cx.notify();
                     }
                     Ok(Err(error)) => {
+                        this.navigate_after_save = None;
                         this.edit_status = error.to_string();
                         cx.notify();
                     }
                     Err(error) => {
+                        this.navigate_after_save = None;
                         this.edit_status = error.to_string();
                         cx.notify();
                     }
@@ -2772,6 +2806,7 @@ impl Studio {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.saving = false;
+                let saved = result.is_ok();
                 this.edit_status = match result {
                     Ok(()) => {
                         this.path = Some(saved_path);
@@ -2785,6 +2820,17 @@ impl Studio {
                     Err(error) => error.to_string(),
                 };
                 cx.notify();
+                let navigation = if saved {
+                    this.navigate_after_save.take()
+                } else {
+                    this.navigate_after_save = None;
+                    None
+                };
+                match navigation {
+                    Some(PendingNavigation::NewProject) => this.create_empty_project(cx),
+                    Some(PendingNavigation::OpenProject) => this.choose_open(cx),
+                    None => {}
+                }
             });
         })
         .detach();
@@ -3855,12 +3901,14 @@ impl Render for Studio {
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| {this.confirm_close=false;cx.notify();})))))
             .when(self.confirm_open || self.confirm_new, |root| root.child(div().flex().gap_3().p_3()
                 .child(if self.confirm_new {
-                    "Project chưa lưu. Tạo project mới sẽ bỏ các thay đổi hiện tại."
+                    "Project chưa lưu. Lưu hoặc bỏ thay đổi trước khi tạo project mới."
                 } else {
-                    "Project chưa lưu. Lưu trước, hoặc bỏ thay đổi để mở project khác."
+                    "Project chưa lưu. Lưu hoặc bỏ thay đổi trước khi mở project khác."
                 })
                 .child(div().cursor_pointer().px_3().child(if self.confirm_new { "Bỏ thay đổi và tạo mới" } else { "Bỏ thay đổi và mở" })
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.discard_and_navigate(cx))))
+                .child(div().cursor_pointer().px_3().child(if self.confirm_new { "Lưu và tạo mới" } else { "Lưu và mở" })
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.save_and_navigate(cx))))
                 .child(div().cursor_pointer().px_3().child("Hủy")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.confirm_open=false;this.confirm_new=false;cx.notify();})))))
             .when(self.recovery.is_some(), |root| {
@@ -5192,6 +5240,7 @@ fn main() {
                         confirm_open: false,
                         confirm_new: false,
                         confirm_close: false,
+                        navigate_after_save: None,
                         pending_lyrics: None,
                         pending_audio: None,
                         autosave_status: String::new(),

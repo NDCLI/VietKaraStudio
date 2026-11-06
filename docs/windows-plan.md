@@ -207,7 +207,7 @@ sửa khi migration/import/restore lỗi.
 - [ ] Gắn action thật vào UI mock hiện tại (`crates/vietkara-app/src/main.rs`):
   mở file (file picker GPUI), save/close/reopen.
 - [x] Tạo project trắng từ nút `Project mới` hoặc Ctrl+N; project mới có
-  dirty marker và yêu cầu xác nhận nếu bỏ state chưa lưu.
+  dirty marker; xác nhận hỗ trợ lưu rồi điều hướng, bỏ thay đổi hoặc hủy.
 - [x] Relink audio project bị thiếu: hiển thị trạng thái thiếu file và nút
   chọn lại beat/bản hát; chọn đúng nội dung cũ được nhận diện bằng fingerprint
   để giữ anchors/lời như `vietkara-storage::audio_import` đã hỗ trợ.
