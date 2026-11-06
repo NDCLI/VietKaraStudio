@@ -834,3 +834,11 @@ giữ hộp xác nhận để thử lại; UI khóa thao tác trong lúc tạo s
 hiển thị ID version sau khi thay lời thành công. Project chưa lưu chưa có
 thư mục version nên tiếp tục dùng undo/autosave trong phiên. Đã qua
 `cargo check --workspace`; runtime và kiểm thử gom cuối mốc còn mở.
+
+### W5: lỗi FFmpeg có hướng xử lý
+
+Khi FFmpeg trả lỗi, render phân loại stderr phổ biến (media/font thiếu,
+quyền ghi, hết dung lượng, input hỏng, encoder không mở được, thiếu bộ nhớ)
+và đưa bước xử lý tiếng Việt cùng 1.200 ký tự cuối của stderr. Cargo check
+workspace pass; tình huống lỗi thực tế và kiểm thử nhánh phân loại được để
+chạy cùng lượt kiểm thử cuối.

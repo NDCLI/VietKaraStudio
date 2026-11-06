@@ -372,11 +372,7 @@ fn render_project(
                 .chars()
                 .rev()
                 .collect::<String>();
-            return Err(if detail.trim().is_empty() {
-                format!("FFmpeg kết thúc với mã {:?}", status.code())
-            } else {
-                format!("FFmpeg lỗi: {}", detail.trim())
-            });
+            return Err(format_ffmpeg_failure(status.code(), detail.trim()));
         }
         let rendered = temporary_directory.join(profile.output_name());
         vietkara_render::verify_output_with_ffprobe(&rendered, duration, width, height, &ffprobe)
@@ -448,6 +444,36 @@ fn parse_ffmpeg_time(value: &str) -> Option<f64> {
         return None;
     }
     Some(hours * 3600.0 + minutes * 60.0 + seconds)
+}
+
+fn format_ffmpeg_failure(code: Option<i32>, detail: &str) -> String {
+    let lower = detail.to_ascii_lowercase();
+    let action = if lower.contains("no such file or directory")
+        || lower.contains("could not open file")
+        || lower.contains("cannot open")
+    {
+        "Kiểm tra beat, nền, font và media trong thư mục project; relink file bị thiếu rồi xuất lại."
+    } else if lower.contains("permission denied") || lower.contains("access is denied") {
+        "Chọn thư mục xuất có quyền ghi và đóng video đích nếu ứng dụng khác đang giữ file."
+    } else if lower.contains("no space left") || lower.contains("disk full") {
+        "Ổ đĩa đã hết dung lượng; giải phóng dung lượng rồi xuất lại."
+    } else if lower.contains("invalid data found")
+        || lower.contains("error while decoding")
+        || lower.contains("corrupt input")
+    {
+        "Một file media có thể hỏng hoặc không được hỗ trợ; chuyển đổi hoặc relink file đó rồi thử lại."
+    } else if lower.contains("unknown encoder") || lower.contains("error while opening encoder") {
+        "FFmpeg không mở được encoder; cài bản FFmpeg đầy đủ hoặc giảm độ phân giải/chất lượng xuất."
+    } else if lower.contains("out of memory") || lower.contains("cannot allocate memory") {
+        "Thiếu bộ nhớ cho cấu hình hiện tại; giảm độ phân giải/FPS hoặc đóng ứng dụng khác rồi thử lại."
+    } else {
+        "Kiểm tra file media, cấu hình xuất và quyền ghi thư mục đích; thử giảm độ phân giải nếu lỗi lặp lại."
+    };
+    if detail.is_empty() {
+        format!("FFmpeg kết thúc với mã {code:?}. {action}")
+    } else {
+        format!("FFmpeg lỗi. {action} Chi tiết: {detail}")
+    }
 }
 
 enum ExportEvent {
