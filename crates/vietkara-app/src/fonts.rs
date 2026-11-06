@@ -77,6 +77,19 @@ pub(super) fn families() -> &'static [FontFamily] {
     catalog()
 }
 
+pub(super) fn font_bytes(path: &str) -> Option<Cow<'static, [u8]>> {
+    FontAssets::get(path).map(|font| font.data)
+}
+
+pub(super) fn first_font_path(family: &str) -> Option<&'static str> {
+    catalog()
+        .iter()
+        .find(|entry| entry.family.eq_ignore_ascii_case(family))?
+        .files
+        .first()
+        .map(String::as_str)
+}
+
 pub(super) fn inventory_counts() -> (usize, usize) {
     (
         catalog().len(),

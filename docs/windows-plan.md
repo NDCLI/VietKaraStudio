@@ -308,8 +308,12 @@ kiểm tra runtime có FFmpeg trên Windows.
 > cố định. Harness `tests/test_ass_raster_parity.ps1` chạy cả hai fixture.
 > `cargo test -p vietkara-render --test layout_python_golden` pass. Nó kiểm
 > chứng quy tắc planner độc lập với font; không thay thế đo/shaping Arial và
-> font bundled trên Windows. Raster đầy đủ với measurer/font hệ thống thật
-> vẫn cần kiểm chứng riêng.
+> font bundled trên Windows. `GpuiTextMeasurer` nay scale font size theo
+> `head.unitsPerEm / OS/2.usWinAscent+usWinDescent` giống Python, đọc bảng từ
+> font bundled khi có và dùng fallback 0.85 cho font hệ thống. Windows test
+> đọc trực tiếp `C:\Windows\Fonts\arial.ttf` pass. Đây là khớp size metric,
+> chưa chứng minh width parity giữa DirectWrite và Pillow hay raster đầy đủ
+> với font thật; cần golden đo Windows cho Arial/bundled.
 
 - [ ] Chốt parity đầy đủ cho `layout.display_plan` với font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):

@@ -15,10 +15,90 @@ pub(super) struct PreviewLayoutCache {
 
 struct GpuiTextMeasurer<'a>(&'a gpui::WindowTextSystem);
 
+fn python_font_size(path: &std::path::Path, requested: f64) -> f64 {
+    let Ok(bytes) = std::fs::read(path) else {
+        return requested * 0.85;
+    };
+    let be_u16 = |offset: usize| -> Option<u16> {
+        Some(u16::from_be_bytes(
+            bytes.get(offset..offset + 2)?.try_into().ok()?,
+        ))
+    };
+    let be_u32 = |offset: usize| -> Option<u32> {
+        Some(u32::from_be_bytes(
+            bytes.get(offset..offset + 4)?.try_into().ok()?,
+        ))
+    };
+    let base = if bytes.get(..4) == Some(b"ttcf") {
+        be_u32(12).unwrap_or(0) as usize
+    } else {
+        0
+    };
+    let count = be_u16(base + 4).unwrap_or(0) as usize;
+    let mut head = None;
+    let mut os2 = None;
+    for index in 0..count {
+        let record = base + 12 + index * 16;
+        let Some(tag) = bytes.get(record..record + 4) else {
+            break;
+        };
+        let offset = be_u32(record + 8).unwrap_or(0) as usize;
+        match tag {
+            b"head" => head = Some(offset),
+            b"OS/2" => os2 = Some(offset),
+            _ => {}
+        }
+    }
+    let ratio = head
+        .and_then(|offset| be_u16(offset + 18))
+        .zip(os2.and_then(|offset| be_u16(offset + 74)))
+        .zip(os2.and_then(|offset| be_u16(offset + 76)))
+        .map(|((units, ascent), descent)| {
+            f64::from(units) / f64::from(ascent.saturating_add(descent).max(1))
+        })
+        .unwrap_or(0.85)
+        .clamp(0.5, 1.2);
+    requested * ratio
+}
+
+fn embedded_font_path(family: &str, italic: bool) -> Option<std::path::PathBuf> {
+    let path = super::fonts::first_font_path(family)?;
+    let filename = path.rsplit('/').next()?;
+    let destination = std::env::temp_dir()
+        .join("vietkara-font-metrics")
+        .join(filename);
+    if !destination.is_file() {
+        let parent = destination.parent()?;
+        std::fs::create_dir_all(parent).ok()?;
+        std::fs::write(&destination, super::fonts::font_bytes(path)?).ok()?;
+    }
+    let _ = italic;
+    Some(destination)
+}
+
+#[cfg(test)]
+mod font_metric_tests {
+    use super::python_font_size;
+    use std::path::Path;
+
+    #[test]
+    fn arial_uses_python_ass_ascender_and_descender_units() {
+        let path = Path::new(r"C:\Windows\Fonts\arial.ttf");
+        if path.is_file() {
+            let adjusted = python_font_size(path, 100.0);
+            assert!((50.0..120.0).contains(&adjusted));
+            assert!(adjusted < 100.0);
+        }
+    }
+}
+
 impl TextMeasurer for GpuiTextMeasurer<'_> {
     fn width(&self, text: &str, family: &str, size: f64, italic: bool) -> f64 {
         let font = gpui::font(family.to_owned());
         let font = if italic { font.italic() } else { font };
+        // The Python baseline sizes ASS text against the Windows ascender plus
+        // descender rather than the font em square. Apply the same ratio so the
+        // shared DisplayPlan wraps at matching widths.
         let run = gpui::TextRun {
             len: text.len(),
             font,
@@ -27,9 +107,15 @@ impl TextMeasurer for GpuiTextMeasurer<'_> {
             underline: None,
             strikethrough: None,
         };
-        let shaped = self
-            .0
-            .shape_line(text.to_owned().into(), gpui::px(size as f32), &[run], None);
+        let font_size = embedded_font_path(family, italic)
+            .map(|path| python_font_size(&path, size))
+            .unwrap_or(size * 0.85);
+        let shaped = self.0.shape_line(
+            text.to_owned().into(),
+            gpui::px(font_size as f32),
+            &[run],
+            None,
+        );
         f64::from(shaped.width)
     }
 }
