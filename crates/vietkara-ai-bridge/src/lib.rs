@@ -921,6 +921,50 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
     }
 
     #[test]
+    fn dropping_a_worker_kills_the_child_process() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("still-running.txt");
+        let marker_python = marker.to_string_lossy().replace('\\', "/");
+        let script = write_fake_worker(&format!(
+            "import time\ntime.sleep(1.5)\nopen(r'{marker_python}', 'w').write('alive')\n"
+        ));
+        let config =
+            WorkerConfig::new(python_command()).arg(script.path().to_string_lossy().into_owned());
+        {
+            let _worker = Worker::spawn(config, test_request(AiKind::Separate)).unwrap();
+            // Dropped here without `run`: the Drop impl must terminate the
+            // child instead of leaving an orphan Python process behind.
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(
+            !marker.exists(),
+            "worker survived Drop and wrote its marker at {}",
+            marker.display()
+        );
+    }
+
+    #[test]
+    fn stderr_tail_is_truncated_instead_of_buffered_without_bound() {
+        let script = write_fake_worker(
+            "import sys\nsys.stderr.write('x' * 200_000)\nsys.stderr.flush()\nsys.exit(2)\n",
+        );
+        let config =
+            WorkerConfig::new(python_command()).arg(script.path().to_string_lossy().into_owned());
+        let mut worker = Worker::spawn(config, test_request(AiKind::Align)).unwrap();
+        let error = worker.run(|_, _| {}).unwrap_err();
+        match error {
+            AiError::WorkerExited { stderr_tail, .. } => {
+                assert!(
+                    stderr_tail.chars().count() <= MAX_STDERR_TAIL_CHARS,
+                    "stderr tail should be bounded, got {} chars",
+                    stderr_tail.chars().count()
+                );
+            }
+            other => panic!("expected WorkerExited, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn discover_worker_finds_python_and_rejects_missing_programs() {
         assert!(discover_worker(python_command()).is_ok());
         let err = discover_worker("vietkara-no-such-worker-xyz").unwrap_err();

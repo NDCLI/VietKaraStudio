@@ -342,6 +342,18 @@ mod tests {
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn burst_of_seeks_is_coalesced_and_never_dropped() {
+        let playback = Playback::new().unwrap();
+        // Far more seeks than the bounded command channel can hold: none of
+        // them may block the UI thread or report a spurious "busy" error.
+        for index in 0..1_000 {
+            playback
+                .send(PlaybackCommand::Seek(index as f64 / 100.0))
+                .expect("coalesced seek must always be accepted");
+        }
+    }
+
+    #[test]
     fn load_failure_is_reported_and_unload_clears_snapshot() {
         let playback = Playback::new().unwrap();
         let missing = std::env::temp_dir().join(format!(

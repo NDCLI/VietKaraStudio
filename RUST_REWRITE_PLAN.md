@@ -8,8 +8,9 @@
 >   build `vietkara-app`, và job kiểm tra cú pháp Python + Node baseline.
 > - Test cần FFmpeg/FFprobe (`vietkara-media`, `vietkara-render`, export của
 >   `vietkara-app`) và test AI cần `numpy/scipy/soundfile` nay tự skip khi môi
->   trường thiếu; checkout sạch chạy `cargo test --workspace` **206 pass,
->   1 ignored, 0 failed** thay vì 7 fail.
+>   trường thiếu; checkout sạch chạy `cargo test --workspace` **209 pass,
+>   1 ignored, 0 failed** thay vì 7 fail. Thêm regression test cho Drop của
+>   Worker, giới hạn stderr và coalescing seek.
 > - Sửa các lỗi tồn đọng: panic khi scene thiếu/ngắn `decoration_keyframes`;
 >   `Worker` AI không kill process khi drop, rò child khi handshake/protocol
 >   lỗi, stderr không giới hạn; ghi preferences không atomic và migration

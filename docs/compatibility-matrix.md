@@ -57,7 +57,7 @@
 - Các test cần FFmpeg/FFprobe (`vietkara-media`, `vietkara-render`,
   `vietkara-app` export) hoặc Python có `numpy/scipy/soundfile`
   (`vietkara-ai-bridge` sync) nay **tự skip** khi thiếu binary/module thay vì
-  fail. Trên máy không có FFmpeg/numpy: `cargo test --workspace` **206 pass,
+  fail. Trên máy không có FFmpeg/numpy: `cargo test --workspace` **209 pass,
   1 ignored, 0 failed**; trước đây cùng môi trường fail 7 test.
 - Trên máy có FFmpeg/ffprobe và Python đầy đủ, các test trên vẫn chạy bình
   thường; CI Windows có thể cài thêm FFmpeg nếu muốn bật integration.
