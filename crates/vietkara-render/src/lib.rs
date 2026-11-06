@@ -1280,7 +1280,8 @@ impl RenderInputs {
                 line.0 = line.0.min(start);
                 line.1 = line.1.max(end);
             }
-            let ordered = lines.into_values().collect::<Vec<_>>();
+            let mut ordered = lines.into_values().collect::<Vec<_>>();
+            ordered.sort_by(|left, right| left.0.total_cmp(&right.0));
             let mut previous_end: f64 = 0.0;
             for (index, (start, end)) in ordered.iter().enumerate() {
                 let count_in = index == 0 || start - previous_end >= 8.0;
@@ -2492,6 +2493,47 @@ mod tests {
         assert!(graph.contains("colorchannelmixer=aa=0.8000"));
         assert!(graph.contains("sin(PI*T/2)"));
         assert!(graph.contains("[withlogo]"));
+    }
+
+    #[test]
+    fn image_countdown_follows_lyric_time_when_line_ids_are_out_of_order() {
+        let directory = tempfile::tempdir().unwrap();
+        write_png_header(&directory.path().join("countdown.png"), 64, 64);
+        let mut project = vietkara_domain::Project::new("chronological countdown");
+        project.settings.extra.extend(
+            serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(
+                serde_json::json!({
+                    "countdown":"image",
+                    "countdown_seconds":4,
+                    "display_mode":"karaoke"
+                }),
+            )
+            .unwrap(),
+        );
+        for (index, (line, start)) in [(0, 15.0), (1, 5.0)].into_iter().enumerate() {
+            project.words.push(
+                serde_json::from_value(serde_json::json!({
+                    "id":format!("{:032x}", index + 1),
+                    "line_uid":format!("{:032x}", index + 10),
+                    "text":"Xin",
+                    "start":start,
+                    "end":start+0.5,
+                    "line":line,
+                    "role":"all"
+                }))
+                .unwrap(),
+            );
+        }
+
+        let mut inputs = RenderInputs::new("beat.wav", 20.0);
+        inputs
+            .configure_overlays_from_project(&project, directory.path(), 1920, 1080)
+            .unwrap();
+        assert_eq!(inputs.countdown.len(), 2);
+        assert!((inputs.countdown[0].start - 0.95).abs() < 0.001);
+        assert!((inputs.countdown[0].end - 4.95).abs() < 0.001);
+        assert!((inputs.countdown[1].start - 10.95).abs() < 0.001);
+        assert!((inputs.countdown[1].end - 14.95).abs() < 0.001);
     }
 
     #[test]
