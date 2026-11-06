@@ -58,6 +58,32 @@ def dispatch(request, report_progress):
         region = options.get("region")
         if kind == "align_region" and not isinstance(region, dict):
             raise ValueError("align_region cần options.region.")
+        cache_key = None
+        cache_root_value = options.get("data_root") or options.get("cache_root")
+        if cache_root_value:
+            from analysis_cache import cache_key as make_cache_key, load as load_cache
+
+            # Recognition consumes the vocal track, so fingerprint that exact
+            # file even when the request also carries its original reference.
+            source = Path(vocals)
+            cache_options = {
+                name: options[name]
+                for name in ("device", "device_index", "compute_type", "device_name")
+                if name in options
+            }
+            cache_key = make_cache_key(
+                source,
+                model,
+                language,
+                lyrics,
+                options.get("preference", "auto"),
+                region,
+                extra_options=cache_options,
+            )
+            if cache_key:
+                cached = load_cache(Path(cache_root_value), cache_key)
+                if cached:
+                    return cached["result"]
         request_for_worker = {
             "vocals": vocals,
             "model": model,
@@ -76,7 +102,17 @@ def dispatch(request, report_progress):
             output = Path(directory) / "result.json"
             request_for_worker["output"] = str(output)
             run(request_for_worker, request_for_worker["device"], report_progress)
-            return json.loads(output.read_text(encoding="utf-8"))
+            result = json.loads(output.read_text(encoding="utf-8"))
+        if cache_key:
+            from analysis_cache import store as store_cache
+
+            try:
+                store_cache(Path(cache_root_value), cache_key, result, Path(vocals))
+            except OSError:
+                # Cache is opportunistic; a failed write must not discard a
+                # valid recognition result or turn the AI job into an error.
+                pass
+        return result
 
     if kind == "role_suggest":
         vocal = _required_text(inputs, "vocal")

@@ -324,9 +324,11 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
 
 ### 6.2. Audio sync, cache và batch render
 
-- [ ] Port/reuse audio sync (`audio_sync.py`) và cache
-  (`analysis_cache.py`) với fingerprint nguồn + model + language +
-  options — cache không được trả nhầm kết quả khác fingerprint.
+- [x] Tái sử dụng `analysis_cache.py` trong worker JSONL khi caller truyền
+  `options.data_root`/`cache_root`; key gồm fingerprint nguồn, model,
+  language, lời, preference, region và tùy chọn runtime.
+- [ ] Port/reuse audio sync (`audio_sync.py`) và hoàn tất tích hợp cache
+  với mọi luồng; cache không được trả nhầm kết quả khác fingerprint.
 - [ ] Port flow: separation, recognition/alignment, align region, role
   suggestion; project không bị ghi đè trước khi người dùng xác nhận
   kết quả AI.

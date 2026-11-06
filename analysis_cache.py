@@ -19,7 +19,8 @@ _CACHE_LOCK = threading.Lock()
 
 
 def cache_key(reference: Path, model: str, language: str, lyrics: str,
-              preference: str, region: dict | None = None) -> str | None:
+              preference: str, region: dict | None = None,
+              extra_options: dict | None = None) -> str | None:
     """Key results by source contents and every recognition input that affects them."""
     try:
         digest = project_archive.sha256(reference)
@@ -36,6 +37,8 @@ def cache_key(reference: Path, model: str, language: str, lyrics: str,
         "region": ({"start": round(float(region["start"]), 3),
                     "end": round(float(region["end"]), 3)} if region else None),
     }
+    if extra_options:
+        parameters["extra_options"] = extra_options
     encoded = json.dumps(parameters, ensure_ascii=False, sort_keys=True,
                          separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
