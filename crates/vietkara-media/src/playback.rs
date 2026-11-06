@@ -6,7 +6,7 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, RecvTimeoutError, SyncSender},
+        mpsc::{self, RecvTimeoutError, SyncSender, TrySendError},
     },
     time::Duration,
 };
@@ -52,20 +52,27 @@ pub struct Playback {
     commands: SyncSender<PlaybackCommand>,
     snapshot: Arc<Mutex<PlaybackSnapshot>>,
     cancelled: Arc<AtomicBool>,
+    /// Latest seek requested while the worker is busy. Seeking is
+    /// coalesced here instead of going through the bounded command
+    /// channel, so dragging the playhead can never drop a position (the
+    /// newest position wins) and can never block the UI thread.
+    pending_seek: Arc<Mutex<Option<f64>>>,
 }
 impl Playback {
     pub fn new() -> Result<Self, String> {
-        let (commands, receiver) = mpsc::sync_channel(16);
+        let (commands, receiver) = mpsc::sync_channel(32);
         let snapshot = Arc::new(Mutex::new(PlaybackSnapshot::default()));
         let cancelled = Arc::new(AtomicBool::new(false));
+        let pending_seek = Arc::new(Mutex::new(None));
         let shared = snapshot.clone();
         let shutdown = cancelled.clone();
         let worker_stopped = cancelled.clone();
+        let worker_seek = pending_seek.clone();
         std::thread::Builder::new()
             .name("vietkara-playback".into())
             .spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    worker_loop(receiver, shared.clone(), shutdown.clone());
+                    worker_loop(receiver, shared.clone(), shutdown.clone(), worker_seek);
                 }));
                 if result.is_err() {
                     worker_stopped.store(true, Ordering::Release);
@@ -83,17 +90,30 @@ impl Playback {
             commands,
             snapshot,
             cancelled,
+            pending_seek,
         })
     }
     pub fn send(&self, command: PlaybackCommand) -> Result<(), String> {
         if self.cancelled.load(Ordering::Acquire) {
             return Err("Playback worker đã dừng".into());
         }
+        if let PlaybackCommand::Seek(seconds) = command {
+            // Coalesce seeks: the worker consumes the newest value on its
+            // next turn, so rapid playhead drags cannot fill the bounded
+            // channel and silently lose the final position.
+            *self
+                .pending_seek
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(seconds);
+            return Ok(());
+        }
+        // Keep the UI responsive while guaranteeing a command is either
+        // delivered or reported as an error, never silently dropped.
         self.commands
             .try_send(command)
             .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => "Playback đang bận, hãy thử lại".into(),
-                mpsc::TrySendError::Disconnected(_) => "Playback worker đã dừng".into(),
+                TrySendError::Full(_) => "Playback đang bận, hãy thử lại".into(),
+                TrySendError::Disconnected(_) => "Playback worker đã dừng".into(),
             })
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
@@ -112,6 +132,7 @@ fn worker_loop(
     receiver: mpsc::Receiver<PlaybackCommand>,
     shared: Arc<Mutex<PlaybackSnapshot>>,
     shutdown: Arc<AtomicBool>,
+    pending_seek: Arc<Mutex<Option<f64>>>,
 ) {
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
@@ -129,6 +150,16 @@ fn worker_loop(
         };
     let mut pending_commands = VecDeque::new();
     while !shutdown.load(Ordering::Acquire) {
+        // Apply the newest coalesced seek before waiting for the next
+        // command, so the final playhead position is never lost.
+        if let Some(seconds) = pending_seek
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+            && let Some(device) = &mut player
+        {
+            device.seek(seconds);
+        }
         let command = if pending_commands.is_empty() {
             match receiver.recv_timeout(Duration::from_millis(20)) {
                 Ok(command) => Some(command),

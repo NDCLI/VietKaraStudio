@@ -8,6 +8,103 @@ pub struct ImportedBackground {
     pub version_id: String,
 }
 
+fn import_directory(main: &Path) -> &Path {
+    main.parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
+/// Shared implementation for every single-file project image import:
+/// convert with FFmpeg, mutate/validate the project, snapshot the previous
+/// version, publish the file with backup, then save the project with full
+/// rollback. Keeping this in one place avoids five subtly different
+/// copies of the same transaction (the previous duplication was a bug
+/// magnet for rollback ordering).
+#[allow(clippy::too_many_arguments)]
+fn import_single_image(
+    project: &Project,
+    main: &Path,
+    source: &Path,
+    destination: &Path,
+    temporary: &Path,
+    backup: &Path,
+    version_label: &str,
+    media_label: &str,
+    ffmpeg_args: &[&str],
+    mutate: impl FnOnce(&mut Project) -> Result<(), String>,
+) -> Result<ImportedBackground, String> {
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = import_directory(main);
+    let result = (|| -> Result<ImportedBackground, String> {
+        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
+        let output = Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-i"])
+            .arg(source)
+            .args(ffmpeg_args)
+            .arg(temporary)
+            .output()
+            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        if !output.status.success()
+            || !temporary.is_file()
+            || std::fs::metadata(temporary)
+                .map(|meta| meta.len())
+                .unwrap_or(0)
+                == 0
+        {
+            return Err(if stderr.is_empty() {
+                format!("FFmpeg không tạo được {media_label} hợp lệ")
+            } else {
+                format!("Không chuyển được {media_label}: {stderr}")
+            });
+        }
+        let mut candidate = project.clone();
+        mutate(&mut candidate)?;
+        candidate.validate().map_err(|error| error.to_string())?;
+        let version =
+            create_version(directory, project, version_label).map_err(|error| error.to_string())?;
+        let had_destination = destination.is_file();
+        if had_destination {
+            std::fs::rename(destination, backup).map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = std::fs::rename(temporary, destination) {
+            if had_destination {
+                std::fs::rename(backup, destination).map_err(|restore| {
+                    format!(
+                        "{error}; rollback lỗi: {restore}; backup {}",
+                        backup.display()
+                    )
+                })?;
+            }
+            return Err(error.to_string());
+        }
+        if let Err(error) = save_project(&candidate, main) {
+            let cleanup = std::fs::remove_file(destination).err();
+            let restore = if had_destination {
+                std::fs::rename(backup, destination).err()
+            } else {
+                None
+            };
+            if cleanup.is_some() || restore.is_some() {
+                return Err(format!(
+                    "{error}; rollback cleanup={cleanup:?}, restore={restore:?}; backup {}",
+                    backup.display()
+                ));
+            }
+            return Err(error.to_string());
+        }
+        if had_destination {
+            let _ = std::fs::remove_file(backup);
+        }
+        Ok(ImportedBackground {
+            project: candidate,
+            version_id: version.id,
+        })
+    })();
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
 /// Import a project-local PNG logo, checkpoint the previous project, and
 /// atomically publish the image and settings with rollback on save failure.
 pub fn import_logo(
@@ -25,80 +122,32 @@ pub fn import_logo(
     if !source.is_file() {
         return Err("Không tìm thấy file logo".into());
     }
-    project.validate().map_err(|error| error.to_string())?;
-    let directory = main
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let directory = import_directory(main);
     let destination = directory.join("logo.png");
     let temporary = directory.join(format!(".logo-{}.png", vietkara_domain::new_id()));
     let backup = directory.join(format!(".logo-backup-{}.png", vietkara_domain::new_id()));
-    let result = (|| -> Result<ImportedBackground, String> {
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-        let output = Command::new(ffmpeg)
-            .args(["-y", "-v", "error", "-i"])
-            .arg(source)
-            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
-            .arg(&temporary)
-            .output()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        if !output.status.success()
-            || !temporary.is_file()
-            || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0
-        {
-            return Err(format!(
-                "Không chuyển được logo PNG: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let mut candidate = project.clone();
-        candidate
-            .settings
-            .extra
-            .insert("logo_enabled".into(), serde_json::Value::Bool(true));
-        candidate.extra.insert(
-            "logo_name".into(),
-            serde_json::Value::String("logo.png".into()),
-        );
-        candidate.validate().map_err(|error| error.to_string())?;
-        let version = create_version(directory, project, "Trước thay logo")
-            .map_err(|error| error.to_string())?;
-        let had_destination = destination.is_file();
-        if had_destination {
-            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
-        }
-        if let Err(error) = std::fs::rename(&temporary, &destination) {
-            if had_destination {
-                std::fs::rename(&backup, &destination)
-                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
-            }
-            return Err(error.to_string());
-        }
-        if let Err(error) = save_project(&candidate, main) {
-            let cleanup_error = std::fs::remove_file(&destination).err();
-            let restore_error = if had_destination {
-                std::fs::rename(&backup, &destination).err()
-            } else {
-                None
-            };
-            if cleanup_error.is_some() || restore_error.is_some() {
-                return Err(format!(
-                    "{error}; rollback cleanup={cleanup_error:?}, restore={restore_error:?}; backup {}",
-                    backup.display()
-                ));
-            }
-            return Err(error.to_string());
-        }
-        if had_destination {
-            let _ = std::fs::remove_file(&backup);
-        }
-        Ok(ImportedBackground {
-            project: candidate,
-            version_id: version.id,
-        })
-    })();
-    let _ = std::fs::remove_file(temporary);
-    result
+    import_single_image(
+        project,
+        main,
+        source,
+        &destination,
+        &temporary,
+        &backup,
+        "Trước thay logo",
+        "logo PNG",
+        &["-frames:v", "1", "-update", "1", "-f", "image2"],
+        |candidate| {
+            candidate
+                .settings
+                .extra
+                .insert("logo_enabled".into(), serde_json::Value::Bool(true));
+            candidate.extra.insert(
+                "logo_name".into(),
+                serde_json::Value::String("logo.png".into()),
+            );
+            Ok(())
+        },
+    )
 }
 
 /// Import a project-local custom countdown PNG with versioning and rollback.
@@ -117,79 +166,31 @@ pub fn import_countdown_image(
     if !source.is_file() {
         return Err("Không tìm thấy ảnh countdown".into());
     }
-    project.validate().map_err(|error| error.to_string())?;
-    let directory = main
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let directory = import_directory(main);
     let destination = directory.join("countdown.png");
     let temporary = directory.join(format!(".countdown-{}.png", vietkara_domain::new_id()));
     let backup = directory.join(format!(
         ".countdown-backup-{}.png",
         vietkara_domain::new_id()
     ));
-    let result = (|| -> Result<ImportedBackground, String> {
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-        let output = Command::new(ffmpeg)
-            .args(["-y", "-v", "error", "-i"])
-            .arg(source)
-            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
-            .arg(&temporary)
-            .output()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        if !output.status.success()
-            || !temporary.is_file()
-            || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0
-        {
-            return Err(format!(
-                "Không chuyển được ảnh countdown: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let mut candidate = project.clone();
-        candidate.settings.extra.insert(
-            "countdown".into(),
-            serde_json::Value::String("image".into()),
-        );
-        candidate.validate().map_err(|error| error.to_string())?;
-        let version = create_version(directory, project, "Trước thay ảnh countdown")
-            .map_err(|error| error.to_string())?;
-        let had_destination = destination.is_file();
-        if had_destination {
-            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
-        }
-        if let Err(error) = std::fs::rename(&temporary, &destination) {
-            if had_destination {
-                std::fs::rename(&backup, &destination)
-                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
-            }
-            return Err(error.to_string());
-        }
-        if let Err(error) = save_project(&candidate, main) {
-            let cleanup_error = std::fs::remove_file(&destination).err();
-            let restore_error = if had_destination {
-                std::fs::rename(&backup, &destination).err()
-            } else {
-                None
-            };
-            if cleanup_error.is_some() || restore_error.is_some() {
-                return Err(format!(
-                    "{error}; rollback cleanup={cleanup_error:?}, restore={restore_error:?}; backup {}",
-                    backup.display()
-                ));
-            }
-            return Err(error.to_string());
-        }
-        if had_destination {
-            let _ = std::fs::remove_file(&backup);
-        }
-        Ok(ImportedBackground {
-            project: candidate,
-            version_id: version.id,
-        })
-    })();
-    let _ = std::fs::remove_file(temporary);
-    result
+    import_single_image(
+        project,
+        main,
+        source,
+        &destination,
+        &temporary,
+        &backup,
+        "Trước thay ảnh countdown",
+        "ảnh countdown",
+        &["-frames:v", "1", "-update", "1", "-f", "image2"],
+        |candidate| {
+            candidate.settings.extra.insert(
+                "countdown".into(),
+                serde_json::Value::String("image".into()),
+            );
+            Ok(())
+        },
+    )
 }
 
 /// Import or replace a section scene still as a project-managed PNG.
@@ -226,11 +227,7 @@ pub fn import_scene_image(
     if !source.is_file() {
         return Err("Không tìm thấy ảnh scene".into());
     }
-    project.validate().map_err(|error| error.to_string())?;
-    let directory = main
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let directory = import_directory(main);
     let existing = project.scenes.iter().find(|scene| {
         scene
             .get("section_name")
@@ -248,76 +245,29 @@ pub fn import_scene_image(
         ".scene-backup-{id}-{}.png",
         vietkara_domain::new_id()
     ));
-    let result = (|| -> Result<ImportedBackground, String> {
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-        let output = Command::new(ffmpeg)
-            .args(["-y", "-v", "error", "-i"])
-            .arg(source)
-            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
-            .arg(&temporary)
-            .output()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        if !output.status.success()
-            || !temporary.is_file()
-            || std::fs::metadata(&temporary)
-                .map(|meta| meta.len())
-                .unwrap_or(0)
-                == 0
-        {
-            return Err(format!(
-                "Không chuyển được ảnh scene: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let mut candidate = project.clone();
-        if let Some(index) = candidate.scenes.iter().position(|item| {
-            item.get("section_name").and_then(serde_json::Value::as_str) == Some(section)
-        }) {
-            let scene = &mut candidate.scenes[index];
-            scene["id"] = serde_json::Value::String(id.clone());
-            scene["section_name"] = serde_json::Value::String(section.to_owned());
-        } else {
-            candidate.scenes.push(serde_json::json!({"id":id,"section_name":section,"opacity":100,"transition":"fade","transition_seconds":0.6,"keyframes":[{"x":0,"y":0,"scale":100,"opacity":100},{"x":0,"y":0,"scale":100,"opacity":100}],"contrast_mode":"auto"}));
-        }
-        candidate.validate().map_err(|error| error.to_string())?;
-        let version = create_version(directory, project, "Trước thay ảnh scene")
-            .map_err(|error| error.to_string())?;
-        let had_destination = destination.is_file();
-        if had_destination {
-            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
-        }
-        if let Err(error) = std::fs::rename(&temporary, &destination) {
-            if had_destination {
-                std::fs::rename(&backup, &destination)
-                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
-            }
-            return Err(error.to_string());
-        }
-        if let Err(error) = save_project(&candidate, main) {
-            let cleanup = std::fs::remove_file(&destination).err();
-            let restore = if had_destination {
-                std::fs::rename(&backup, &destination).err()
+    import_single_image(
+        project,
+        main,
+        source,
+        &destination,
+        &temporary,
+        &backup,
+        "Trước thay ảnh scene",
+        "ảnh scene",
+        &["-frames:v", "1", "-update", "1", "-f", "image2"],
+        |candidate| {
+            if let Some(index) = candidate.scenes.iter().position(|item| {
+                item.get("section_name").and_then(serde_json::Value::as_str) == Some(section)
+            }) {
+                let scene = &mut candidate.scenes[index];
+                scene["id"] = serde_json::Value::String(id.clone());
+                scene["section_name"] = serde_json::Value::String(section.to_owned());
             } else {
-                None
-            };
-            if cleanup.is_some() || restore.is_some() {
-                return Err(format!(
-                    "{error}; rollback cleanup={cleanup:?}, restore={restore:?}; backup {}",
-                    backup.display()
-                ));
+                candidate.scenes.push(serde_json::json!({"id":id,"section_name":section,"opacity":100,"transition":"fade","transition_seconds":0.6,"keyframes":[{"x":0,"y":0,"scale":100,"opacity":100},{"x":0,"y":0,"scale":100,"opacity":100}],"contrast_mode":"auto"}));
             }
-            return Err(error.to_string());
-        }
-        if had_destination {
-            let _ = std::fs::remove_file(&backup);
-        }
-        Ok(ImportedBackground {
-            project: candidate,
-            version_id: version.id,
-        })
-    })();
-    let _ = std::fs::remove_file(temporary);
-    result
+            Ok(())
+        },
+    )
 }
 
 /// Import or replace a scene decoration while preserving scene settings.
@@ -355,11 +305,7 @@ pub fn import_scene_decoration(
     if !source.is_file() {
         return Err("Không tìm thấy ảnh trang trí".into());
     }
-    project.validate().map_err(|error| error.to_string())?;
-    let directory = main
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let directory = import_directory(main);
     let id = project
         .scenes
         .iter()
@@ -382,84 +328,36 @@ pub fn import_scene_decoration(
         ".scene-decoration-backup-{id}-{}.png",
         vietkara_domain::new_id()
     ));
-    let result = (|| -> Result<ImportedBackground, String> {
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-        let output = Command::new(ffmpeg)
-            .args(["-y", "-v", "error", "-i"])
-            .arg(source)
-            .args(["-frames:v", "1", "-update", "1", "-f", "image2"])
-            .arg(&temporary)
-            .output()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        if !output.status.success()
-            || !temporary.is_file()
-            || std::fs::metadata(&temporary)
-                .map(|meta| meta.len())
-                .unwrap_or(0)
-                == 0
-        {
-            return Err(format!(
-                "Không chuyển được ảnh trang trí: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        let mut candidate = project.clone();
-        let scene = candidate
-            .scenes
-            .iter_mut()
-            .find(|scene| scene.get("id").and_then(serde_json::Value::as_str) == Some(&id))
-            .unwrap();
-        scene
-            .as_object_mut()
-            .unwrap()
-            .entry("decoration_size")
-            .or_insert(serde_json::json!(28));
-        scene
-            .as_object_mut()
-            .unwrap()
-            .entry("decoration_keyframes")
-            .or_insert(serde_json::json!([
-                {"x":50,"y":50,"scale":100,"opacity":100}, {"x":50,"y":50,"scale":100,"opacity":100}
-            ]));
-        candidate.validate().map_err(|error| error.to_string())?;
-        let version = create_version(directory, project, "Trước thay ảnh trang trí")
-            .map_err(|error| error.to_string())?;
-        let had_destination = destination.is_file();
-        if had_destination {
-            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
-        }
-        if let Err(error) = std::fs::rename(&temporary, &destination) {
-            if had_destination {
-                std::fs::rename(&backup, &destination)
-                    .map_err(|restore| format!("{error}; rollback lỗi: {restore}"))?;
-            }
-            return Err(error.to_string());
-        }
-        if let Err(error) = save_project(&candidate, main) {
-            let cleanup = std::fs::remove_file(&destination).err();
-            let restore = if had_destination {
-                std::fs::rename(&backup, &destination).err()
-            } else {
-                None
-            };
-            if cleanup.is_some() || restore.is_some() {
-                return Err(format!(
-                    "{error}; rollback cleanup={cleanup:?}, restore={restore:?}; backup {}",
-                    backup.display()
-                ));
-            }
-            return Err(error.to_string());
-        }
-        if had_destination {
-            let _ = std::fs::remove_file(&backup);
-        }
-        Ok(ImportedBackground {
-            project: candidate,
-            version_id: version.id,
-        })
-    })();
-    let _ = std::fs::remove_file(temporary);
-    result
+    import_single_image(
+        project,
+        main,
+        source,
+        &destination,
+        &temporary,
+        &backup,
+        "Trước thay ảnh trang trí",
+        "ảnh trang trí",
+        &["-frames:v", "1", "-update", "1", "-f", "image2"],
+        |candidate| {
+            let scene = candidate
+                .scenes
+                .iter_mut()
+                .find(|scene| scene.get("id").and_then(serde_json::Value::as_str) == Some(&id))
+                .ok_or_else(|| "Không tìm thấy scene để thêm ảnh trang trí".to_owned())?;
+            let object = scene
+                .as_object_mut()
+                .ok_or_else(|| "Dữ liệu scene không hợp lệ".to_owned())?;
+            object
+                .entry("decoration_size")
+                .or_insert(serde_json::json!(28));
+            object
+                .entry("decoration_keyframes")
+                .or_insert(serde_json::json!([
+                    {"x":50,"y":50,"scale":100,"opacity":100}, {"x":50,"y":50,"scale":100,"opacity":100}
+                ]));
+            Ok(())
+        },
+    )
 }
 
 /// Remove a scene decoration after taking a project version snapshot.
@@ -811,103 +709,45 @@ pub fn import_image_background(
     if !source.is_file() {
         return Err("Không tìm thấy file ảnh nền".into());
     }
-    project.validate().map_err(|error| error.to_string())?;
-    let directory = main
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let directory = import_directory(main);
     let destination = directory.join("background.jpg");
     let temporary = directory.join(format!(".background-{}.jpg", vietkara_domain::new_id()));
     let backup = directory.join(format!(
         ".background-backup-{}.jpg",
         vietkara_domain::new_id()
     ));
-
-    let result = (|| -> Result<ImportedBackground, String> {
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-        let output = Command::new(ffmpeg)
-            .args(["-y", "-v", "error", "-i"])
-            .arg(source)
-            .args(["-frames:v", "1", "-q:v", "2", "-update", "1"])
-            .arg(&temporary)
-            .output()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "Không chuyển được ảnh nền: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        if !temporary.is_file() || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0
-        {
-            return Err("FFmpeg không tạo được ảnh nền hợp lệ".into());
-        }
-
-        let mut candidate = project.clone();
-        candidate.settings.extra.insert(
-            "background_type".into(),
-            serde_json::Value::String("image".into()),
-        );
-        candidate
-            .settings
-            .extra
-            .insert("use_background".into(), serde_json::Value::Bool(true));
-        candidate.extra.insert(
-            "background_name".into(),
-            serde_json::Value::String(
-                source
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-            ),
-        );
-        candidate.validate().map_err(|error| error.to_string())?;
-        let version = create_version(directory, project, "Trước thay ảnh nền")
-            .map_err(|error| error.to_string())?;
-
-        let had_destination = destination.is_file();
-        if had_destination {
-            std::fs::rename(&destination, &backup).map_err(|error| error.to_string())?;
-        }
-        if let Err(error) = std::fs::rename(&temporary, &destination) {
-            if had_destination {
-                std::fs::rename(&backup, &destination).map_err(|restore| {
-                    format!(
-                        "{error}; rollback lỗi: {restore}; backup {}",
-                        backup.display()
-                    )
-                })?;
-            }
-            return Err(error.to_string());
-        }
-        if let Err(error) = save_project(&candidate, main) {
-            let cleanup_error = std::fs::remove_file(&destination).err();
-            let restore_error = if had_destination {
-                std::fs::rename(&backup, &destination).err()
-            } else {
-                None
-            };
-            if cleanup_error.is_some() || restore_error.is_some() {
-                return Err(format!(
-                    "{error}; rollback cleanup={:?}, restore={:?}; backup {}",
-                    cleanup_error,
-                    restore_error,
-                    backup.display()
-                ));
-            }
-            return Err(error.to_string());
-        }
-        if had_destination {
-            let _ = std::fs::remove_file(&backup);
-        }
-        Ok(ImportedBackground {
-            project: candidate,
-            version_id: version.id,
-        })
-    })();
-    let _ = std::fs::remove_file(temporary);
-    result
+    import_single_image(
+        project,
+        main,
+        source,
+        &destination,
+        &temporary,
+        &backup,
+        "Trước thay ảnh nền",
+        "ảnh nền",
+        &["-frames:v", "1", "-q:v", "2", "-update", "1"],
+        |candidate| {
+            candidate.settings.extra.insert(
+                "background_type".into(),
+                serde_json::Value::String("image".into()),
+            );
+            candidate
+                .settings
+                .extra
+                .insert("use_background".into(), serde_json::Value::Bool(true));
+            candidate.extra.insert(
+                "background_name".into(),
+                serde_json::Value::String(
+                    source
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+            );
+            Ok(())
+        },
+    )
 }
 
 #[cfg(test)]

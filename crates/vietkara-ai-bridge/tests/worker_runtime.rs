@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use vietkara_ai_bridge::{AiError, AiKind, AiRequest, Worker, WorkerConfig, run_request};
@@ -87,8 +88,29 @@ fn config(root: &Path) -> WorkerConfig {
         .env("PYTHONIOENCODING", "utf-8")
 }
 
+fn python_imports(modules: &[&str]) -> bool {
+    let script = modules
+        .iter()
+        .map(|module| format!("import {module}"))
+        .collect::<Vec<_>>()
+        .join("; ");
+    std::process::Command::new(python())
+        .args(["-c", &script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 #[test]
 fn real_jsonl_worker_syncs_caches_and_cancels_cpu_analysis() {
+    // Audio sync needs numpy inside the worker runtime. A clean checkout or
+    // CI image without it must skip instead of failing the suite; the
+    // packaged runtime installs numpy (see packaging/).
+    if !python_imports(&["numpy", "scipy", "soundfile"]) {
+        eprintln!("skipping real JSONL worker test: Python runtime lacks numpy/scipy/soundfile");
+        return;
+    }
     let root = workspace_root();
     let temp = tempfile::tempdir().unwrap();
     let reference = temp.path().join("bản hát.wav");

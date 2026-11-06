@@ -134,19 +134,33 @@ impl Job {
     }
 
     pub fn id(&self) -> String {
-        self.inner.lock().unwrap().id.clone()
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .id
+            .clone()
     }
 
     pub fn state(&self) -> JobState {
-        self.inner.lock().unwrap().state
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .state
     }
 
     pub fn progress(&self) -> f64 {
-        self.inner.lock().unwrap().progress
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .progress
     }
 
     pub fn message(&self) -> String {
-        self.inner.lock().unwrap().message.clone()
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .message
+            .clone()
     }
 
     pub fn is_cancel_requested(&self) -> bool {
@@ -166,7 +180,10 @@ impl Job {
     /// records progress (clamped 0..=100) and message.
     pub fn update(&self, progress: f64, message: impl Into<String>) -> Result<(), JobError> {
         self.check()?;
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.progress = progress.clamp(0.0, 100.0);
         data.message = message.into();
         data.updated_at = Some(unix_now());
@@ -174,13 +191,19 @@ impl Job {
     }
 
     pub fn set_state(&self, state: JobState) {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.state = state;
         data.updated_at = Some(unix_now());
     }
 
     pub fn mark_done(&self, result: serde_json::Value) {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.result = Some(result);
         data.state = JobState::Done;
         data.progress = 100.0;
@@ -189,7 +212,10 @@ impl Job {
     }
 
     pub fn mark_error(&self, message: impl Into<String>) {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.state = JobState::Error;
         data.message = truncate_chars(&message.into(), MAX_MESSAGE_CHARS);
         data.updated_at = Some(unix_now());
@@ -202,14 +228,20 @@ impl Job {
     }
 
     pub fn mark_cancelled(&self) {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.state = JobState::Cancelled;
         data.message = "Đã hủy tác vụ.".to_owned();
         data.updated_at = Some(unix_now());
     }
 
     pub fn mark_interrupted(&self) {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.state = JobState::Interrupted;
         data.message =
             "Ứng dụng đã đóng giữa tác vụ. Bước này cần chạy lại; project vẫn được giữ nguyên."
@@ -224,7 +256,10 @@ impl Job {
         reason: Option<String>,
     ) {
         let stage = stage.into();
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.devices.insert(stage.clone(), device);
         if let Some(reason) = reason
             && !reason.is_empty()
@@ -239,7 +274,10 @@ impl Job {
 
     /// The `public()` shape from Python `engine.Job.public()`.
     pub fn public(&self) -> serde_json::Value {
-        let data = self.inner.lock().unwrap();
+        let data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         serde_json::json!({
             "id": data.id,
             "project_id": data.project_id,
@@ -261,7 +299,10 @@ impl Job {
 
     /// Persist atomically to `store_dir/<id>.json`.
     pub fn persist(&self, store_dir: &Path) -> Result<(), JobError> {
-        let mut data = self.inner.lock().unwrap();
+        let mut data = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.updated_at = Some(unix_now());
         let payload = serde_json::to_vec_pretty(&*data)?;
         drop(data);

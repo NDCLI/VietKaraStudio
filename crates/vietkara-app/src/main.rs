@@ -2520,7 +2520,9 @@ impl Studio {
         if !scene.get("keyframes").is_some_and(Value::is_array) {
             scene["keyframes"] = serde_json::json!([]);
         }
-        let frames = scene["keyframes"].as_array_mut().unwrap();
+        let Some(frames) = scene["keyframes"].as_array_mut() else {
+            return;
+        };
         while frames.len() < 2 {
             frames.push(serde_json::json!({"x":0,"y":0,"scale":100,"opacity":100}));
         }
@@ -2586,14 +2588,25 @@ impl Studio {
                 {"x":50,"y":50,"scale":100,"opacity":100}, {"x":50,"y":50,"scale":100,"opacity":100}
             ]);
         }
-        let frame = &mut scene["decoration_keyframes"].as_array_mut().unwrap()[endpoint];
+        let Some(frames) = scene["decoration_keyframes"].as_array_mut() else {
+            return;
+        };
+        while frames.len() < 2 {
+            frames.push(serde_json::json!({"x":50,"y":50,"scale":100,"opacity":100}));
+        }
         let (min, max, default) = match key {
             "x" | "y" => (0.0, 100.0, 50.0),
             "scale" => (100.0, 200.0, 100.0),
             _ => (0.0, 100.0, 100.0),
         };
+        let Some(frame) = frames.get_mut(endpoint).and_then(Value::as_object_mut) else {
+            return;
+        };
         let current = frame.get(key).and_then(Value::as_f64).unwrap_or(default);
-        frame[key] = serde_json::json!((current + delta).clamp(min, max));
+        frame.insert(
+            key.to_owned(),
+            serde_json::json!((current + delta).clamp(min, max)),
+        );
         self.edit_status = match self.editor.execute(Command::SetScenes(scenes)) {
             Ok(_) => {
                 self.dirty = true;
@@ -9875,7 +9888,15 @@ mod workspace_tests {
         let output_directory = root.path().join("bản xuất");
         std::fs::create_dir(&project_directory).unwrap();
         std::fs::create_dir(&output_directory).unwrap();
-        let ffmpeg = vietkara_media::find_binary("ffmpeg").unwrap();
+        // Integration coverage only; a checkout without the bundled
+        // FFmpeg/FFprobe pair skips it instead of failing (same convention
+        // as the storage/render integration tests).
+        let Ok(ffmpeg) = vietkara_media::find_binary("ffmpeg") else {
+            return;
+        };
+        let Ok(ffprobe) = vietkara_media::find_binary("ffprobe") else {
+            return;
+        };
         let audio = std::process::Command::new(&ffmpeg)
             .args([
                 "-y",
@@ -9944,7 +9965,6 @@ mod workspace_tests {
         .unwrap();
         assert!(target.is_file());
         assert!(progress > 0.0);
-        let ffprobe = vietkara_media::find_binary("ffprobe").unwrap();
         let verified =
             vietkara_render::verify_output_with_ffprobe(&target, 1.0, 1920, 1080, &ffprobe)
                 .expect("published MP4 must contain beat audio and a matching video stream");

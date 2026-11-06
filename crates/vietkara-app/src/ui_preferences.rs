@@ -1,6 +1,7 @@
 use crate::WorkspaceSize;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AiPreferences {
@@ -40,11 +41,46 @@ pub(crate) fn load_workspace_layout() -> Option<WorkspaceSize> {
 fn migrate_workspace_layout(mut layout: WorkspaceSize) -> WorkspaceSize {
     // Older GPUI defaults used a 204–270 px inspector. Move those layouts to
     // the width needed by the current two-tab controls while preserving wider
-    // layouts that the user has resized deliberately.
-    if layout.right < 280.0 {
+    // layouts that the user has resized deliberately (including a narrow
+    // inspector in the 271–299 px range).
+    if (204.0..=270.0).contains(&layout.right) {
         layout.right = 300.0;
     }
     layout
+}
+
+/// Persist preferences atomically: write a sibling temporary file, flush
+/// it, then rename over the real file. A crash or full disk can therefore
+/// never leave a truncated `ui-preferences.json` behind.
+fn write_preferences(path: &Path, value: &Value) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Đường dẫn preferences không hợp lệ".to_owned())?;
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("ui-preferences.json");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temporary = parent.join(format!(".{file_name}.{}.{stamp}.tmp", std::process::id()));
+    let write_result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+    if let Err(error) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 fn read_workspace_layout(path: &std::path::Path) -> Option<WorkspaceSize> {
@@ -108,10 +144,6 @@ pub(crate) fn save_ai_preferences(preferences: &AiPreferences) -> Result<(), Str
         return Err("Cấu hình AI không hợp lệ".into());
     }
     let path = preferences_path().ok_or_else(|| "Không tìm thấy thư mục preferences".to_owned())?;
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Đường dẫn preferences không hợp lệ".to_owned())?;
-    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let mut value = std::fs::read(&path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
@@ -119,15 +151,10 @@ pub(crate) fn save_ai_preferences(preferences: &AiPreferences) -> Result<(), Str
         .unwrap_or_else(|| serde_json::json!({}));
     value["ai_device"] = Value::String(preferences.device.clone());
     value["ai_model"] = Value::String(preferences.model.clone());
-    let bytes = serde_json::to_vec_pretty(&value).map_err(|error| error.to_string())?;
-    std::fs::write(&path, bytes).map_err(|error| error.to_string())
+    write_preferences(&path, &value)
 }
 
 fn write_workspace_layout(path: &std::path::Path, layout: WorkspaceSize) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Đường dẫn preferences không hợp lệ".to_owned())?;
-    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let mut value = std::fs::read(path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
@@ -136,8 +163,7 @@ fn write_workspace_layout(path: &std::path::Path, layout: WorkspaceSize) -> Resu
     value["left"] = serde_json::json!(layout.left);
     value["preview"] = serde_json::json!(layout.preview);
     value["right"] = serde_json::json!(layout.right);
-    let contents = serde_json::to_vec(&value).map_err(|error| error.to_string())?;
-    std::fs::write(path, contents).map_err(|error| error.to_string())
+    write_preferences(path, &value)
 }
 
 #[cfg(test)]
@@ -176,6 +202,55 @@ mod tests {
         assert_eq!(loaded.left, 210.0);
         assert_eq!(loaded.preview, 410.0);
         assert_eq!(loaded.right, 300.0);
+    }
+
+    #[test]
+    fn deliberately_narrow_but_current_inspector_width_is_preserved() {
+        let layout = WorkspaceSize {
+            left: 300.0,
+            preview: 600.0,
+            right: 275.0,
+        };
+        assert_eq!(migrate_workspace_layout(layout), layout);
+        let legacy = WorkspaceSize {
+            left: 300.0,
+            preview: 600.0,
+            right: 240.0,
+        };
+        assert_eq!(migrate_workspace_layout(legacy).right, 300.0);
+    }
+
+    #[test]
+    fn workspace_writes_are_atomic_and_leave_no_temporary_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ui-preferences.json");
+        write_workspace_layout(
+            &path,
+            WorkspaceSize {
+                left: 300.0,
+                preview: 600.0,
+                right: 300.0,
+            },
+        )
+        .unwrap();
+        // A second write must replace the first without ever exposing a
+        // half-written file, and must clean up its temporary sibling.
+        write_workspace_layout(
+            &path,
+            WorkspaceSize {
+                left: 310.0,
+                preview: 620.0,
+                right: 320.0,
+            },
+        )
+        .unwrap();
+        let names: Vec<String> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["ui-preferences.json".to_owned()]);
+        assert_eq!(read_workspace_layout(&path).unwrap().right, 320.0);
     }
 
     #[test]

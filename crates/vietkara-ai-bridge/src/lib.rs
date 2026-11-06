@@ -61,6 +61,11 @@ pub const PROTOCOL_VERSION: u32 = 1;
 /// 4500-char truncation Python applies to job errors (`engine.command`).
 pub const MAX_STDERR_TAIL_CHARS: usize = 4500;
 
+/// Hard cap on the stderr bytes retained in memory. A worker that logs
+/// heavily must not be able to grow the bridge's memory without bound;
+/// only the tail is kept (it is what error reports surface).
+const MAX_STDERR_BYTES: usize = 64 * 1024;
+
 /// How long `Worker::run` waits for a child to exit on its own after it
 /// has sent a terminal (result/error) message, before killing it.
 const TERMINAL_EXIT_GRACE: Duration = Duration::from_secs(2);
@@ -381,10 +386,25 @@ impl Worker {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let request_line = request.to_line()?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(request_line.as_bytes())?;
-            stdin.flush()?;
+        let request_line = match request.to_line() {
+            Ok(line) => line,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+        };
+        if let Some(mut stdin) = child.stdin.take()
+            && let Err(error) = stdin
+                .write_all(request_line.as_bytes())
+                .and_then(|()| stdin.flush())
+        {
+            // `Child`'s destructor does not terminate the process, so a
+            // failed handshake must kill the worker explicitly instead of
+            // leaving an orphan waiting forever for a request line.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error.into());
         }
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
@@ -393,12 +413,27 @@ impl Worker {
         let stderr_writer = Arc::clone(&stderr_shared);
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stderr);
-            let mut buf = String::new();
-            // Read to EOF; the child closing stderr ends this thread.
-            let _ = reader.read_to_string(&mut buf);
-            if let Ok(mut guard) = stderr_writer.lock() {
-                *guard = buf;
+            let mut bytes = Vec::new();
+            let mut chunk = [0u8; 4096];
+            // Read to EOF; the child closing stderr ends this thread. Keep
+            // only the tail so a chatty worker cannot exhaust memory.
+            loop {
+                match reader.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => {
+                        bytes.extend_from_slice(&chunk[..read]);
+                        if bytes.len() > MAX_STDERR_BYTES {
+                            let excess = bytes.len() - MAX_STDERR_BYTES;
+                            bytes.drain(..excess);
+                        }
+                    }
+                }
             }
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let mut guard = stderr_writer
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *guard = text;
         });
 
         let (sender, lines) = mpsc::channel::<Result<String, std::io::Error>>();
@@ -447,8 +482,12 @@ impl Worker {
     }
 
     fn stderr_tail(&self) -> String {
-        let guard = self.stderr.lock().map(|g| g.clone()).unwrap_or_default();
-        tail_chars(&guard, MAX_STDERR_TAIL_CHARS)
+        let text = self
+            .stderr
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        tail_chars(&text, MAX_STDERR_TAIL_CHARS)
     }
 
     fn kill_and_wait(&mut self) {
@@ -524,18 +563,24 @@ impl Worker {
                 return Err(AiError::Timeout);
             }
             match self.lines.recv_timeout(remaining.min(POLL_INTERVAL)) {
-                Ok(Ok(line)) => match parse_message(&line, &self.request.request_id)? {
-                    None => continue,
-                    Some(AiMessage::Progress {
+                Ok(Ok(line)) => match parse_message(&line, &self.request.request_id) {
+                    Ok(None) => continue,
+                    Ok(Some(AiMessage::Progress {
                         progress, message, ..
-                    }) => on_progress(progress, &message),
-                    Some(AiMessage::Result { result, .. }) => {
+                    })) => on_progress(progress, &message),
+                    Ok(Some(AiMessage::Result { result, .. })) => {
                         self.finish_after_terminal();
                         return Ok(result);
                     }
-                    Some(AiMessage::Error { error, .. }) => {
+                    Ok(Some(AiMessage::Error { error, .. })) => {
                         self.finish_after_terminal();
                         return Err(AiError::WorkerFailed(error));
+                    }
+                    Err(error) => {
+                        // A protocol violation leaves the worker running;
+                        // kill it before returning so no child is orphaned.
+                        self.kill_and_wait();
+                        return Err(error);
                     }
                 },
                 Ok(Err(_)) => return Err(self.exited_error()),
@@ -543,6 +588,15 @@ impl Worker {
                 Err(RecvTimeoutError::Disconnected) => return Err(self.exited_error()),
             }
         }
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        // `std::process::Child` does not kill on drop. Without this, a
+        // `Worker` dropped before (or instead of) `run` would leave the
+        // Python process alive, holding models and file handles.
+        self.kill_and_wait();
     }
 }
 

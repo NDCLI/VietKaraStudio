@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/rust-gpui-rewrite"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  # The six headless crates build on Linux without the GPUI/windowing stack,
+  # so this job gives fast feedback on domain/storage/jobs/media/render/bridge.
+  rust-headless:
+    name: Rust headless crates (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.99.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: >
+          cargo clippy
+          -p vietkara-domain
+          -p vietkara-storage
+          -p vietkara-jobs
+          -p vietkara-media
+          -p vietkara-render
+          -p vietkara-ai-bridge
+          --all-targets -- -D warnings
+      - name: Test
+        run: >
+          cargo test
+          -p vietkara-domain
+          -p vietkara-storage
+          -p vietkara-jobs
+          -p vietkara-media
+          -p vietkara-render
+          -p vietkara-ai-bridge
+
+  # GPUI needs a real Windows toolchain (MSVC + WebView2/DirectX). This job
+  # builds and tests the app plus the whole workspace.
+  rust-windows:
+    name: Rust workspace (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.99.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy (workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test (workspace)
+        run: cargo test --workspace
+      - name: Build app (release smoke)
+        run: cargo build -p vietkara-app --release
+
+  # Baseline scripting checks. The full Python suite needs the local
+  # resources/source fixtures and AI model cache, so only syntax plus the
+  # dependency-free Node tests run here.
+  scripting:
+    name: Python + Node baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Python syntax
+        run: >
+          python -m compileall -q .
+          -x "(^|/)(\.venv|target|third-party|tools|releases|__pycache__)/"
+      - name: Node tapping/timeline tests
+        run: node --test tests/tapping.test.js tests/timeline_edit.test.js
