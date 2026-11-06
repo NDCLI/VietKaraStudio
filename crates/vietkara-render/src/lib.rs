@@ -1969,6 +1969,41 @@ mod tests {
         std::fs::write(path, png).unwrap();
     }
 
+    fn render_pixel(
+        ffmpeg: &str,
+        root: &Path,
+        output: &Path,
+        time: f64,
+        x: usize,
+        y: usize,
+    ) -> [u8; 3] {
+        let rendered_frame = std::process::Command::new(ffmpeg)
+            .args(["-v", "error", "-ss"])
+            .arg(format!("{time:.3}"))
+            .args(["-i"])
+            .arg(output.file_name().unwrap())
+            .args([
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "pipe:1",
+            ])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            rendered_frame.status.success(),
+            "could not decode frame at {time}s: {}",
+            String::from_utf8_lossy(&rendered_frame.stderr)
+        );
+        let offset = (y * 320 + x) * 3;
+        let pixel = &rendered_frame.stdout[offset..offset + 3];
+        [pixel[0], pixel[1], pixel[2]]
+    }
+
     fn row() -> RowAnim {
         RowAnim {
             show_start: 1.0,
@@ -2895,13 +2930,14 @@ mod tests {
                     SceneKeyframe {
                         x: 25.0,
                         y: 40.0,
+                        opacity: 20.0,
                         ..SceneKeyframe::default()
                     },
                     SceneKeyframe {
                         x: 75.0,
                         y: 60.0,
                         scale: 160.0,
-                        ..SceneKeyframe::default()
+                        opacity: 80.0,
                     },
                 ],
             }),
@@ -2924,35 +2960,8 @@ mod tests {
                 .unwrap_or("")
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
-        let scene_pixel = |time: f64| {
-            let rendered_frame = std::process::Command::new(&argv[0])
-                .args(["-v", "error", "-ss"])
-                .arg(format!("{time:.3}"))
-                .args(["-i"])
-                .arg(out.file_name().unwrap())
-                .args([
-                    "-frames:v",
-                    "1",
-                    "-f",
-                    "rawvideo",
-                    "-pix_fmt",
-                    "rgb24",
-                    "pipe:1",
-                ])
-                .current_dir(root)
-                .output()
-                .unwrap();
-            assert!(
-                rendered_frame.status.success(),
-                "could not decode scene frame: {}",
-                String::from_utf8_lossy(&rendered_frame.stderr)
-            );
-            let offset = (10 * 320 + 10) * 3;
-            let pixel = &rendered_frame.stdout[offset..offset + 3];
-            [pixel[0], pixel[1], pixel[2]]
-        };
-        let before_scene = scene_pixel(0.1);
-        let during_scene = scene_pixel(0.5);
+        let before_scene = render_pixel(&argv[0], root, &out, 0.1, 10, 10);
+        let during_scene = render_pixel(&argv[0], root, &out, 0.5, 10, 10);
         let scene_graph = &argv[argv
             .iter()
             .position(|argument| argument == "-filter_complex")
@@ -3003,6 +3012,33 @@ mod tests {
             String::from_utf8_lossy(&render.stderr)
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
+        let countdown_on = render_pixel(&argv[0], root, &out, 0.5, 15, 25);
+        let countdown_off = render_pixel(&argv[0], root, &out, 0.9, 15, 25);
+        assert!(
+            countdown_on[1] > 140 && countdown_on[2] < 45,
+            "countdown image should be visible during its interval: {countdown_on:?}"
+        );
+        assert!(
+            countdown_on[1].abs_diff(countdown_off[1]) > 90,
+            "countdown should disappear after its interval: on={countdown_on:?}, off={countdown_off:?}"
+        );
+        let logo_pixel = render_pixel(&argv[0], root, &out, 0.5, 255, 12);
+        let outside_logo = render_pixel(&argv[0], root, &out, 0.5, 230, 12);
+        assert!(
+            logo_pixel[1] > outside_logo[1].saturating_add(70),
+            "pulsing logo should composite at its configured position: logo={logo_pixel:?}, outside={outside_logo:?}"
+        );
+        let decoration_early = render_pixel(&argv[0], root, &out, 0.5, 107, 104);
+        let decoration_late = render_pixel(&argv[0], root, &out, 0.9, 107, 104);
+        let outside_decoration = render_pixel(&argv[0], root, &out, 0.5, 190, 104);
+        assert!(
+            decoration_early[1] > outside_decoration[1].saturating_add(30),
+            "scene decoration should composite over the scene: decoration={decoration_early:?}, outside={outside_decoration:?}"
+        );
+        assert!(
+            decoration_late[1] > decoration_early[1].saturating_add(12),
+            "scene decoration opacity keyframes should interpolate: early={decoration_early:?}, late={decoration_late:?}"
+        );
         overlay_inputs.logo.as_mut().unwrap().effect = "float".into();
         let argv = ffmpeg_command(&profile, &overlay_inputs).unwrap();
         let render = std::process::Command::new(&argv[0])
