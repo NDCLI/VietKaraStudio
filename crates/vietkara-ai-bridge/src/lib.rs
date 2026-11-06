@@ -308,6 +308,9 @@ pub struct Worker {
     child: Option<Child>,
     lines: mpsc::Receiver<Result<String, std::io::Error>>,
     stderr: Arc<Mutex<String>>,
+    /// Set by the stderr drain thread once it reaches EOF, so an error
+    /// report can wait briefly for the tail instead of racing it.
+    stderr_done: Arc<AtomicBool>,
 }
 
 fn tail_chars(text: &str, max_chars: usize) -> String {
@@ -410,30 +413,33 @@ impl Worker {
         let stderr = child.stderr.take().expect("stderr was piped");
 
         let stderr_shared = Arc::new(Mutex::new(String::new()));
+        let stderr_done = Arc::new(AtomicBool::new(false));
         let stderr_writer = Arc::clone(&stderr_shared);
+        let stderr_finished = Arc::clone(&stderr_done);
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stderr);
             let mut bytes = Vec::new();
             let mut chunk = [0u8; 4096];
             // Read to EOF; the child closing stderr ends this thread. Keep
-            // only the tail so a chatty worker cannot exhaust memory.
+            // only the tail so a chatty worker cannot exhaust memory, and
+            // publish it as it arrives so an error report racing the final
+            // flush still gets the most recent output.
             loop {
-                match reader.read(&mut chunk) {
+                let read = match reader.read(&mut chunk) {
                     Ok(0) | Err(_) => break,
-                    Ok(read) => {
-                        bytes.extend_from_slice(&chunk[..read]);
-                        if bytes.len() > MAX_STDERR_BYTES {
-                            let excess = bytes.len() - MAX_STDERR_BYTES;
-                            bytes.drain(..excess);
-                        }
-                    }
+                    Ok(read) => read,
+                };
+                bytes.extend_from_slice(&chunk[..read]);
+                if bytes.len() > MAX_STDERR_BYTES {
+                    let excess = bytes.len() - MAX_STDERR_BYTES;
+                    bytes.drain(..excess);
                 }
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                *stderr_writer
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = text;
             }
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            let mut guard = stderr_writer
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            *guard = text;
+            stderr_finished.store(true, Ordering::Release);
         });
 
         let (sender, lines) = mpsc::channel::<Result<String, std::io::Error>>();
@@ -463,6 +469,7 @@ impl Worker {
             child: Some(child),
             lines,
             stderr: stderr_shared,
+            stderr_done,
         })
     }
 
@@ -536,6 +543,13 @@ impl Worker {
             },
             None => None,
         };
+        // Reaping the child closes the pipe, but the drain thread may still
+        // be publishing its final read. Wait a bounded moment so the report
+        // keeps the worker's last words instead of racing to an empty tail.
+        let deadline = Instant::now() + Duration::from_millis(250);
+        while !self.stderr_done.load(Ordering::Acquire) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
         AiError::WorkerExited {
             code,
             stderr_tail: self.stderr_tail(),
@@ -954,10 +968,14 @@ print(json.dumps({"protocol_version": 1, "request_id": req["request_id"], "type"
         let error = worker.run(|_, _| {}).unwrap_err();
         match error {
             AiError::WorkerExited { stderr_tail, .. } => {
+                assert_eq!(
+                    stderr_tail.chars().count(),
+                    MAX_STDERR_TAIL_CHARS,
+                    "stderr tail should keep the last {MAX_STDERR_TAIL_CHARS} chars"
+                );
                 assert!(
-                    stderr_tail.chars().count() <= MAX_STDERR_TAIL_CHARS,
-                    "stderr tail should be bounded, got {} chars",
-                    stderr_tail.chars().count()
+                    stderr_tail.chars().all(|character| character == 'x'),
+                    "stderr tail should contain the worker's last output"
                 );
             }
             other => panic!("expected WorkerExited, got {other:?}"),

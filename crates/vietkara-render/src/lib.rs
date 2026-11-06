@@ -2463,10 +2463,6 @@ mod tests {
             .settings
             .extra
             .insert("background_type".into(), serde_json::json!("video"));
-        project.extra.insert(
-            "background_video".into(),
-            serde_json::json!({"source_file":"..\\outside.mp4"}),
-        );
         let mut inputs = RenderInputs::new("beat.wav", 8.0);
         // Windows-style traversal must also be rejected on Unix hosts, where
         // `\` is a valid file name character rather than a separator.
@@ -2491,14 +2487,6 @@ mod tests {
                 "background name {name:?} should be rejected as a non-basename"
             );
         }
-        project.extra.insert(
-            "background_video".into(),
-            serde_json::json!({"source_file":"..\\outside.mp4"}),
-        );
-        assert!(matches!(
-            inputs.configure_background_from_project(&project, directory.path()),
-            Err(RenderError::InvalidBackgroundPath(_))
-        ));
         project.extra.insert(
             "background_video".into(),
             serde_json::json!({"source_file":"missing.mp4"}),

@@ -19,6 +19,16 @@
 >   ảnh trong storage về một helper.
 > - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --
 >   -D warnings` và `cargo test --workspace` đều pass trên Windows 11.
+> - CI Linux phát hiện một lỗi thật: tên file kiểu Windows như
+>   `..\outside.mp4` được chấp nhận trên Unix (vì `\` không phải separator),
+>   nên background có thể trượt khỏi thư mục project khi mở project tạo trên
+>   Windows. Đã sửa bằng `vietkara_render::is_project_basename` (chặn cả `/`
+>   và `\`, `.`/`..`, tên rỗng) và dùng chung cho render background lẫn preview
+>   video; thêm regression test cho cả hai kiểu separator.
+> - Job test nay chạy `--no-fail-fast`, đăng tên test fail thành annotation và
+>   upload `cargo-test.log` để còn chẩn đoán khi không có quyền xem log. Linux
+>   headless **xanh**; stderr của AI worker được publish dần và chờ có giới hạn
+>   khi child thoát để báo lỗi không bị rỗng do race.
 > - Còn lại chỉ chờ môi trường: QA Windows sạch/scale 150%/VNI-TCVN3, runtime
 >   nhiều audio device, batch/AI trên fixture thật, golden full-layout, và
 >   updater E2E khi có Rust release công khai trên GitHub.

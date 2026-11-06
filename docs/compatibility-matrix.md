@@ -61,6 +61,17 @@
   1 ignored, 0 failed**; trước đây cùng môi trường fail 7 test.
 - Trên máy có FFmpeg/ffprobe và Python đầy đủ, các test trên vẫn chạy bình
   thường; CI Windows có thể cài thêm FFmpeg nếu muốn bật integration.
+- CI Linux đã bắt được lỗi cross-platform thật: project tạo trên Windows với
+  `source_file` dạng `..\outside.mp4` từng được chấp nhận trên Unix (vì `\`
+  là ký tự tên file hợp lệ ở đó). `vietkara_render::is_project_basename` nay
+  chặn `/`, `\`, `.`, `..` và tên rỗng trên **mọi** host; render background và
+  preview video trong app dùng cùng helper, kèm test hồi quy.
+- Job test chạy `--no-fail-fast`, in tên test fail thành annotation của
+  check-run và upload `cargo-test.log`; nhờ vậy vẫn chẩn đoán được khi tài
+  khoản không có quyền đọc log Actions. Linux headless đã xanh sau khi sửa.
+- Stderr của AI worker được publish dần trong lúc chạy và `exited_error` chờ
+  có giới hạn (250 ms) cho thread drain, tránh báo lỗi rỗng do race; test kiểm
+  tra tail đúng 4.500 ký tự cuối.
 
 ## Trạng thái các crate Rust
 
