@@ -3735,6 +3735,21 @@ impl Render for Studio {
             .get("role_icons")
             .and_then(Value::as_bool)
             .unwrap_or(true);
+        let role_a_icon = settings
+            .extra
+            .get("role_a_icon")
+            .and_then(Value::as_str)
+            .unwrap_or("man-new-blue.png");
+        let role_b_icon = settings
+            .extra
+            .get("role_b_icon")
+            .and_then(Value::as_str)
+            .unwrap_or("lady-pink.png");
+        let role_all_icon = settings
+            .extra
+            .get("role_all_icon")
+            .and_then(Value::as_str)
+            .unwrap_or("men(blue) & lady(pink).png");
         let countdown = settings
             .extra
             .get("countdown")
@@ -4325,20 +4340,38 @@ impl Render for Studio {
         for &row_index in &active_plan_rows {
             let row = &layout.rows[row_index];
             if let Some(marker) = &row.role_marker {
-                let symbol = match marker.role.as_str() {
-                    "male" => "♂",
-                    "female" => "♀",
-                    _ => "♫",
-                };
-                current_preview.push(
-                    div()
-                        .absolute()
-                        .left(px(marker.x as f32 * preview_scale))
-                        .top(px(marker.y as f32 * preview_scale))
-                        .text_size(px(marker.size as f32 * preview_scale))
-                        .text_color(rgb(preview_hex_color(&marker.color)))
-                        .child(symbol),
-                );
+                let filename =
+                    vietkara_render::role_icons::role_icon_setting(&marker.role, &settings.extra);
+                if let Some(icon) = vietkara_render::role_icons::role_icon(filename) {
+                    current_preview.extend(icon.rectangles.iter().map(|rectangle| {
+                        div()
+                            .absolute()
+                            .left(px(
+                                (marker.x + rectangle.x * marker.size) as f32 * preview_scale
+                            ))
+                            .top(px(
+                                (marker.y + rectangle.y * marker.size) as f32 * preview_scale
+                            ))
+                            .w(px((rectangle.width * marker.size) as f32 * preview_scale))
+                            .h(px((rectangle.height * marker.size) as f32 * preview_scale))
+                            .bg(gpui::rgba(u32::from_be_bytes(rectangle.color)))
+                    }));
+                } else {
+                    let symbol = match marker.role.as_str() {
+                        "male" => "♂",
+                        "female" => "♀",
+                        _ => "♫",
+                    };
+                    current_preview.push(
+                        div()
+                            .absolute()
+                            .left(px(marker.x as f32 * preview_scale))
+                            .top(px(marker.y as f32 * preview_scale))
+                            .text_size(px(marker.size as f32 * preview_scale))
+                            .text_color(rgb(preview_hex_color(&marker.color)))
+                            .child(symbol),
+                    );
+                }
             }
         }
         if let Some(title) = layout.title.as_ref().filter(|_| title_visible) {
@@ -5121,6 +5154,16 @@ impl Render for Studio {
                                         let enabled=this.editor.project().settings.extra.get("role_icons").and_then(Value::as_bool).unwrap_or(true);
                                         this.update_setting("role_icons",Value::Bool(!enabled),cx);
                                     }))))
+                                .when(singing_mode == "duet" && role_icons, |panel| panel
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                        .child(format!("Icon Nam: {}", if role_a_icon.contains("green") {"Xanh lá"} else {"Xanh dương"}))
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("role_a_icon", &["man-new-blue.png","man-new-green.png"],cx))))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                        .child(format!("Icon Nữ: {}", if role_b_icon.contains("darkred") {"Đỏ đậm"} else if role_b_icon.contains("red") {"Đỏ"} else {"Hồng"}))
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("role_b_icon", &["lady-pink.png","lady-red.png","lady-darkred.png"],cx))))
+                                    .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                        .child(format!("Icon Cùng hát: {}", match (role_all_icon.contains("green"), role_all_icon.contains("red")) {(true,true)=>"Nam xanh lá · Nữ đỏ",(true,false)=>"Nam xanh lá · Nữ hồng",(false,true)=>"Nam xanh dương · Nữ đỏ",_=>"Nam xanh dương · Nữ hồng"}))
+                                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_setting("role_all_icon", &["men(blue) & lady(pink).png","men(blue) & lady(red).png","men(green) & lady(pink).png","men(green) & lady(red).png"],cx)))))
                                 .child(div().mt_4().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("COUNTDOWN TRƯỚC LỜI"))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(format!("Biểu tượng: {countdown}"))

@@ -1,8 +1,8 @@
 //! ASS lyric serialization from the shared measured display plan.
 //!
 //! This native pass covers line timing/animation, karaoke word sweeps,
-//! gradients, subtitle backing, title cards and vector count-in icons. Role
-//! artwork remains open.
+//! gradients, subtitle backing, title cards, bundled role artwork and vector
+//! count-in icons.
 
 use serde_json::Value;
 use vietkara_domain::Project;
@@ -248,6 +248,42 @@ fn role_marker_path(role: &str, size: f64) -> String {
         }
     }
     path.into_inner()
+}
+
+/// Convert the bundled role artwork into ASS vector rectangles. Keeping the
+/// pixels embedded means exported subtitles remain portable without external
+/// image attachments, matching the Python renderer's behavior.
+fn role_icon_layers(filename: &str, size: f64) -> Option<Vec<([u8; 4], String)>> {
+    let icon = crate::role_icons::role_icon(filename)?;
+    let mut layers = std::collections::BTreeMap::<[u8; 4], Vec<String>>::new();
+    for rectangle in &icon.rectangles {
+        let x1 = rectangle.x * size;
+        let x2 = (rectangle.x + rectangle.width) * size;
+        let y1 = rectangle.y * size;
+        let y2 = (rectangle.y + rectangle.height) * size;
+        layers.entry(rectangle.color).or_default().push(format!(
+            "m {x1:.3} {y1:.3} l {x2:.3} {y1:.3} {x2:.3} {y2:.3} {x1:.3} {y2:.3} {x1:.3} {y1:.3}"
+        ));
+    }
+    let width = icon.width * size;
+    Some(
+        layers
+            .into_iter()
+            .map(|(rgba, paths)| {
+                (
+                    rgba,
+                    format!(
+                        "m 0 0 l 0 0 m {width:.3} {size:.3} l {width:.3} {size:.3} {}",
+                        paths.join(" ")
+                    ),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn role_icon_setting<'a>(role: &str, settings: &'a serde_json::Map<String, Value>) -> &'a str {
+    crate::role_icons::role_icon_setting(role, settings)
 }
 
 fn readability_events(
@@ -765,20 +801,41 @@ pub fn build_lyrics_ass_with_scenes(
     lines.extend(readability_events(plan, settings, scenes));
     for (row_index, row) in plan.rows.iter().enumerate() {
         if let Some(marker) = &row.role_marker {
-            let tags = format!(
-                "\\an7\\pos({:.2},{:.2})\\p1\\bord0\\shad0\\1c{}",
-                marker.x,
-                marker.y,
-                ass_color(&marker.color, 100)
-            );
-            if let Some(event) = dialogue(
-                4,
-                row.show_start,
-                row.show_end,
-                &tags,
-                &role_marker_path(&marker.role, marker.size),
-            ) {
-                lines.push(event);
+            let filename = role_icon_setting(&marker.role, settings);
+            if let Some(layers) = role_icon_layers(filename, marker.size) {
+                let mut icon_row = row_anim(row);
+                icon_row.x = marker.x;
+                icon_row.y = marker.y;
+                let icon_animation = animation(&icon_row, &options);
+                for (rgba, drawing) in layers {
+                    let tags = format!(
+                        "{icon_animation}\\fscx100\\fscy100\\p1\\bord0\\shad0\\1c&H{:02X}{:02X}{:02X}&\\1a&H{:02X}&",
+                        rgba[2],
+                        rgba[1],
+                        rgba[0],
+                        255 - rgba[3]
+                    );
+                    if let Some(event) = dialogue(4, row.show_start, row.show_end, &tags, &drawing)
+                    {
+                        lines.push(event);
+                    }
+                }
+            } else {
+                let tags = format!(
+                    "\\an7\\pos({:.2},{:.2})\\p1\\bord0\\shad0\\1c{}",
+                    marker.x,
+                    marker.y,
+                    ass_color(&marker.color, 100)
+                );
+                if let Some(event) = dialogue(
+                    4,
+                    row.show_start,
+                    row.show_end,
+                    &tags,
+                    &role_marker_path(&marker.role, marker.size),
+                ) {
+                    lines.push(event);
+                }
             }
         }
         let anim = animation(&row_anim(row), &options);
@@ -1253,6 +1310,26 @@ mod tests {
             ass.lines()
                 .any(|line| line.starts_with("Dialogue: 4,") && line.contains("\\p1"))
         );
+    }
+
+    #[test]
+    fn role_icon_setting_selects_embedded_artwork_for_ass_export() {
+        let mut project = project();
+        project.settings = Settings::from_value(serde_json::json!({
+            "singing_mode":"duet", "role_a_icon":"man-new-green.png"
+        }))
+        .unwrap();
+        project.words[0].role = "male".into();
+        let plan = crate::layout::display_plan(&project, &FixedWidth);
+        let ass = build_lyrics_ass(&project, &plan);
+        let icon_events = ass
+            .lines()
+            .filter(|line| line.starts_with("Dialogue: 4,"))
+            .collect::<Vec<_>>();
+        assert!(!icon_events.is_empty());
+        assert!(icon_events.iter().all(|line| line.contains("\\p1")));
+        assert!(icon_events.iter().any(|line| line.contains("\\1c&H")));
+        assert!(!ass.contains("♂"));
     }
 
     #[test]

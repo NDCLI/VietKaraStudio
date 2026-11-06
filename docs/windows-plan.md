@@ -723,6 +723,14 @@ legacy `voice_c`…`voice_f` vẫn được bảo toàn trong project cũ; khi p
 ASS, `voice_c`/`voice_e` dùng lane Nam và `voice_d`/`voice_f` dùng lane Nữ.
 Không còn thêm lane/màu vai thứ ba đến thứ sáu trong giao diện.
 
+### W3/W5: icon vai hát theo artwork baseline
+
+Đưa chín PNG icon Nam/Nữ/Cùng hát từ baseline vào `vietkara-render`, lượng
+tử xuống 32 màu và cache scanline rectangles dùng chung. Preview GPUI và ASS
+export cùng đọc một geometry; icon vẫn được nhúng trong ASS, không phụ thuộc
+file ngoài. Inspector cho đổi các biến thể màu theo từng nhóm. Code mới đang
+chờ lượt kiểm tra gom; cần đối chiếu ảnh preview/export trên Windows sau build.
+
 ### Tham khảo GPUI Kit
 
 `https://gpui-kit.com/` (trang hiện giới thiệu gpui-kit 0.9.0) hữu ích làm

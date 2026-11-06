@@ -6380,6 +6380,7 @@ dependencies = [
 name = "vietkara-render"
 version = "0.1.0"
 dependencies = [
+ "color_quant",
  "image",
  "serde",
  "serde_json",

@@ -17,7 +17,8 @@
 //! * `ffmpeg_command` — a pure argv builder for color/image/video
 //!   backgrounds, scene layers, logo/countdown overlays and guide audio.
 //! * `layout::display_plan` and `ass::build_lyrics_ass` — measured lyric row
-//!   geometry and the first native subtitle pass, consuming the same plan.
+//!   geometry and the native subtitle pass, consuming the same plan. Role
+//!   icon artwork is quantized and embedded as portable ASS vector rectangles.
 //! * `verify_output` — uses ffprobe JSON with an ffmpeg-summary fallback.
 //!
 //! # Remaining parity work
@@ -25,8 +26,8 @@
 //! * `TextMeasurer` is injected so preview/export can use the same actual font
 //!   face. GPUI supplies the Windows preview measurer and passes its cached
 //!   `DisplayPlan` to `prepare_lyrics_ass` in the export action.
-//! * ASS covers planned row placement, subtitle backing, duet colors and vector
-//!   role markers, timed karaoke sweeps, gradients, title cards, scene-aware
+//! * ASS covers planned row placement, subtitle backing, duet colors and the
+//!   baseline's bundled role icon artwork, timed karaoke sweeps, gradients, title cards, scene-aware
 //!   readability backing and vector countdown icons. VNI/TCVN3 text mapping is
 //!   supported; bundled fonts and custom bitmap role artwork remain open.
 //! * Scene image and decoration position/scale/alpha, logo effects and custom
@@ -45,6 +46,7 @@ use thiserror::Error;
 
 pub mod ass;
 pub mod layout;
+pub mod role_icons;
 
 // ---------------------------------------------------------------------------
 // Python-compatible numeric formatting
