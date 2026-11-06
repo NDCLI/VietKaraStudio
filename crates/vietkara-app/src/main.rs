@@ -8386,7 +8386,7 @@ fn scene_fade_opacity(progress: f64, duration: f64, fade_seconds: f64) -> f32 {
 fn background_video_preview_path(directory: &std::path::Path, metadata: &Value) -> Option<PathBuf> {
     ["preview_file", "source_file"].into_iter().find_map(|key| {
         let name = metadata.get(key)?.as_str()?;
-        if PathBuf::from(name).file_name()?.to_str()? != name {
+        if !vietkara_render::is_project_basename(name) {
             return None;
         }
         let path = directory.join(name);

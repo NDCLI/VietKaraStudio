@@ -828,6 +828,17 @@ pub struct RenderInputs {
     pub encoder: VideoEncoder,
 }
 
+/// True when `name` is a plain file name that can be joined to a project
+/// directory on any host. Both `/` and `\` are rejected even on the host
+/// that does not treat one of them as a separator: a project written on
+/// Windows must not be able to escape its directory when opened on Unix
+/// (and vice versa).
+pub fn is_project_basename(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains(['/', '\\'])
+        && Path::new(name).file_name().and_then(|value| value.to_str()) == Some(name)
+}
+
 impl RenderInputs {
     pub fn new(beat: impl Into<PathBuf>, duration: f64) -> Self {
         Self {
@@ -888,11 +899,10 @@ impl RenderInputs {
             .and_then(serde_json::Value::as_str)
             .unwrap_or("auto");
         let local_file = |name: &str| -> Result<Option<PathBuf>, RenderError> {
-            let path = PathBuf::from(name);
-            if path.file_name().and_then(|value| value.to_str()) != Some(name) {
+            if !is_project_basename(name) {
                 return Err(RenderError::InvalidBackgroundPath(name.to_owned()));
             }
-            let path = directory.join(path);
+            let path = directory.join(name);
             Ok(path.is_file().then_some(path))
         };
         self.background = match kind {
@@ -2458,6 +2468,33 @@ mod tests {
             serde_json::json!({"source_file":"..\\outside.mp4"}),
         );
         let mut inputs = RenderInputs::new("beat.wav", 8.0);
+        // Windows-style traversal must also be rejected on Unix hosts, where
+        // `\` is a valid file name character rather than a separator.
+        for name in [
+            "..\\outside.mp4",
+            "../outside.mp4",
+            "nested\\inside.mp4",
+            "nested/inside.mp4",
+            "",
+            ".",
+            "..",
+        ] {
+            project.extra.insert(
+                "background_video".into(),
+                serde_json::json!({"source_file": name}),
+            );
+            assert!(
+                matches!(
+                    inputs.configure_background_from_project(&project, directory.path()),
+                    Err(RenderError::InvalidBackgroundPath(_))
+                ),
+                "background name {name:?} should be rejected as a non-basename"
+            );
+        }
+        project.extra.insert(
+            "background_video".into(),
+            serde_json::json!({"source_file":"..\\outside.mp4"}),
+        );
         assert!(matches!(
             inputs.configure_background_from_project(&project, directory.path()),
             Err(RenderError::InvalidBackgroundPath(_))

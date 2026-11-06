@@ -43,14 +43,35 @@ jobs:
           -p vietkara-ai-bridge
           --all-targets -- -D warnings
       - name: Test
-        run: >
-          cargo test
-          -p vietkara-domain
-          -p vietkara-storage
-          -p vietkara-jobs
-          -p vietkara-media
-          -p vietkara-render
-          -p vietkara-ai-bridge
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p vietkara-domain \
+            -p vietkara-storage \
+            -p vietkara-jobs \
+            -p vietkara-media \
+            -p vietkara-render \
+            -p vietkara-ai-bridge \
+            --no-fail-fast 2>&1 | tee cargo-test.log
+          status=${PIPESTATUS[0]}
+          # Failure details are not readable without repo admin rights, so
+          # surface the failing test names as check-run annotations.
+          if [ "$status" -ne 0 ]; then
+            grep -E '^test .* FAILED$|^---- .* stdout ----$|^thread .* panicked at' cargo-test.log \
+              | head -n 40 \
+              | while IFS= read -r line; do
+                  echo "::error title=Linux test failure::$line"
+                done
+          fi
+          exit "$status"
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cargo-test-log
+          path: cargo-test.log
+          if-no-files-found: ignore
 
   # GPUI needs a real Windows toolchain (MSVC + WebView2/DirectX). This job
   # builds and tests the app plus the whole workspace.
@@ -70,7 +91,26 @@ jobs:
       - name: Clippy (workspace)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test (workspace)
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --no-fail-fast 2>&1 | tee cargo-test.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E '^test .* FAILED$|^---- .* stdout ----$|^thread .* panicked at' cargo-test.log \
+              | head -n 40 \
+              | while IFS= read -r line; do
+                  echo "::error title=Windows test failure::$line"
+                done
+          fi
+          exit "$status"
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-cargo-test-log
+          path: cargo-test.log
+          if-no-files-found: ignore
       - name: Build app (release smoke)
         run: cargo build -p vietkara-app --release
 
