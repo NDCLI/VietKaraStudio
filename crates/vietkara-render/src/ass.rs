@@ -487,7 +487,6 @@ fn gradient_bands(
 }
 
 struct LyricsMvContext<'a> {
-    line_height: f64,
     plan: &'a DisplayPlan,
     settings: &'a serde_json::Map<String, Value>,
     unsung: &'a str,
@@ -495,26 +494,10 @@ struct LyricsMvContext<'a> {
 }
 
 fn lyricsmv_ghost_events(
-    row: &DisplayRow,
-    neighbor: &DisplayRow,
-    delta: isize,
+    ghost: &DisplayRow,
+    opacity_percent: u8,
     context: &LyricsMvContext<'_>,
 ) -> Vec<String> {
-    let scale = 0.7;
-    let mut ghost = row.clone();
-    ghost.text.clone_from(&neighbor.text);
-    ghost.font_size = neighbor.font_size * scale;
-    ghost.width = neighbor.width * scale;
-    ghost.height = neighbor.height * scale;
-    ghost.x = match row.align.as_str() {
-        "left" => row.x,
-        "right" => row.x + row.width - ghost.width,
-        _ => (f64::from(context.plan.width) - ghost.width) / 2.0,
-    };
-    ghost.y = row.y + delta as f64 * row.font_size * context.line_height;
-    ghost.section_start = false;
-    ghost.section_end = false;
-    let opacity_percent = (65 - delta.unsigned_abs() as u8 * 15).max(20);
     let alpha = (255.0 * (1.0 - f64::from(opacity_percent) / 100.0)).round_ties_even() as u8;
     let outline_alpha = (255.0
         * (1.0
@@ -524,42 +507,37 @@ fn lyricsmv_ghost_events(
         .round_ties_even() as u8;
     let tags = format!(
         "{}\\fs{:.3}\\1a&H{alpha:02X}&\\3a&H{outline_alpha:02X}&",
-        animation(&row_anim(&ghost), context.options),
+        animation(&row_anim(ghost), context.options),
         ghost.font_size
     );
     let text = literal(&crate::layout::font_text(&ghost.text, &context.plan.font));
-    gradient_bands(
-        &ghost,
-        context.settings,
-        context.unsung,
-        context.plan.height,
-    )
-    .into_iter()
-    .filter_map(|(top, bottom, hex_color)| {
-        let clip = if boolean(context.settings, "sung_gradient", false) && ghost.role == "all" {
-            format!("\\clip(0,{top:.2},{},{bottom:.2})", context.plan.width)
-        } else {
-            String::new()
-        };
-        dialogue(
-            2,
-            ghost.show_start,
-            ghost.show_end,
-            &format!(
-                "{tags}\\1c{}\\3c{}\\4c{}\\bord{:.2}\\shad{:.2}{clip}",
-                ass_color(&hex_color, 100),
-                ass_color(
-                    color(context.settings, "outline_unsung", "#15202a"),
-                    opacity(context.settings, "outline_unsung_opacity", 100)
+    gradient_bands(ghost, context.settings, context.unsung, context.plan.height)
+        .into_iter()
+        .filter_map(|(top, bottom, hex_color)| {
+            let clip = if boolean(context.settings, "sung_gradient", false) && ghost.role == "all" {
+                format!("\\clip(0,{top:.2},{},{bottom:.2})", context.plan.width)
+            } else {
+                String::new()
+            };
+            dialogue(
+                2,
+                ghost.show_start,
+                ghost.show_end,
+                &format!(
+                    "{tags}\\1c{}\\3c{}\\4c{}\\bord{:.2}\\shad{:.2}{clip}",
+                    ass_color(&hex_color, 100),
+                    ass_color(
+                        color(context.settings, "outline_unsung", "#15202a"),
+                        opacity(context.settings, "outline_unsung_opacity", 100)
+                    ),
+                    ass_color(color(context.settings, "shadow_color", "#000000"), 100),
+                    number(context.settings, "outline_width", 3.0).clamp(0.0, 12.0),
+                    number(context.settings, "shadow", 1.0).clamp(0.0, 15.0),
                 ),
-                ass_color(color(context.settings, "shadow_color", "#000000"), 100),
-                number(context.settings, "outline_width", 3.0).clamp(0.0, 12.0),
-                number(context.settings, "shadow", 1.0).clamp(0.0, 15.0),
-            ),
-            &text,
-        )
-    })
-    .collect()
+                &text,
+            )
+        })
+        .collect()
 }
 
 fn word_event(
@@ -860,30 +838,27 @@ pub fn build_lyrics_ass_with_scenes(
                 }
             }
             if mode == "lyricsmv" && string(settings, "mv_style", "stack") != "single" {
-                let count = if string(settings, "mv_style", "stack") == "scroll" {
-                    2isize
-                } else {
-                    1isize
-                };
                 let line_height = number(settings, "line_height", 1.4).clamp(1.0, 2.5);
                 let ghost_context = LyricsMvContext {
-                    line_height,
                     plan,
                     settings,
                     unsung,
                     options: &options,
                 };
-                for delta in -count..=count {
-                    if delta == 0 {
-                        continue;
-                    }
-                    let Some(neighbor_index) = row_index.checked_add_signed(delta) else {
-                        continue;
-                    };
-                    let Some(neighbor) = plan.rows.get(neighbor_index) else {
-                        continue;
-                    };
-                    lines.extend(lyricsmv_ghost_events(row, neighbor, delta, &ghost_context));
+                for ghost in crate::layout::lyricsmv_rows(
+                    plan,
+                    row_index,
+                    string(settings, "mv_style", "stack"),
+                    line_height,
+                )
+                .into_iter()
+                .filter(|row| !row.active)
+                {
+                    lines.extend(lyricsmv_ghost_events(
+                        &ghost.row,
+                        ghost.opacity_percent,
+                        &ghost_context,
+                    ));
                 }
             }
             continue;

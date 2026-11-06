@@ -805,7 +805,8 @@ marker; Ctrl+N cũng mở cùng banner. Nhánh xác nhận bỏ state chưa lưu
 ### W5: preview chọn dòng từ layout plan dùng chung
 
 Studio lấy các dòng đang hiển thị từ `DisplayPlan` cho cả karaoke,
-subtitle và lyricsmv. Bộ chọn dòng cũ của preview được giữ làm oracle test,
-không còn quyết định UI riêng cho non-karaoke. Tọa độ/phong cách của lyricsmv
-vẫn cần golden comparison với ASS; phần thay đổi này chỉ hợp nhất show-window
-và chọn row theo layout plan.
+subtitle và lyricsmv. Lyricsmv dùng chung phép tạo dòng ghost cho cỡ chữ,
+tọa độ, khoảng cách và opacity với ASS; preview không còn tự xếp bằng cỡ
+34/22 px. Preview cũng áp dụng font family của project và chỉ vẽ role marker
+ở các dòng đang thấy. Bộ chọn dòng cũ chỉ còn làm oracle test. Golden ảnh
+Windows và đối chiếu raster/outline với ASS vẫn chưa làm.

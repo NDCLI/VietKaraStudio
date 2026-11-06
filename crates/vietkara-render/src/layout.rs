@@ -152,6 +152,128 @@ pub struct DisplayPlan {
 }
 
 #[derive(Debug, Clone)]
+pub struct LyricsMvRow {
+    pub row: DisplayRow,
+    pub active: bool,
+    pub opacity_percent: u8,
+}
+
+struct LyricsMvGeometry<'a> {
+    line: u32,
+    text: &'a str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    font_size: f64,
+    active: bool,
+}
+
+fn lyricsmv_display_row(base: &DisplayRow, geometry: LyricsMvGeometry<'_>) -> DisplayRow {
+    DisplayRow {
+        index: base.index,
+        line: geometry.line,
+        slot: base.slot,
+        start: base.start,
+        end: base.end,
+        show_start: base.show_start,
+        show_end: base.show_end,
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        font_size: geometry.font_size,
+        align: base.align.clone(),
+        role: base.role.clone(),
+        role_marker: if geometry.active {
+            base.role_marker.clone()
+        } else {
+            None
+        },
+        text: geometry.text.to_owned(),
+        section_start: geometry.active && base.section_start,
+        section_end: geometry.active && base.section_end,
+        words: Vec::new(),
+    }
+}
+
+/// Build the active lyrics-MV line and its neighboring ghost lines with the
+/// same geometry used by preview and ASS export.
+pub fn lyricsmv_rows(
+    plan: &DisplayPlan,
+    active_index: usize,
+    style: &str,
+    line_height: f64,
+) -> Vec<LyricsMvRow> {
+    let Some(active) = plan.rows.get(active_index) else {
+        return Vec::new();
+    };
+    let count = match style {
+        "single" => 0isize,
+        "scroll" => 2,
+        _ => 1,
+    };
+    let line_height = line_height.clamp(1.0, 2.5);
+    let mut rows = vec![LyricsMvRow {
+        row: lyricsmv_display_row(
+            active,
+            LyricsMvGeometry {
+                line: active.line,
+                text: &active.text,
+                x: active.x,
+                y: active.y,
+                width: active.width,
+                height: active.height,
+                font_size: active.font_size,
+                active: true,
+            },
+        ),
+        active: true,
+        opacity_percent: 100,
+    }];
+    for delta in -count..=count {
+        if delta == 0 {
+            continue;
+        }
+        let Some(neighbor) = active_index
+            .checked_add_signed(delta)
+            .and_then(|index| plan.rows.get(index))
+        else {
+            continue;
+        };
+        let font_size = neighbor.font_size * 0.7;
+        let width = neighbor.width * 0.7;
+        let height = neighbor.height * 0.7;
+        let x = match active.align.as_str() {
+            "left" => active.x,
+            "right" => active.x + active.width - width,
+            _ => (f64::from(plan.width) - width) / 2.0,
+        };
+        let y = active.y + delta as f64 * active.font_size * line_height;
+        let row = lyricsmv_display_row(
+            active,
+            LyricsMvGeometry {
+                line: neighbor.line,
+                text: &neighbor.text,
+                x,
+                y,
+                width,
+                height,
+                font_size,
+                active: false,
+            },
+        );
+        let opacity_percent = (65 - delta.unsigned_abs() as u8 * 15).max(20);
+        rows.push(LyricsMvRow {
+            row,
+            active: false,
+            opacity_percent,
+        });
+    }
+    rows
+}
+
+#[derive(Debug, Clone)]
 pub struct TitleRow {
     pub text: String,
     pub display_text: String,
@@ -858,6 +980,46 @@ mod tests {
             );
             assert!(row.show_start <= row.start && row.start < row.show_end);
         }
+    }
+
+    #[test]
+    fn lyricsmv_preview_rows_share_measured_geometry_and_opacity() {
+        let mut project = Project::new("lyricsmv");
+        project
+            .settings
+            .extra
+            .insert("display_mode".into(), Value::String("lyricsmv".into()));
+        project.settings.font_size = 60.0;
+        project.words = (0..4)
+            .map(|line| {
+                word(
+                    &format!("dòng {line}"),
+                    line,
+                    line as f64 + 1.0,
+                    "all",
+                    None,
+                )
+            })
+            .collect();
+        let plan = display_plan(&project, &FixedWidth);
+
+        let single = lyricsmv_rows(&plan, 1, "single", 1.4);
+        assert_eq!(single.len(), 1);
+        assert!(single[0].active);
+        assert_eq!(single[0].row.line, plan.rows[1].line);
+
+        let stack = lyricsmv_rows(&plan, 1, "stack", 1.4);
+        assert_eq!(stack.len(), 3);
+        assert_eq!(stack[1].row.line, plan.rows[0].line);
+        assert_eq!(stack[1].opacity_percent, 50);
+        assert!((stack[1].row.font_size - plan.rows[0].font_size * 0.7).abs() < 1e-9);
+        assert!((stack[1].row.y - (plan.rows[1].y - plan.rows[1].font_size * 1.4)).abs() < 1e-9);
+
+        let scroll = lyricsmv_rows(&plan, 1, "scroll", 1.4);
+        assert_eq!(scroll.len(), 4);
+        assert_eq!(scroll[3].row.line, plan.rows[3].line);
+        assert_eq!(scroll[3].opacity_percent, 35);
+        assert!(scroll.iter().filter(|row| row.active).count() == 1);
     }
 
     #[test]

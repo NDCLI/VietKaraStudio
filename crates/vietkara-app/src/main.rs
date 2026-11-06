@@ -3353,6 +3353,7 @@ impl Render for Studio {
                 .w_full()
                 .flex()
                 .items_center()
+                .font_family(settings.font.clone())
                 .when(line_align == "left", |row| row.justify_start())
                 .when(line_align == "center", |row| row.justify_center())
                 .when(line_align == "right", |row| row.justify_end())
@@ -3422,49 +3423,6 @@ impl Render for Studio {
                 false,
                 role_color(word.line),
             ));
-        }
-        if display_mode == "lyricsmv"
-            && settings.extra.get("mv_style").and_then(Value::as_str) != Some("single")
-            && let Some(active) = preview_rows.first().copied()
-        {
-            let mut lines: Vec<(f64, u32)> =
-                display_words.iter().fold(Vec::new(), |mut lines, word| {
-                    if !lines.iter().any(|(_, line)| *line == word.line) {
-                        lines.push((
-                            vietkara_domain::timing::map_time(
-                                word.start,
-                                &self.editor.project().anchors,
-                                false,
-                            ),
-                            word.line,
-                        ));
-                    }
-                    lines
-                });
-            lines.sort_by(|a, b| a.0.total_cmp(&b.0));
-            if let Some(index) = lines.iter().position(|(_, line)| *line == active.0) {
-                let count =
-                    if settings.extra.get("mv_style").and_then(Value::as_str) == Some("scroll") {
-                        2isize
-                    } else {
-                        1isize
-                    };
-                let mut stack = Vec::new();
-                for offset in -count..=count {
-                    let Some(line) = index.checked_add_signed(offset) else {
-                        continue;
-                    };
-                    let Some((_, line_id)) = lines.get(line) else {
-                        continue;
-                    };
-                    if offset == 0 {
-                        stack.push((*line_id, 34., false, role_color(*line_id)));
-                    } else {
-                        stack.push((*line_id, 22., true, role_color(*line_id)));
-                    }
-                }
-                preview_rows = stack;
-            }
         }
         let preview_width = if is_portrait {
             portrait_width
@@ -3577,6 +3535,7 @@ impl Render for Studio {
                             div()
                                 .text_size(px(font_px))
                                 .text_color(rgb(color))
+                                .font_family(settings.font.clone())
                                 .when(italic, |text| text.italic())
                                 .child(text.clone())
                         };
@@ -3659,6 +3618,61 @@ impl Render for Studio {
                     })
                 })
                 .collect()
+        } else if (display_mode == "lyricsmv" || display_mode == "subtitle")
+            && let Some(&row_index) = active_plan_rows.first()
+        {
+            if display_mode == "lyricsmv" {
+                let style = settings
+                    .extra
+                    .get("mv_style")
+                    .and_then(Value::as_str)
+                    .unwrap_or("stack");
+                let line_height = settings
+                    .extra
+                    .get("line_height")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(1.4);
+                vietkara_render::layout::lyricsmv_rows(layout, row_index, style, line_height)
+                    .into_iter()
+                    .map(|item| {
+                        let row = item.row;
+                        let color = if item.active {
+                            sung_color
+                        } else {
+                            unsung_color
+                        };
+                        div()
+                            .absolute()
+                            .left(px(row.x as f32 * preview_scale))
+                            .top(px(row.y as f32 * preview_scale))
+                            .text_size(px(row.font_size as f32 * preview_scale))
+                            .text_color(rgb(color))
+                            .font_family(settings.font.clone())
+                            .when(italic, |text| text.italic())
+                            .opacity(item.opacity_percent as f32 / 100.0)
+                            .child(vietkara_render::layout::font_text(
+                                &row.text,
+                                &settings.font,
+                            ))
+                    })
+                    .collect()
+            } else {
+                let row = &layout.rows[row_index];
+                vec![
+                    div()
+                        .absolute()
+                        .left(px(row.x as f32 * preview_scale))
+                        .top(px(row.y as f32 * preview_scale))
+                        .text_size(px(row.font_size as f32 * preview_scale))
+                        .text_color(rgb(unsung_color))
+                        .font_family(settings.font.clone())
+                        .when(italic, |text| text.italic())
+                        .child(vietkara_render::layout::font_text(
+                            &row.text,
+                            &settings.font,
+                        )),
+                ]
+            }
         } else {
             preview_rows
                 .iter()
@@ -3701,7 +3715,8 @@ impl Render for Studio {
                 );
             }
         }
-        for row in &layout.rows {
+        for &row_index in &active_plan_rows {
+            let row = &layout.rows[row_index];
             if let Some(marker) = &row.role_marker {
                 let symbol = match marker.role.as_str() {
                     "male" => "♂",
