@@ -824,3 +824,13 @@ tọa độ, khoảng cách và opacity với ASS; preview không còn tự xế
 ở các dòng đang thấy; subtitle/lyricsmv dựng outline và shadow theo thông số
 project bằng các lớp text preview. Bộ chọn dòng cũ chỉ còn làm oracle test.
 Golden ảnh Windows và đối chiếu raster của outline với ASS vẫn chưa làm.
+
+### W4: version snapshot trước khi thay lời
+
+Khi người dùng xác nhận nhập SRT/TXT vào project đã lưu, app tạo version
+snapshot qua `vietkara-storage::create_version` trên background executor
+trước khi publish command vào Editor. Lỗi snapshot giữ nguyên project và
+giữ hộp xác nhận để thử lại; UI khóa thao tác trong lúc tạo snapshot và
+hiển thị ID version sau khi thay lời thành công. Project chưa lưu chưa có
+thư mục version nên tiếp tục dùng undo/autosave trong phiên. Đã qua
+`cargo check --workspace`; runtime và kiểm thử gom cuối mốc còn mở.
