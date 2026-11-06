@@ -36,6 +36,14 @@ fn projected(plan: &DisplayPlan) -> Value {
             "font_size": row.font_size,
             "align": row.align,
             "role": row.role,
+            "role_icon": row.role_marker.as_ref().map(|marker| serde_json::json!({
+                "x": marker.x,
+                "y": marker.y,
+                "size": marker.size,
+                "width": marker.width,
+                "role": marker.role,
+                "color": marker.color,
+            })),
             "text": row.text,
             "section_start": row.section_start,
             "section_end": row.section_end,
@@ -91,6 +99,21 @@ fn projected_title(plan: &DisplayPlan) -> Value {
     })
 }
 
+fn projected_countdowns(plan: &DisplayPlan) -> Value {
+    serde_json::json!(
+        plan.countdowns
+            .iter()
+            .map(|item| serde_json::json!({
+                "start": item.start,
+                "end": item.end,
+                "x": item.x,
+                "y": item.y,
+                "size": item.size,
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
 #[test]
 fn layout_geometry_matches_python_baseline_c8dae55_with_fixed_width_metrics() {
     let fixture: Value = serde_json::from_str(include_str!(
@@ -103,6 +126,8 @@ fn layout_geometry_matches_python_baseline_c8dae55_with_fixed_width_metrics() {
     let actual = projected(&plan);
     let actual_title = projected_title(&plan);
     let expected_title = &expected["title"];
+    let actual_countdowns = projected_countdowns(&plan);
+    let expected_countdowns = expected["countdowns"].as_array().unwrap();
 
     assert_eq!(actual["width"], expected["width"]);
     assert_eq!(actual["height"], expected["height"]);
@@ -125,6 +150,30 @@ fn layout_geometry_matches_python_baseline_c8dae55_with_fixed_width_metrics() {
         "font",
     ] {
         assert_eq!(actual_title[key], expected_title[key], "title {key}");
+    }
+    let actual_countdowns = actual_countdowns.as_array().unwrap();
+    assert_eq!(actual_countdowns.len(), expected_countdowns.len());
+    for (index, (actual, expected)) in actual_countdowns
+        .iter()
+        .zip(expected_countdowns)
+        .enumerate()
+    {
+        for key in ["start", "end"] {
+            close(
+                actual[key].as_f64().unwrap(),
+                expected[key].as_f64().unwrap(),
+                1e-7,
+                &format!("countdown {index} {key}"),
+            );
+        }
+        for key in ["x", "y", "size"] {
+            close(
+                actual[key].as_f64().unwrap(),
+                expected[key].as_f64().unwrap(),
+                0.002,
+                &format!("countdown {index} {key}"),
+            );
+        }
     }
     let actual_title_rows = actual_title["rows"].as_array().unwrap();
     let expected_title_rows = expected_title["rows"].as_array().unwrap();
@@ -183,6 +232,27 @@ fn layout_geometry_matches_python_baseline_c8dae55_with_fixed_width_metrics() {
             "section_end",
         ] {
             assert_eq!(actual[key], expected[key], "row {row_index}, field {key}");
+        }
+        assert_eq!(
+            actual["role_icon"].is_null(),
+            expected["role_icon"].is_null(),
+            "row {row_index} role icon presence"
+        );
+        if !actual["role_icon"].is_null() {
+            for key in ["role", "color"] {
+                assert_eq!(
+                    actual["role_icon"][key], expected["role_icon"][key],
+                    "row {row_index} role icon {key}"
+                );
+            }
+            for key in ["x", "y", "size", "width"] {
+                close(
+                    actual["role_icon"][key].as_f64().unwrap(),
+                    expected["role_icon"][key].as_f64().unwrap(),
+                    0.002,
+                    &format!("row {row_index} role icon {key}"),
+                );
+            }
         }
         for key in ["start", "end", "show_start", "show_end"] {
             close(

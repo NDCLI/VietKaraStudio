@@ -34,7 +34,7 @@ class FixedMeasure:
         extra = 2 * self.opts["outline_width"] + self.opts["shadow"]
         if self.opts["italic"]:
             extra += self.opts["font_size"] * 0.15
-        return self.width(" ".join(tokens)) + extra <= width
+        return self.width(" ".join(tokens)) + extra + layout.role_icon_space(self.opts) <= width
 
 
 def make_word(text, start, line, index, role, row, section=False):
@@ -75,7 +75,10 @@ project = {
         "aspect": "landscape",
         "display_mode": "karaoke",
         "singing_mode": "duet",
-        "role_icons": False,
+        "role_icons": True,
+        "role_a_icon": "man-new-blue.png",
+        "role_b_icon": "lady-pink.png",
+        "role_all_icon": "men(blue) & lady(pink).png",
         "sung_gradient": False,
         "line_animation": "none",
         "horizontal_scale": 110,
@@ -86,7 +89,8 @@ project = {
         "shadow": 2,
         "align": "justify",
         "position": "bottom",
-        "countdown": "none",
+        "countdown": "mic",
+        "countdown_seconds": 4,
         "title_enabled": True,
         "title_text": "Bài hát tiếng Việt để đối chiếu title layout",
         "title_credit": "Trình bày: Ca sĩ thử nghiệm",
@@ -116,6 +120,13 @@ for row in plan["rows"]:
             )
         }
         | {
+            "role_icon": (
+                {
+                    key: row["role_icon"][key]
+                    for key in ("x", "y", "size", "width", "role", "color")
+                }
+                if row["role_icon"] else None
+            ),
             "words": [
                 {
                     key: word[key]
@@ -152,6 +163,10 @@ output = {
     "expected": {
         "width": plan["width"], "height": plan["height"], "rows": rows,
         "title": title_expected,
+        "countdowns": [
+            {key: item[key] for key in ("start", "end", "x", "y", "size")}
+            for item in plan["countdowns"]
+        ],
     },
 }
 fixture = ROOT / "crates" / "vietkara-render" / "tests" / "fixtures" / "python-c8dae55-layout-fixed-width.json"

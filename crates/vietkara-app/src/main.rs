@@ -5885,17 +5885,18 @@ impl Render for Studio {
         let unsung_color = setting_color(settings, "unsung", 0xffffff);
         let duet = settings.extra.get("singing_mode").and_then(Value::as_str) == Some("duet");
         let role_color = |line: u32| {
-            let key = display_words
+            let role_setting = display_words
                 .iter()
                 .find(|word| word.line == line)
                 .map(|word| match word.role.as_str() {
-                    "male" | "voice_c" | "voice_e" => "role_a_color",
-                    "female" | "voice_d" | "voice_f" => "role_b_color",
-                    "unknown" => "role_unknown_color",
-                    _ => "role_all_color",
+                    "male" | "voice_c" | "voice_e" => ("role_a_color", 0x62b5ff),
+                    "female" | "voice_d" | "voice_f" => ("role_b_color", 0xff87b7),
+                    "unknown" => ("role_unknown_color", 0xffffff),
+                    _ => ("role_all_color", 0xf4cf72),
                 });
             if duet && display_mode == "karaoke" {
-                key.map(|key| setting_color(settings, key, sung_color))
+                role_setting
+                    .map(|(key, fallback)| setting_color(settings, key, fallback))
                     .unwrap_or(sung_color)
             } else {
                 sung_color
@@ -6022,14 +6023,9 @@ impl Render for Studio {
             .title
             .as_ref()
             .is_some_and(|title| preview_position >= title.start && preview_position < title.end);
-        let active_countdown_window = countdown_window_at(
-            &self.editor.project().words,
-            &self.editor.project().anchors,
-            preview_position,
-            countdown_seconds,
-        );
+        let active_countdown = preview::active_countdown_at(&layout.countdowns, preview_position);
         let countdown_preview_visible =
-            display_mode == "karaoke" && countdown != "none" && active_countdown_window.is_some();
+            display_mode == "karaoke" && countdown != "none" && active_countdown.is_some();
         let scene_backing = self
             .path
             .as_ref()
@@ -7011,13 +7007,17 @@ impl Render for Studio {
                                                     })
                                                     .when(countdown_preview_visible, |rows| {
                                                         let glyph = match countdown { "mic"=>"♫", "star"=>"★", "heart"=>"♥", "note"=>"♪", "moon"=>"☾", _=>"" };
-                                                        let (_, window_end) = active_countdown_window.unwrap();
-                                                        let remaining = (window_end - preview_position).ceil().clamp(1.0, 4.0) as usize;
-                                                        rows.child(div().absolute().left(px(preview_width * 0.05)).top(px(preview_height * 0.28)).flex().gap_2()
+                                                        let countdown_layout = active_countdown.unwrap();
+                                                        let remaining = (countdown_layout.end - preview_position).ceil().clamp(1.0, 4.0) as usize;
+                                                        let size = countdown_layout.size as f32 * preview_scale;
+                                                        rows.child(div().absolute()
+                                                            .left(px(countdown_layout.x as f32 * preview_scale))
+                                                            .top(px(countdown_layout.y as f32 * preview_scale))
+                                                            .flex().gap(px(size * 0.28))
                                                             .children((0..remaining).map(|_| {
-                                                                div().w(px(22.0)).h(px(22.0)).flex().items_center().justify_center()
+                                                                div().w(px(size)).h(px(size)).flex().items_center().justify_center()
                                                                     .when(countdown == "image" && countdown_path.is_some(), |box_| box_.child(img(countdown_path.clone().unwrap()).size_full().object_fit(ObjectFit::Contain)))
-                                                                    .when(countdown != "image", |box_| box_.text_size(px(22.0)).text_color(rgb(0xf4cf72)).child(glyph))
+                                                                    .when(countdown != "image", |box_| box_.text_size(px(size)).text_color(rgb(0xf4cf72)).child(glyph))
                                                             })))
                                                     })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
@@ -8458,34 +8458,6 @@ fn toggle_section_on_line(words: &mut [Word], line: u32) -> Option<bool> {
     Some(next)
 }
 
-fn countdown_window_at(
-    words: &[Word],
-    anchors: &[vietkara_domain::Anchor],
-    time: f64,
-    duration: f64,
-) -> Option<(f64, f64)> {
-    let mut lines = std::collections::BTreeMap::<u32, (f64, f64)>::new();
-    for word in words {
-        let start = vietkara_domain::timing::map_time(word.start, anchors, false);
-        let end = vietkara_domain::timing::map_time(word.end, anchors, false);
-        let line = lines.entry(word.line).or_insert((start, end));
-        line.0 = line.0.min(start);
-        line.1 = line.1.max(end);
-    }
-    let mut previous_end: f64 = 0.0;
-    for (index, (start, end)) in lines.into_values().enumerate() {
-        if index == 0 || start - previous_end >= 8.0 {
-            let window_end = (start - 0.05).max(0.0);
-            let window_start = 0.0_f64.max(previous_end).max(window_end - duration);
-            if window_end - window_start >= 0.4 && time >= window_start && time < window_end {
-                return Some((window_start, window_end));
-            }
-        }
-        previous_end = previous_end.max(end);
-    }
-    None
-}
-
 fn title_preview_motion(
     title: &vietkara_render::layout::TitleLayout,
     time: f64,
@@ -9429,22 +9401,6 @@ mod workspace_tests {
         assert_eq!(parse_ffmpeg_time("01:00:00.000000"), Some(3600.0));
         assert_eq!(parse_ffmpeg_time("N/A"), None);
         assert_eq!(parse_ffmpeg_time("00:61:00.000000"), None);
-    }
-
-    #[test]
-    fn preview_countdown_matches_initial_and_long_pause_windows() {
-        let words = vec![
-            serde_json::from_value(serde_json::json!({"id":"00000000000000000000000000000001","line_uid":"00000000000000000000000000000011","text":"A","start":5.0,"end":6.0,"line":0,"role":"all"})).unwrap(),
-            serde_json::from_value(serde_json::json!({"id":"00000000000000000000000000000002","line_uid":"00000000000000000000000000000012","text":"B","start":20.0,"end":21.0,"line":1,"role":"all"})).unwrap(),
-        ];
-        let initial = countdown_window_at(&words, &[], 1.0, 4.0).unwrap();
-        assert!((initial.0 - 0.95).abs() < 1e-9);
-        assert!((initial.1 - 4.95).abs() < 1e-9);
-        let pause = countdown_window_at(&words, &[], 16.0, 4.0).unwrap();
-        assert!((pause.0 - 15.95).abs() < 1e-9);
-        assert!((pause.1 - 19.95).abs() < 1e-9);
-        assert_eq!(countdown_window_at(&words, &[], 8.0, 4.0), None);
-        assert_eq!(countdown_window_at(&words, &[], 5.0, 4.0), None);
     }
 
     #[test]

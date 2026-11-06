@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use vietkara_domain::Word;
 #[cfg(test)]
 use vietkara_domain::{Anchor, timing::map_time};
-use vietkara_render::layout::{DisplayPlan, TextMeasurer};
+use vietkara_render::layout::{CountdownLayout, DisplayPlan, TextMeasurer};
 
 #[derive(Default)]
 pub(super) struct PreviewLayoutCache {
@@ -130,6 +130,16 @@ pub(super) fn visible_plan_rows(plan: &DisplayPlan, beat_time: f64, mode: &str) 
             .map(|(index, _)| vec![index])
             .unwrap_or_default()
     }
+}
+
+pub(super) fn active_countdown_at(
+    countdowns: &[CountdownLayout],
+    beat_time: f64,
+) -> Option<CountdownLayout> {
+    countdowns
+        .iter()
+        .find(|countdown| beat_time >= countdown.start && beat_time < countdown.end)
+        .copied()
 }
 
 #[cfg(test)]
@@ -351,6 +361,7 @@ mod tests {
             height: 1080,
             font: "Arial".into(),
             title: None,
+            countdowns: Vec::new(),
             rows: vec![
                 row(0, 0, 0, 1.0, 2.0, 0.0, 2.6),
                 row(1, 1, 1, 2.0, 3.0, 0.5, 3.6),
@@ -360,6 +371,30 @@ mod tests {
         assert_eq!(visible_plan_rows(&plan, 3.5, "karaoke"), vec![2, 1]);
         assert_eq!(visible_plan_rows(&plan, 3.5, "subtitle"), vec![1]);
         assert_eq!(visible_plan_rows(&plan, 3.5, "lyricsmv"), vec![1]);
+    }
+
+    #[test]
+    fn countdown_preview_selects_the_shared_layout_window() {
+        let windows = [
+            CountdownLayout {
+                start: 0.0,
+                end: 4.95,
+                x: 96.0,
+                y: 700.0,
+                size: 50.4,
+            },
+            CountdownLayout {
+                start: 15.95,
+                end: 19.95,
+                x: 96.0,
+                y: 700.0,
+                size: 50.4,
+            },
+        ];
+        assert_eq!(active_countdown_at(&windows, 1.0).unwrap().end, 4.95);
+        assert_eq!(active_countdown_at(&windows, 16.0).unwrap().start, 15.95);
+        assert!(active_countdown_at(&windows, 8.0).is_none());
+        assert!(active_countdown_at(&windows, 5.0).is_none());
     }
 
     #[test]

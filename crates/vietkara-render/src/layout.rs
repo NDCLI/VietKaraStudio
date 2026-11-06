@@ -139,7 +139,17 @@ pub struct RoleMarker {
     pub x: f64,
     pub y: f64,
     pub size: f64,
+    pub width: f64,
     pub color: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CountdownLayout {
+    pub start: f64,
+    pub end: f64,
+    pub x: f64,
+    pub y: f64,
+    pub size: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +159,7 @@ pub struct DisplayPlan {
     pub font: String,
     pub rows: Vec<DisplayRow>,
     pub title: Option<TitleLayout>,
+    pub countdowns: Vec<CountdownLayout>,
 }
 
 #[derive(Debug, Clone)]
@@ -844,13 +855,13 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
         };
         let y = (baseline - size * (1.15 + lane_offset)).max(0.0);
         let role_color = match role.as_str() {
-            "male" => setting_color(settings, "role_a_color", "#52efb9"),
-            "female" => setting_color(settings, "role_b_color", "#ff7ab6"),
-            "all" => setting_color(settings, "role_all_color", "#52efb9"),
+            "male" => setting_color(settings, "role_a_color", "#62b5ff"),
+            "female" => setting_color(settings, "role_b_color", "#ff87b7"),
+            "all" => setting_color(settings, "role_all_color", "#f4cf72"),
             // Legacy projects can contain more than two voice identities. Keep
             // their data, but render them with the two supported duet lanes.
-            "voice_c" | "voice_e" => setting_color(settings, "role_a_color", "#52efb9"),
-            "voice_d" | "voice_f" => setting_color(settings, "role_b_color", "#ff7ab6"),
+            "voice_c" | "voice_e" => setting_color(settings, "role_a_color", "#62b5ff"),
+            "voice_d" | "voice_f" => setting_color(settings, "role_b_color", "#ff87b7"),
             _ => setting_color(settings, "role_unknown_color", "#ffffff"),
         };
         let role_marker = (marker_width > 0.0).then(|| RoleMarker {
@@ -858,6 +869,11 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             x,
             y: y + size * 0.08,
             size: size * 0.72,
+            width: crate::role_icons::role_icon(crate::role_icons::role_icon_setting(
+                &role, settings,
+            ))
+            .map(|icon| size * 0.72 * icon.width / icon.height)
+            .unwrap_or(0.0),
             color: role_color,
         });
         let mut positioned = Vec::with_capacity(draft.words.len());
@@ -922,12 +938,37 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             words: positioned,
         });
     }
+    let mut countdowns = Vec::new();
+    let countdown = string(settings, "countdown", "none");
+    if display_mode == "karaoke" && countdown != "none" {
+        let countdown_seconds = number(settings, "countdown_seconds", 4.0).clamp(1.0, 8.0);
+        let mut previous_vocal_end = 0.0_f64;
+        for (index, row) in rows.iter().enumerate() {
+            let count_in = index == 0 || row.start - previous_vocal_end >= 8.0;
+            if count_in {
+                let end = (row.start - 0.05).max(0.0);
+                let start = 0.0_f64.max(previous_vocal_end).max(end - countdown_seconds);
+                if end - start >= 0.4 {
+                    countdowns.push(CountdownLayout {
+                        start,
+                        end,
+                        x: f64::from(width) * 0.05,
+                        y: (row.y - row.font_size * 0.9).max(0.0),
+                        size: row.font_size * 0.7,
+                    });
+                }
+            }
+            previous_vocal_end = previous_vocal_end.max(row.end);
+        }
+    }
+
     DisplayPlan {
         width,
         height,
         font: font.to_owned(),
         rows,
         title: title_layout(project, measure, width, height),
+        countdowns,
     }
 }
 

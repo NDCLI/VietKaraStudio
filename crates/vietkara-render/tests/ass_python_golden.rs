@@ -94,6 +94,7 @@ fn simple_karaoke_ass_matches_python_baseline_c8dae55() {
             ],
         }],
         title: None,
+        countdowns: Vec::new(),
     };
 
     let actual = build_lyrics_ass(&project, &plan);

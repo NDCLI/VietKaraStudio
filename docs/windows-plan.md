@@ -299,11 +299,13 @@ kiểm tra runtime có FFmpeg trên Windows.
 > `crates/vietkara-render/tests/fixtures/python-c8dae55-layout-fixed-width.json`
 > đối chiếu `layout.display_plan` Python–Rust trên cùng project duet, lyric
 > wrap, khoảng nghỉ dài và beat anchors, dùng cùng measurer ký tự cố định.
-> Fixture còn kiểm tra title/credit và box template; test đã bắt và sửa inset
-> lệch 16.512 px khi Rust dùng phần nới 1.02 dành riêng cho preview.
+> Fixture kiểm tra title/credit, box template, role icon và countdown; test đã
+> bắt/sửa inset title lệch 16.512 px và màu fallback lane Nam khác baseline.
+> `DisplayPlan` hiện giữ countdown windows dùng chung cho preview và ASS;
+> role marker mang cả geometry artwork để các surface dùng cùng số đo.
 > `cargo test -p vietkara-render --test layout_python_golden` pass. Nó kiểm
 > chứng quy tắc planner độc lập với font; không thay thế đo/shaping Arial và
-> font bundled trên Windows hay golden icon/countdown.
+> font bundled trên Windows hay raster golden cho toàn bộ icon/countdown.
 
 - [ ] Chốt parity đầy đủ cho `layout.display_plan` với font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):

@@ -52,18 +52,18 @@ fn role_color(
     settings: &serde_json::Map<String, Value>,
     fallback: &str,
 ) -> String {
-    let key = match row.role.as_str() {
-        "male" | "voice_c" | "voice_e" => "role_a_color",
-        "female" | "voice_d" | "voice_f" => "role_b_color",
-        "all" => "role_all_color",
-        "unknown" => "role_unknown_color",
+    let (key, default) = match row.role.as_str() {
+        "male" | "voice_c" | "voice_e" => ("role_a_color", "#62b5ff"),
+        "female" | "voice_d" | "voice_f" => ("role_b_color", "#ff87b7"),
+        "all" => ("role_all_color", "#f4cf72"),
+        "unknown" => ("role_unknown_color", "#ffffff"),
         _ => return fallback.to_owned(),
     };
     settings
         .get(key)
         .and_then(Value::as_str)
         .filter(|value| crate::is_hex_color(value))
-        .unwrap_or(fallback)
+        .unwrap_or(default)
         .to_owned()
 }
 
@@ -936,19 +936,11 @@ pub fn build_lyrics_ass_with_scenes(
     if let Some(title) = &plan.title {
         lines.extend(title_events(title));
     }
-    lines.extend(countdown_events(
-        project,
-        plan,
-        settings,
-        mode,
-        sung,
-        outline_unsung,
-    ));
+    lines.extend(countdown_events(plan, settings, mode, sung, outline_unsung));
     lines.join("\n") + "\n"
 }
 
 fn countdown_events(
-    project: &Project,
     plan: &DisplayPlan,
     settings: &serde_json::Map<String, Value>,
     mode: &str,
@@ -963,54 +955,22 @@ fn countdown_events(
         return Vec::new();
     }
 
-    let duration = number(settings, "countdown_seconds", 4.0).clamp(1.0, 8.0);
-    let font_size = project.settings.font_size * plan.width as f64 / 1920.0;
-    let baseline = match string(settings, "position", "bottom") {
-        "top" => font_size * 2.0,
-        "center" => plan.height as f64 / 2.0 + font_size * 0.5,
-        _ => plan.height as f64 - font_size * 1.25,
-    };
-    let y = (baseline - font_size * 2.05).max(0.0);
-    let size = (font_size * 0.7).round().max(2.0);
-    let mut line_times: Vec<(u32, f64, f64)> = Vec::new();
-    for word in &project.words {
-        let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
-        let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
-        if let Some((_, line_start, line_end)) = line_times
-            .iter_mut()
-            .find(|(line, _, _)| *line == word.line)
-        {
-            *line_start = line_start.min(start);
-            *line_end = line_end.max(end);
-        } else {
-            line_times.push((word.line, start, end));
-        }
-    }
-
     let mut output = Vec::new();
-    let mut previous_end: f64 = 0.0;
-    for (index, (_, start, end)) in line_times.into_iter().enumerate() {
-        let count_in = index == 0 || start - previous_end >= 8.0;
-        if count_in {
-            let end = (start - 0.05).max(0.0);
-            let begin = 0.0_f64.max(previous_end).max(end - duration);
-            if end - begin >= 0.4 {
-                for slot in 0..4 {
-                    let slot_end = end - slot as f64;
-                    let x = plan.width as f64 * 0.05 + slot as f64 * size * 1.28;
-                    let scale = size / 25.0 * 100.0;
-                    let tags = format!(
-                        "\\an7\\pos({x:.2},{y:.2})\\p1\\fscx{scale:.2}\\fscy{scale:.2}\\bord.5\\shad0\\1c{}\\3c{}\\fad(120,100)",
-                        crate::ass_color(sung, 100),
-                        crate::ass_color(outline, 100),
-                    );
-                    if let Some(event) = dialogue(6, begin, slot_end, &tags, drawing) {
-                        output.push(event);
-                    }
-                }
+    for countdown in &plan.countdowns {
+        for slot in 0..4 {
+            let end = countdown.end - slot as f64;
+            let x = countdown.x + slot as f64 * countdown.size * 1.28;
+            let scale = countdown.size / 25.0 * 100.0;
+            let tags = format!(
+                "\\an7\\pos({x:.2},{:.2})\\p1\\fscx{scale:.2}\\fscy{scale:.2}\\bord.5\\shad0\\1c{}\\3c{}\\fad(120,100)",
+                countdown.y,
+                crate::ass_color(sung, 100),
+                crate::ass_color(outline, 100),
+            );
+            if let Some(event) = dialogue(6, countdown.start, end, &tags, drawing) {
+                output.push(event);
             }
         }
-        previous_end = end;
     }
     output
 }
