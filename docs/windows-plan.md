@@ -695,3 +695,8 @@ Escape kết thúc session; Ctrl+Z hoàn tác đúng một bước và khôi ph�
 `Xin` về 0.20–0.60s. Recovery status chỉ ghi trong thư mục fixture test.
 Đây là smoke test một tap + undo; nhiều từ liên tiếp, giữ Space ≥180ms,
 Backspace, blur, hết audio và mapping khi nghe reference vẫn cần kiểm tra.
+State machine Rust hiện có 7 unit tests đối chiếu các hợp đồng JS: quick tap,
+hold theo wall clock ≥180ms, chống repeat/press sát nhau, mốc dưới 40ms,
+clock lùi, Backspace/finish và beat→reference/locked validation. `cargo test
+-p vietkara-domain` pass 24 unit + 3 settings integration; `node --test
+tests/tapping.test.js` pass 10/10; workspace Clippy và test đã lọc FFmpeg pass.

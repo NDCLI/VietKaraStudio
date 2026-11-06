@@ -119,3 +119,194 @@ pub fn tap_command(project: &crate::Project, tap: Tap) -> Result<crate::edit::Co
         word: Box::new(word),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Anchor, Word};
+
+    fn word(id: &str, start: f64, end: f64) -> Word {
+        Word {
+            id: id.into(),
+            text: id.into(),
+            start,
+            end,
+            line_uid: "line".into(),
+            role: "all".into(),
+            line: 0,
+            estimated: true,
+            locked: None,
+            section: None,
+            section_name: None,
+            manual: None,
+            label_color: None,
+            row: None,
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn quick_taps_commit_on_the_next_press_and_finish_last_word() {
+        let mut clock = TapTiming::new(3, 0).unwrap();
+        assert_eq!(clock.down(4.0, false, 0.0), None);
+        assert_eq!(clock.up(4.05, 50.0), None);
+        assert_eq!(
+            clock.down(4.5, false, 500.0),
+            Some(Tap {
+                index: 0,
+                start: 4.0,
+                end: 4.5,
+            })
+        );
+        assert_eq!(clock.up(4.55, 550.0), None);
+        assert_eq!(
+            clock.down(5.4, false, 1400.0),
+            Some(Tap {
+                index: 1,
+                start: 4.5,
+                end: 5.4,
+            })
+        );
+        assert_eq!(
+            clock.finish(5.8),
+            Some(Tap {
+                index: 2,
+                start: 5.4,
+                end: 5.8,
+            })
+        );
+        assert!(clock.done());
+        assert_eq!(clock.history.len(), 3);
+    }
+
+    #[test]
+    fn hold_commits_from_keydown_to_keyup_using_wall_clock_threshold() {
+        let mut clock = TapTiming::new(2, 0).unwrap();
+        assert_eq!(clock.down(32.4, false, 1000.0), None);
+        assert_eq!(clock.down(32.7, true, 1100.0), None);
+        assert_eq!(
+            clock.up(33.2, 1180.0),
+            Some(Tap {
+                index: 0,
+                start: 32.4,
+                end: 33.2,
+            })
+        );
+        assert_eq!(clock.history.len(), 1);
+        clock.down(33.4, false, 1400.0);
+        assert_eq!(
+            clock.up(33.8, 1700.0),
+            Some(Tap {
+                index: 1,
+                start: 33.4,
+                end: 33.8,
+            })
+        );
+        assert!(clock.done());
+    }
+
+    #[test]
+    fn invalid_short_or_backwards_clock_does_not_leave_press_armed() {
+        let mut clock = TapTiming::new(2, 0).unwrap();
+        clock.down(10.0, false, 1000.0);
+        assert_eq!(clock.up(9.0, 1300.0), None);
+        assert_eq!(clock.armed, None);
+        assert_eq!(clock.index, 0);
+
+        clock.down(10.2, false, 1400.0);
+        assert_eq!(clock.up(10.23, 1700.0), None);
+        assert_eq!(clock.armed, None);
+        assert_eq!(clock.index, 0);
+    }
+
+    #[test]
+    fn repeat_and_too_close_press_do_not_advance_twice() {
+        let mut clock = TapTiming::new(2, 0).unwrap();
+        clock.down(1.0, false, 1000.0);
+        assert_eq!(clock.down(1.01, true, 1010.0), None);
+        clock.up(1.02, 1020.0);
+        assert_eq!(clock.down(1.03, false, 1030.0), None);
+        assert_eq!(clock.index, 0);
+        assert_eq!(
+            clock.down(1.3, false, 1300.0),
+            Some(Tap {
+                index: 0,
+                start: 1.0,
+                end: 1.3,
+            })
+        );
+        assert_eq!(clock.index, 1);
+    }
+
+    #[test]
+    fn back_discards_armed_press_and_restores_previous_word_index() {
+        let mut clock = TapTiming::new(5, 2).unwrap();
+        clock.down(9.0, false, 0.0);
+        clock.up(9.05, 50.0);
+        assert_eq!(
+            clock.down(9.4, false, 400.0),
+            Some(Tap {
+                index: 2,
+                start: 9.0,
+                end: 9.4,
+            })
+        );
+        clock.down(10.0, false, 1000.0);
+
+        assert_eq!(
+            clock.back(),
+            Some(Tap {
+                index: 2,
+                start: 9.0,
+                end: 9.4,
+            })
+        );
+        assert_eq!(clock.index, 2);
+        assert_eq!(clock.armed, None);
+        assert!(!clock.pressing);
+    }
+
+    #[test]
+    fn tap_command_maps_beat_times_to_reference_and_marks_manual() {
+        let mut project = crate::Project::new("tap");
+        project.anchors = vec![Anchor {
+            r#ref: 1.0,
+            beat: 2.0,
+        }];
+        project.words.push(word("word", 0.0, 1.0));
+        let command = tap_command(
+            &project,
+            Tap {
+                index: 0,
+                start: 4.0,
+                end: 5.0,
+            },
+        )
+        .unwrap();
+        let crate::edit::Command::ReplaceWord { word, .. } = command else {
+            panic!("tap creates a reversible single-word command");
+        };
+        assert_eq!((word.start, word.end), (3.0, 4.0));
+        assert_eq!(word.manual, Some(true));
+        assert!(!word.estimated);
+    }
+
+    #[test]
+    fn tap_command_rejects_locked_words_and_negative_reference_times() {
+        let mut project = crate::Project::new("tap");
+        project.anchors = vec![Anchor {
+            r#ref: 1.0,
+            beat: 2.0,
+        }];
+        project.words.push(word("word", 0.0, 1.0));
+        let tap = Tap {
+            index: 0,
+            start: 0.5,
+            end: 1.0,
+        };
+        project.words[0].locked = Some(true);
+        assert!(tap_command(&project, tap).unwrap_err().contains("khóa"));
+        project.words[0].locked = None;
+        assert!(tap_command(&project, tap).is_err());
+    }
+}
