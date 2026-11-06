@@ -35,14 +35,13 @@
 //! `request["vocals"]` from disk), so large audio never crosses the
 //! protocol. `options` carries model/language/region settings.
 //!
-//! Compatibility note: the legacy Python worker (`worker.py`, driven via
-//! `desktop_entry.py --vcl-task speech` with a request *file* and
-//! `OBS_PROGRESS ...` lines on stdout) does **not** speak this protocol
-//! yet. A worker that speaks it — either a new Python entry point that
-//! reads one JSON line from stdin and emits JSON Lines, or a native
-//! worker — is still needed before end-to-end AI jobs can run through
-//! this crate. The fake-worker tests below define the contract that
-//! worker must satisfy.
+//! The Python entry point `ai_worker.py` adapts this protocol to the
+//! existing Demucs, Whisper, and role-analysis functions. The legacy
+//! desktop entry (`worker.py`, driven via `desktop_entry.py
+//! --vcl-task speech`) keeps its request-file and `OBS_PROGRESS` contract
+//! for the current application. Fake-worker tests exercise bridge
+//! lifecycle behavior; a Rust integration test also launches the Python
+//! adapter without requiring an AI model.
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -772,6 +771,28 @@ emit({"protocol_version": 1, "request_id": req["request_id"], "type": "result", 
         assert_eq!(
             result,
             serde_json::json!({"words": [{"text": "Xin", "start": 0.2, "end": 0.6}]})
+        );
+    }
+
+    #[test]
+    fn run_request_uses_python_jsonl_entrypoint() {
+        let entry = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ai_worker.py");
+        assert!(
+            entry.is_file(),
+            "missing Python JSONL worker: {}",
+            entry.display()
+        );
+        let config = WorkerConfig::new(python_command()).arg(entry.to_string_lossy().into_owned());
+        let request = AiRequest::new(
+            AiKind::Recognize,
+            "project-1",
+            serde_json::json!({}),
+            serde_json::json!({}),
+        );
+        let error = run_request(config, request, |_, _| {}).unwrap_err();
+        assert!(
+            matches!(error, AiError::WorkerFailed(ref message) if message.contains("vocal")),
+            "unexpected bridge error: {error:?}"
         );
     }
 

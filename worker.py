@@ -85,7 +85,8 @@ def repair_prefix(model, samples, words, offset, language):
     return repaired
 
 
-def run(request, device):
+def run(request, device, progress_callback=None):
+    report_progress = progress_callback or progress
     from hardware import prepare_cuda
     prepare_cuda()
     import stable_whisper
@@ -120,13 +121,13 @@ def run(request, device):
     trim_offset=region_offset
     repaired_prefix=0
     label = request.get("name") or device
-    progress(50, f"Đang {'căn lời' if lyrics else 'nhận dạng'} bằng Whisper {request['model']} · {label} ({compute_type})…")
+    report_progress(50, f"Đang {'căn lời' if lyrics else 'nhận dạng'} bằng Whisper {request['model']} · {label} ({compute_type})…")
     if lyrics:
         import unicodedata
         first,last=vocal_bounds(samples)
         trim_offset=region_offset+first/16000
         aligned_samples=samples[first:last]
-        progress(51,f"Đang căn lời từ vùng vocal {trim_offset:.2f}s · {label}…")
+        report_progress(51,f"Đang căn lời từ vùng vocal {trim_offset:.2f}s · {label}…")
         result = model.align(aligned_samples, unicodedata.normalize('NFC',lyrics).lower(), language=language or "vi",
                              original_split=True, vad=False, verbose=False).to_dict()
         segments = result.get("segments", [])
@@ -177,7 +178,7 @@ def run(request, device):
                     tokens_in_line.append(token)
             if tokens_in_line:
                 texts.append(" ".join(tokens_in_line))
-            progress(min(92, 50 + segment.end / max(info.duration, 1) * 42), f"Whisper · {label}: đang nhận dạng từng từ…")
+            report_progress(min(92, 50 + segment.end / max(info.duration, 1) * 42), f"Whisper · {label}: đang nhận dạng từng từ…")
     if not words:
         raise RuntimeError("Không nhận được lời. Hãy kiểm tra vocal hoặc dán lời có sẵn để căn lại.")
     if lyrics:
@@ -185,7 +186,7 @@ def run(request, device):
             repaired_prefix=repair_prefix(model,aligned_samples,words,trim_offset,language)
         except Exception as exc:
             # This is an optional rescue; the primary alignment must still pass quality checks.
-            progress(94,'Giữ mốc căn lời chính; chưa đối chiếu được phần đầu: '+str(exc)[:120])
+            report_progress(94,'Giữ mốc căn lời chính; chưa đối chiếu được phần đầu: '+str(exc)[:120])
     short=check_alignment(words,bool(lyrics))
     for i, word in enumerate(words):
         if i and word["start"] < words[i-1]["end"] - .05:

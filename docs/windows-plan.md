@@ -37,7 +37,8 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
   app đã pass trên Windows; kiểm tra IME/DPI/Unicode/playback thủ công còn mở.
 - Phát audio bằng thiết bị thật, waveform/playhead thật, tap-sync thật.
 - Full ASS layout (`build_ass` / `display_plan`) — cần đo font trên Windows.
-- Entry point worker JSONL thật — `worker.py` hiện tại chưa nói protocol mới.
+- Entry point JSONL `ai_worker.py` đã bọc runtime Python hiện có; smoke test
+  worker thật với model và cancel/timeout end-to-end còn mở.
 - UI thật trong `vietkara-app` (hiện chỉ là mock: cờ `playing` không bao giờ đổi, chưa có action mở file/playback/timeline/save/export).
 - Undo/redo, autosave/recovery gắn vào UI, preset/scene, updater, installer/portable, rollout.
 
@@ -301,25 +302,25 @@ progress/cancel hoạt động, export folder + render info đúng.
 
 ### 6.1. Entry point worker JSONL mới (làm trước tiên trong giai đoạn này)
 
-Hiện trạng: `vietkara-ai-bridge` đã xong protocol, nhưng `worker.py`
-hiện tại **không nói protocol này**. Nó chạy qua
+Hiện trạng: `vietkara-ai-bridge` đã xong protocol. `worker.py` vẫn giữ
+contract file request cho app cũ; entry point mới `ai_worker.py` nhận
+protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
 `desktop_entry.py --vcl-task speech <request-file.json>`, in
 `OBS_PROGRESS {...}` ra stdout và ghi kết quả ra file
 (`app_runtime.py::dispatch`, `worker.py::run`/`write_result`).
 
-- [ ] Tạo entry point mới (ví dụ `worker_jsonl.py`, hoặc thêm task
-  `--vcl-task jsonl` vào `app_runtime.py::TASKS` + `dispatch`):
+- [x] Tạo entry point mới `ai_worker.py`:
   đọc **một dòng JSON** từ stdin (`protocol_version: 1`,
   `request_id`, `kind`, `project_id`, `input`, `options`),
   in các dòng JSONL `progress` / `result` / `error` ra stdout,
   log ra **stderr only** (stdout chỉ dành cho protocol).
-- [ ] Các `kind`: `separate`, `recognize`, `align`, `align_region`,
+- [x] Các `kind`: `separate`, `recognize`, `align`, `align_region`,
   `role_suggest` — khớp `AiKind` trong `vietkara-ai-bridge`.
   Media truyền bằng path + metadata, không nhúng bytes.
 - [ ] Test end-to-end qua `vietkara-ai-bridge::run_request` với worker
   thật (model nhỏ/tải riêng): progress hiển thị, cancel dừng worker,
   worker crash không treo app, timeout có lỗi rõ ràng.
-- [ ] Không thay model/runtime ngay (Demucs/Whisper vẫn chạy bằng Python).
+- [x] Không thay model/runtime ngay (Demucs/Whisper vẫn chạy bằng Python).
 
 ### 6.2. Audio sync, cache và batch render
 
