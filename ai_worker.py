@@ -61,9 +61,33 @@ def dispatch(request, report_progress):
     if kind == "sync_suggest":
         reference = Path(_required_text(inputs, "reference"))
         beat = Path(_required_text(inputs, "beat"))
+        cache_key = None
+        cache_root_value = options.get("data_root") or options.get("cache_root")
+        cache_root = Path(cache_root_value) if cache_root_value else None
+        if cache_root is not None:
+            from analysis_cache import load_sync, sync_cache_key
+
+            cache_options = {
+                name: value for name, value in options.items()
+                if name not in ("data_root", "cache_root")
+            }
+            cache_key = sync_cache_key(reference, beat, extra_options=cache_options)
+            if cache_key:
+                cached = load_sync(cache_root, cache_key)
+                if cached is not None:
+                    return cached
         from audio_sync import suggest
 
-        return suggest(reference, beat, _SyncProgress(report_progress))
+        result = suggest(reference, beat, _SyncProgress(report_progress))
+        if cache_root is not None and cache_key:
+            from analysis_cache import store_sync, sync_cache_key
+
+            current_key = sync_cache_key(reference, beat, extra_options=cache_options)
+            if current_key != cache_key:
+                raise RuntimeError("File audio đã đổi trong lúc phân tích đồng bộ; hãy chạy lại.")
+
+            store_sync(cache_root, cache_key, result)
+        return result
 
     if kind in ("recognize", "align", "align_region"):
         from worker import run

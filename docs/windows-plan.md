@@ -331,12 +331,17 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
 - [x] Tái sử dụng `analysis_cache.py` trong worker JSONL khi caller truyền
   `options.data_root`/`cache_root`; key gồm fingerprint nguồn, model,
   language, lời, preference, region và tùy chọn runtime.
-- [ ] Hoàn tất port/reuse audio sync (`audio_sync.py`) trong app và tích
-  hợp cache; hiện JSONL worker đã nhận `sync_suggest`, chạy thuật toán
-  Python hiện tại và chỉ trả anchors advisory yêu cầu xác nhận. Studio hiện
-  hiển thị confidence/offset/structure, kiểm tra project, file nguồn và anchors
-  nền trước khi áp dụng bằng một `SetAnchors` undo step. Cache audio sync và
-  runtime xác nhận trên Windows vẫn còn mở; cache không được trả nhầm fingerprint.
+- [x] Reuse `audio_sync.py` từ JSONL worker cho nút đồng bộ trong Studio.
+  Kết quả chỉ là gợi ý cần xác nhận; Studio hiển thị confidence/offset/
+  structure, kiểm tra project, file nguồn và anchors nền trước khi áp dụng
+  bằng một `SetAnchors` undo step.
+- [x] Cache sync riêng trong `analysis_cache.py`, key theo SHA-256 của cả
+  reference và beat, revision thuật toán cùng options; cache hỏng/bất khả dụng
+  không làm hỏng lượt phân tích. Nếu fingerprint đổi trong lúc worker chạy,
+  lượt đó báo lỗi và không cache kết quả. Root dùng `OBS_DATA_DIR`, mặc định
+  `%LOCALAPPDATA%\VietKaraStudio` trên Windows.
+- [ ] Runtime xác nhận sync trên Windows với fixture audio; cache không được
+  trả nhầm fingerprint.
 - [ ] Port flow: separation, recognition/alignment, align region, role
   suggestion; project không bị ghi đè trước khi người dùng xác nhận
   kết quả AI.

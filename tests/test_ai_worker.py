@@ -72,6 +72,93 @@ def test_dispatch_maps_sync_suggestion_to_python_analysis(tmp_path, monkeypatch)
     assert progress == [(42, "Đang kiểm tra đoạn")]
 
 
+def test_sync_suggestion_cache_keys_both_tracks_and_reuses_only_matching_result(
+    tmp_path, monkeypatch
+):
+    reference = tmp_path / "reference.wav"
+    beat = tmp_path / "beat.wav"
+    reference.write_bytes(b"reference-v1")
+    beat.write_bytes(b"beat-v1")
+    calls = []
+    module = ModuleType("audio_sync")
+
+    def suggest(reference_path, beat_path, job):
+        calls.append((reference_path, beat_path))
+        job.update(90, "Phân tích xong")
+        return {
+            "anchors": [{"ref": 0.0, "beat": float(len(calls))}],
+            "requires_confirmation": True,
+        }
+
+    module.suggest = suggest
+    monkeypatch.setitem(sys.modules, "audio_sync", module)
+    payload = request(
+        "sync_suggest",
+        input={"reference": str(reference), "beat": str(beat)},
+        options={"cache_root": str(tmp_path / "data"), "algorithm_option": "default"},
+    )
+
+    first = ai_worker.dispatch(payload, lambda *_: None)
+    cached = ai_worker.dispatch(payload, lambda *_: None)
+    assert first == cached
+    assert len(calls) == 1
+
+    beat.write_bytes(b"beat-v2")
+    changed_source = ai_worker.dispatch(payload, lambda *_: None)
+    assert changed_source != first
+    assert len(calls) == 2
+
+    payload["options"]["algorithm_option"] = "changed"
+    changed_option = ai_worker.dispatch(payload, lambda *_: None)
+    assert changed_option != changed_source
+    assert len(calls) == 3
+
+
+def test_sync_cache_key_includes_both_audio_fingerprints_and_options(tmp_path):
+    import analysis_cache
+
+    reference = tmp_path / "reference.wav"
+    beat = tmp_path / "beat.wav"
+    reference.write_bytes(b"reference-v1")
+    beat.write_bytes(b"beat-v1")
+    initial = analysis_cache.sync_cache_key(reference, beat, {"mode": "safe"})
+    same = analysis_cache.sync_cache_key(reference, beat, {"mode": "safe"})
+    changed_option = analysis_cache.sync_cache_key(reference, beat, {"mode": "fast"})
+    beat.write_bytes(b"beat-v2")
+    changed_beat = analysis_cache.sync_cache_key(reference, beat, {"mode": "safe"})
+    reference.write_bytes(b"reference-v2")
+    changed_reference = analysis_cache.sync_cache_key(reference, beat, {"mode": "safe"})
+
+    assert initial == same
+    assert len({initial, changed_option, changed_beat, changed_reference}) == 4
+
+
+def test_sync_worker_does_not_cache_if_source_changes_during_analysis(tmp_path, monkeypatch):
+    reference = tmp_path / "reference.wav"
+    beat = tmp_path / "beat.wav"
+    reference.write_bytes(b"reference")
+    beat.write_bytes(b"beat-before")
+    module = ModuleType("audio_sync")
+
+    def suggest(reference_path, beat_path, job):
+        beat_path.write_bytes(b"beat-during-analysis")
+        return {"anchors": [], "requires_confirmation": True}
+
+    module.suggest = suggest
+    monkeypatch.setitem(sys.modules, "audio_sync", module)
+    payload = request(
+        "sync_suggest",
+        input={"reference": str(reference), "beat": str(beat)},
+        options={"data_root": str(tmp_path / "data")},
+    )
+
+    with pytest.raises(RuntimeError, match="đã đổi trong lúc phân tích"):
+        ai_worker.dispatch(payload, lambda *_: None)
+
+    cache_root = tmp_path / "data" / "cache" / "audio_sync"
+    assert not cache_root.exists() or not list(cache_root.iterdir())
+
+
 def test_dispatch_uses_cache_on_match_and_stores_cache_miss(tmp_path, monkeypatch):
     worker_calls = []
     cache = {"result": None}

@@ -2346,6 +2346,7 @@ impl Studio {
                 "python3".into()
             }
         });
+        let data_root = ai_data_root(&worker_script);
         let request = AiRequest::new(
             AiKind::SyncSuggest,
             project_id.clone(),
@@ -2353,10 +2354,11 @@ impl Studio {
                 "reference": reference_path,
                 "beat": beat_path,
             }),
-            Value::Object(serde_json::Map::new()),
+            serde_json::json!({"data_root": data_root}),
         );
         let config = WorkerConfig::new(python)
             .arg(worker_script.to_string_lossy().into_owned())
+            .env("OBS_DATA_DIR", data_root.to_string_lossy().into_owned())
             .timeout(std::time::Duration::from_secs(30 * 60));
         let reference_path = reference_path.to_path_buf();
         let beat_path = beat_path.to_path_buf();
@@ -5067,6 +5069,19 @@ fn ai_worker_script() -> Result<PathBuf, String> {
         .ok_or_else(|| {
             "Không tìm thấy ai_worker.py; đặt VIETKARA_AI_WORKER trỏ tới worker đã cài đặt".into()
         })
+}
+
+fn ai_data_root(worker_script: &std::path::Path) -> PathBuf {
+    if let Some(path) = std::env::var_os("OBS_DATA_DIR") {
+        return PathBuf::from(path);
+    }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        return PathBuf::from(local_app_data).join("VietKaraStudio");
+    }
+    worker_script
+        .parent()
+        .map(|directory| directory.join("data"))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("data"))
 }
 
 fn validate_sync_suggestion(project: &Project, result: &Value) -> Result<Vec<Anchor>, String> {
