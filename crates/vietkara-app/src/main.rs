@@ -258,7 +258,7 @@ fn render_project(
         .filter(|duration| duration.is_finite() && *duration > 0.0)
         .ok_or_else(|| "Thời lượng beat không hợp lệ".to_owned())?;
     let ffmpeg = vietkara_media::find_binary("ffmpeg").map_err(|error| error.to_string())?;
-    let ffprobe = vietkara_media::find_binary("ffprobe").map_err(|error| error.to_string())?;
+    let ffprobe = vietkara_media::find_binary("ffprobe").ok();
     let target = if target.is_absolute() {
         target.to_path_buf()
     } else {
@@ -290,7 +290,7 @@ fn render_project(
         std::fs::create_dir(temporary_directory.join("fonts"))
             .map_err(|error| format!("Không tạo được thư mục font tạm: {error}"))?;
         let mut inputs = vietkara_render::RenderInputs::new(beat, duration);
-        inputs.ffmpeg = ffmpeg;
+        inputs.ffmpeg = ffmpeg.clone();
         inputs.audio_normalize = project.settings.audio_normalize;
         inputs
             .configure_background_from_project(&project, project_directory)
@@ -375,8 +375,15 @@ fn render_project(
             return Err(format_ffmpeg_failure(status.code(), detail.trim()));
         }
         let rendered = temporary_directory.join(profile.output_name());
-        vietkara_render::verify_output_with_ffprobe(&rendered, duration, width, height, &ffprobe)
-            .map_err(|error| format!("Video render chưa đạt kiểm tra: {error}"))?;
+        vietkara_render::verify_output_with_tools(
+            &rendered,
+            duration,
+            width,
+            height,
+            ffprobe.as_deref(),
+            &ffmpeg,
+        )
+        .map_err(|error| format!("Video render chưa đạt kiểm tra: {error}"))?;
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             return Err("Đã hủy xuất video".into());
         }

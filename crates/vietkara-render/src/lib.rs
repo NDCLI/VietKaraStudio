@@ -18,7 +18,7 @@
 //!   backgrounds, scene layers, logo/countdown overlays and guide audio.
 //! * `layout::display_plan` and `ass::build_lyrics_ass` — measured lyric row
 //!   geometry and the first native subtitle pass, consuming the same plan.
-//! * `verify_output` — runs `ffprobe` on a rendered file.
+//! * `verify_output` — uses ffprobe JSON with an ffmpeg-summary fallback.
 //!
 //! # Remaining parity work
 //!
@@ -33,9 +33,9 @@
 //!   image countdown overlays are supported. GPUI export runs on a worker
 //!   thread, reports FFmpeg progress and can be cancelled; NVENC fallback
 //!   remains outside this slice.
-//! * The `ffprobe`-missing fallback in `verify_output` (parsing
-//!   `ffmpeg -i` stderr). `ffprobe` is the primary path in Python
-//!   too, and it is installed wherever this crate is tested.
+//! * `verify_output` prefers `ffprobe` JSON and falls back to parsing
+//!   `ffmpeg -i` stderr when the probe binary is unavailable, matching
+//!   the Python baseline.
 //! * AI / playback / jobs — those live in `vietkara-ai-bridge`,
 //!   `vietkara-media` and `vietkara-jobs`.
 
@@ -1740,7 +1740,10 @@ pub fn verify_output(
     let ffprobe = std::env::var_os("OBS_FFPROBE")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("ffprobe"));
-    verify_output_with_ffprobe(path, duration, width, height, &ffprobe)
+    let ffmpeg = std::env::var_os("OBS_FFMPEG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("ffmpeg"));
+    verify_output_with_tools(path, duration, width, height, Some(&ffprobe), &ffmpeg)
 }
 
 pub fn verify_output_with_ffprobe(
@@ -1750,23 +1753,57 @@ pub fn verify_output_with_ffprobe(
     height: u32,
     ffprobe: &Path,
 ) -> Result<VerifiedOutput, RenderError> {
+    let ffmpeg = ffprobe
+        .parent()
+        .map(|parent| {
+            parent.join(if cfg!(windows) {
+                "ffmpeg.exe"
+            } else {
+                "ffmpeg"
+            })
+        })
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| PathBuf::from("ffmpeg"));
+    verify_output_with_tools(path, duration, width, height, Some(ffprobe), &ffmpeg)
+}
+
+/// Prefer ffprobe JSON, but fall back to FFmpeg's stream summary when ffprobe
+/// is not installed, matching Python render_info.verify_output.
+pub fn verify_output_with_tools(
+    path: &Path,
+    duration: f64,
+    width: u32,
+    height: u32,
+    ffprobe: Option<&Path>,
+    ffmpeg: &Path,
+) -> Result<VerifiedOutput, RenderError> {
     let metadata = std::fs::metadata(path).map_err(|_| RenderError::MissingOutput)?;
     if !metadata.is_file() || metadata.len() < 1024 {
         return Err(RenderError::MissingOutput);
     }
-    let output = std::process::Command::new(ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-show_streams",
-            "-show_format",
-            "-of",
-            "json",
-        ])
-        .arg(path)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map_err(|e| RenderError::FfprobeNotFound(e.to_string()))?;
+    let output = if let Some(ffprobe) = ffprobe {
+        match std::process::Command::new(ffprobe)
+            .args([
+                "-v",
+                "error",
+                "-show_streams",
+                "-show_format",
+                "-of",
+                "json",
+            ])
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return verify_output_with_ffmpeg(path, duration, width, height, ffmpeg);
+            }
+            Err(error) => return Err(RenderError::FfprobeNotFound(error.to_string())),
+        }
+    } else {
+        return verify_output_with_ffmpeg(path, duration, width, height, ffmpeg);
+    };
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail: String = stderr
@@ -1822,6 +1859,83 @@ pub fn verify_output_with_ffprobe(
             .and_then(|c| c.as_str())
             .map(str::to_owned),
     })
+}
+
+fn verify_output_with_ffmpeg(
+    path: &Path,
+    duration: f64,
+    width: u32,
+    height: u32,
+    ffmpeg: &Path,
+) -> Result<VerifiedOutput, RenderError> {
+    let output = std::process::Command::new(ffmpeg)
+        .args(["-hide_banner", "-i"])
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|error| {
+            RenderError::FfprobeNotFound(format!(
+                "Không chạy được ffprobe và fallback ffmpeg: {error}"
+            ))
+        })?;
+    let summary = String::from_utf8_lossy(&output.stderr);
+    let has_video = summary.contains("Video:");
+    let has_audio = summary.contains("Audio:");
+    if !has_video || !has_audio {
+        return Err(RenderError::MissingStreams);
+    }
+    let output_duration = summary
+        .split_once("Duration: ")
+        .and_then(|(_, rest)| rest.split([',', '\n']).next())
+        .and_then(parse_probe_duration)
+        .unwrap_or(0.0);
+    if output_duration != 0.0 && (output_duration - duration).abs() > f64::max(1.0, duration * 0.01)
+    {
+        return Err(RenderError::DurationMismatch(output_duration, duration));
+    }
+    let video_summary = summary
+        .split_once("Video:")
+        .and_then(|(_, rest)| rest.lines().next())
+        .unwrap_or_default();
+    let actual_size = video_summary
+        .split(|character: char| !(character.is_ascii_digit() || character == 'x'))
+        .find_map(|part| {
+            let (width, height) = part.split_once('x')?;
+            Some((width.parse::<u32>().ok()?, height.parse::<u32>().ok()?))
+        });
+    let (actual_width, actual_height) = actual_size.unwrap_or((0, 0));
+    if actual_size.is_some() && (actual_width != width || actual_height != height) {
+        return Err(RenderError::SizeMismatch(
+            actual_width,
+            actual_height,
+            width,
+            height,
+        ));
+    }
+    Ok(VerifiedOutput {
+        duration: py_round(output_duration * 1000.0) / 1000.0,
+        width: actual_width,
+        height: actual_height,
+        video_codec: None,
+        audio_codec: None,
+    })
+}
+
+fn parse_probe_duration(value: &str) -> Option<f64> {
+    let mut fields = value.trim().split(':');
+    let hours = fields.next()?.parse::<f64>().ok()?;
+    let minutes = fields.next()?.parse::<f64>().ok()?;
+    let seconds = fields.next()?.parse::<f64>().ok()?;
+    if fields.next().is_some()
+        || !hours.is_finite()
+        || !minutes.is_finite()
+        || !seconds.is_finite()
+        || !(0.0..60.0).contains(&minutes)
+        || !(0.0..60.0).contains(&seconds)
+    {
+        return None;
+    }
+    Some(hours * 3600.0 + minutes * 60.0 + seconds)
 }
 
 #[cfg(test)]

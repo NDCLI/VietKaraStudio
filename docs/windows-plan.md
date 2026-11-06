@@ -842,3 +842,11 @@ quyền ghi, hết dung lượng, input hỏng, encoder không mở được, th
 và đưa bước xử lý tiếng Việt cùng 1.200 ký tự cuối của stderr. Cargo check
 workspace pass; tình huống lỗi thực tế và kiểm thử nhánh phân loại được để
 chạy cùng lượt kiểm thử cuối.
+
+### W5: xác minh output khi thiếu ffprobe
+
+`verify_output_with_tools` ưu tiên ffprobe JSON, chỉ chuyển sang `ffmpeg -i`
+khi không tìm thấy ffprobe; fallback kiểm tra đủ luồng video/audio, thời
+lượng nếu đọc được và kích thước frame nếu có trong summary. Export app giờ
+cho phép thiếu ffprobe nhưng vẫn yêu cầu FFmpeg để render. Workspace check
+pass; cần bổ sung test fallback và xác minh bằng FFmpeg trong đợt test gom.
