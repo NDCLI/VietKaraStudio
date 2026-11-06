@@ -1160,3 +1160,15 @@ Inspector có action gỡ riêng ảnh nền scene. Storage tạo version snapsh
 khi bỏ; nếu còn decoration thì giữ nguyên metadata/decoration, nếu không còn
 artwork thì dọn record scene. Workspace `cargo check` pass; test transaction
 được thêm vào lượt gom cuối.
+
+### 2026-11-06: sửa bố cục Inspector theo phản hồi UI
+
+Ảnh chụp cho thấy phần nội dung Inspector bị đặt nhầm trong hàng tab, khiến
+nhãn “TỪ ĐANG CHỌN” và các điều khiển dàn ngang, chật/cắt chữ. Đã đóng đúng
+container hàng tab để các panel “Từ” và “Thiết kế” xếp theo cột; tăng bề rộng
+mặc định Inspector ở các chế độ compact/standard/wide và thu hẹp panel lời để
+giữ không gian preview. `cargo check -p vietkara-app`, hai test bố cục cột và
+resize pass; toàn bộ `cargo test --workspace` pass với FFmpeg build4 và Python
+`.venv` (một test Whisper bị ignore vì cần model và WAV fixture riêng).
+Cần mở lại app để xác nhận trực quan sau thay đổi; toàn bộ parity giao diện
+với bản cũ vẫn chưa hoàn tất.

@@ -270,19 +270,19 @@ fn workspace_size(viewport_width: f32) -> WorkspaceSize {
         WorkspaceSize {
             left: 176.,
             preview: 320.,
-            right: 204.,
+            right: 260.,
         }
     } else if workspace_mode(viewport_width) == WorkspaceMode::Standard {
         WorkspaceSize {
-            left: 210.,
+            left: 190.,
             preview: 410.,
-            right: 236.,
+            right: 300.,
         }
     } else {
         WorkspaceSize {
-            left: 240.,
+            left: 220.,
             preview: 520.,
-            right: 270.,
+            right: 320.,
         }
     }
 }
@@ -7191,7 +7191,7 @@ impl Render for Studio {
                                         let text=this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").to_owned();
                                         this.set_word_input(&text,cx);
                                         cx.notify();
-                                    })))
+                                    }))))
                             .when(!self.inspector_design,|panel|panel
                             .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_SUBTLE)).child("TỪ ĐANG CHỌN"))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
@@ -7567,7 +7567,7 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(if settings.audio_normalize {"✓  Chuẩn hóa âm thanh (-16 LUFS)"} else {"Chuẩn hóa âm thanh: tắt"})
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.audio_normalize = !settings.audio_normalize,cx))))
-                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(theme::TEXT_SUBTLE)).child("Cài đặt được lưu cùng project."))),
+                                .child(div().mt_3().text_size(px(11.)).text_color(rgb(theme::TEXT_SUBTLE)).child("Cài đặt được lưu cùng project.")),
                     ),
             )
             .child(
@@ -9621,23 +9621,23 @@ mod workspace_tests {
             WorkspaceSize {
                 left: 176.,
                 preview: 320.,
-                right: 204.,
+                right: 260.,
             }
         );
         assert_eq!(
             workspace_size(1100.),
             WorkspaceSize {
-                left: 210.,
+                left: 190.,
                 preview: 410.,
-                right: 236.,
+                right: 300.,
             }
         );
         assert_eq!(
             workspace_size(1440.),
             WorkspaceSize {
-                left: 240.,
+                left: 220.,
                 preview: 520.,
-                right: 270.,
+                right: 320.,
             }
         );
     }
@@ -9646,12 +9646,12 @@ mod workspace_tests {
     fn workspace_splitters_resize_the_intended_column_and_respect_minimums() {
         let initial = workspace_size(1440.);
         let left_drag = resize_workspace(initial, WorkspaceEdge::Left, 80., 1440.);
-        assert_eq!(left_drag.left, 320.);
+        assert_eq!(left_drag.left, 300.);
         assert_eq!(left_drag.right, initial.right);
         assert_eq!(left_drag.preview, initial.preview);
 
         let right_drag = resize_workspace(initial, WorkspaceEdge::Right, -60., 1440.);
-        assert_eq!(right_drag.right, 330.);
+        assert_eq!(right_drag.right, 380.);
         assert_eq!(right_drag.left, initial.left);
 
         let narrow = resize_workspace(initial, WorkspaceEdge::Left, -500., 800.);
