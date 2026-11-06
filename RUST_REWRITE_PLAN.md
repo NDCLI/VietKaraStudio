@@ -2,6 +2,26 @@
 
 > **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
 
+> **Tiến độ 2026-11-06 — CI, hardening và test phụ thuộc môi trường:**
+> - Thêm `.github/workflows/ci.yml` (chưa có CI trước đây): job Linux cho 6
+>   crate headless (fmt/clippy/test), job Windows cho toàn workspace + release
+>   build `vietkara-app`, và job kiểm tra cú pháp Python + Node baseline.
+> - Test cần FFmpeg/FFprobe (`vietkara-media`, `vietkara-render`, export của
+>   `vietkara-app`) và test AI cần `numpy/scipy/soundfile` nay tự skip khi môi
+>   trường thiếu; checkout sạch chạy `cargo test --workspace` **206 pass,
+>   1 ignored, 0 failed** thay vì 7 fail.
+> - Sửa các lỗi tồn đọng: panic khi scene thiếu/ngắn `decoration_keyframes`;
+>   `Worker` AI không kill process khi drop, rò child khi handshake/protocol
+>   lỗi, stderr không giới hạn; ghi preferences không atomic và migration
+>   inspector 271–299 px bị ghi đè; seek bị drop khi channel playback đầy;
+>   13 `Mutex::lock().unwrap()` trong jobs; gộp 5 bản sao transaction import
+>   ảnh trong storage về một helper.
+> - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --
+>   -D warnings` và `cargo test --workspace` đều pass trên Windows 11.
+> - Còn lại chỉ chờ môi trường: QA Windows sạch/scale 150%/VNI-TCVN3, runtime
+>   nhiều audio device, batch/AI trên fixture thật, golden full-layout, và
+>   updater E2E khi có Rust release công khai trên GitHub.
+
 > **Tiến độ 2026-11-06 — lượt kiểm thử tổng và chỉnh UI GPUI:** nhánh
 > `codex/rust-gpui-rewrite` đã tách toolbar thành phần nhận diện/tên project và
 > hành động chính, hàng thao tác lời/preset/batch, cùng nhóm preset import/export,

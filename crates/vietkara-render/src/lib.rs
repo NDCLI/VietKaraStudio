@@ -2907,10 +2907,22 @@ mod tests {
         ));
     }
 
+    fn ffmpeg_installed() -> bool {
+        std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
     /// Integration test: render a real 2 s colour video with the exact
     /// argv `ffmpeg_command` produces, then verify it.
     #[test]
     fn verify_output_accepts_real_render_and_rejects_wrong_expectations() {
+        if !ffmpeg_installed() {
+            eprintln!("skipping: ffmpeg/ffprobe not installed");
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir(root.join("fonts")).unwrap();
@@ -3181,6 +3193,10 @@ mod tests {
 
     #[test]
     fn video_background_loops_to_beat_duration_and_preserves_beat_audio() {
+        if !ffmpeg_installed() {
+            eprintln!("skipping: ffmpeg not installed");
+            return;
+        }
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         std::fs::create_dir(root.join("fonts")).unwrap();
@@ -3290,6 +3306,10 @@ mod tests {
 
     #[test]
     fn portrait_and_4k_profiles_render_expected_frame_geometry() {
+        if !ffmpeg_installed() {
+            eprintln!("skipping: ffmpeg not installed");
+            return;
+        }
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         std::fs::create_dir(root.join("fonts")).unwrap();

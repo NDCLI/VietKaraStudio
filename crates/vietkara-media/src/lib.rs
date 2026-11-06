@@ -904,6 +904,14 @@ mod tests {
 
     // -- fixture generation --------------------------------------------------
 
+    fn ffmpeg_installed() -> bool {
+        Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
     fn run_ffmpeg(args: &[&str]) {
         let status = Command::new("ffmpeg")
             .args(["-y"])
@@ -943,6 +951,10 @@ mod tests {
 
     #[test]
     fn probe_real_video_via_ffprobe_and_fallback() {
+        if !ffmpeg_installed() {
+            eprintln!("skipping: ffmpeg/ffprobe not installed");
+            return;
+        }
         let dir = tempfile::tempdir().unwrap();
         let video = make_fixture_video(dir.path());
         let info = probe_video(&video, Path::new("ffprobe")).unwrap();
@@ -1080,6 +1092,10 @@ mod tests {
         assert_eq!(metrics.clipped_samples, 3);
         assert!(approx(metrics.peak_dbfs, 0.0, 0.1));
 
+        if !ffmpeg_installed() {
+            eprintln!("skipping float-WAV fixture: ffmpeg not installed");
+            return;
+        }
         // Float32 WAV via ffmpeg.
         let float_path = dir.path().join("float.wav");
         run_ffmpeg(&[
@@ -1116,6 +1132,10 @@ mod tests {
 
     #[test]
     fn convert_args_match_python_engine_convert() {
+        if !ffmpeg_installed() {
+            eprintln!("skipping: ffmpeg not installed");
+            return;
+        }
         let args = reference_wav_args("ffmpeg", Path::new("in.mp4"), Path::new("out.wav"));
         assert_eq!(
             args,

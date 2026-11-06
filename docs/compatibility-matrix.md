@@ -46,6 +46,22 @@
   **14/14 pass**. Python cần `resources/source`, không có trong Git checkout
   mới; dùng junction tạm tới asset local sẵn có rồi gỡ sau khi chạy test.
 
+### Cập nhật 2026-11-06 — CI và test phụ thuộc môi trường
+
+- Thêm `.github/workflows/ci.yml`:
+  - **rust-headless** (Ubuntu): `cargo fmt --check`, clippy `-D warnings` và
+    test cho 6 crate headless.
+  - **rust-windows**: fmt, clippy workspace, `cargo test --workspace` và release
+    build `vietkara-app` trên `windows-latest`.
+  - **scripting**: `python -m compileall` và Node tapping/timeline.
+- Các test cần FFmpeg/FFprobe (`vietkara-media`, `vietkara-render`,
+  `vietkara-app` export) hoặc Python có `numpy/scipy/soundfile`
+  (`vietkara-ai-bridge` sync) nay **tự skip** khi thiếu binary/module thay vì
+  fail. Trên máy không có FFmpeg/numpy: `cargo test --workspace` **206 pass,
+  1 ignored, 0 failed**; trước đây cùng môi trường fail 7 test.
+- Trên máy có FFmpeg/ffprobe và Python đầy đủ, các test trên vẫn chạy bình
+  thường; CI Windows có thể cài thêm FFmpeg nếu muốn bật integration.
+
 ## Trạng thái các crate Rust
 
 | Crate | Port từ Python | Trạng thái |
@@ -102,12 +118,14 @@ số thập phân, từ trống bị bỏ), không assert ID cụ thể.
 ## Lệnh kiểm chứng
 
 ```bash
-cargo fmt --check
-cargo test -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge
-cargo clippy -p vietkara-domain -p vietkara-storage -p vietkara-jobs -p vietkara-media -p vietkara-render -p vietkara-ai-bridge --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 python3 -m pytest tests/test_timing.py tests/test_app.py -q
 node --test tests/tapping.test.js tests/timeline_edit.test.js
 ```
 
-Lưu ý: `cargo test --workspace` bao gồm `vietkara-app` (GPUI) và chưa chạy
-được trên Linux; chạy theo `-p` như trên cho tới khi spike Windows xong.
+Lưu ý: `cargo test --workspace` cần host Windows để build `vietkara-app`
+(GPUI); trên Linux dùng danh sách `-p` của job `rust-headless` trong CI.
+Test tích hợp cần FFmpeg/FFprobe hoặc `numpy/scipy/soundfile` tự skip khi
+môi trường thiếu, nên suite vẫn xanh trên checkout sạch.

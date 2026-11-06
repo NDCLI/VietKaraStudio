@@ -1385,6 +1385,15 @@ mod tests {
 
     #[test]
     fn generated_karaoke_ass_renders_through_ffmpeg() {
+        let ffmpeg_installed = std::process::Command::new("ffmpeg")
+            .arg("-version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+        if !ffmpeg_installed {
+            eprintln!("skipping: ffmpeg not installed");
+            return;
+        }
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         std::fs::create_dir(root.join("fonts")).unwrap();
