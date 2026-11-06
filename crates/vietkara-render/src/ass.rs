@@ -666,7 +666,7 @@ fn word_event(
                 row.font_size,
                 style,
             );
-            let sweep = moving(left, *top, left, *bottom, right - feather / 2.0, right);
+            let sweep = moving(left, *top, left, *bottom, left, right - feather / 2.0);
             if let Some(event) = dialogue(
                 3,
                 row.show_start,

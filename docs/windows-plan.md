@@ -46,6 +46,11 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
 - Golden parity cho ASS/layout và render trên fixture Windows vẫn cần chốt;
   `vietkara-render` đã có `display_plan`, builder ASS và pipeline nền/scene/
   overlay/audio.
+- Đã có một raster golden hẹp cho serializer/sweep karaoke: fixture Python
+  baseline commit `c8dae55`, 6 khung hình 1920×1080 khớp pixel với Rust qua
+  libass trên Windows. Harness: `tests/test_ass_raster_parity.ps1`; chạy với
+  `VIETKARA_FFMPEG` trỏ tới FFmpeg có libass. Đây chưa xác nhận full layout,
+  font hoặc toàn bộ pipeline render.
 - Entry point JSONL `ai_worker.py` đã bọc runtime Python hiện có; smoke test
   worker thật với model và cancel/timeout end-to-end còn mở.
 - QA tích hợp UI `vietkara-app`: thao tác open/save/recovery, audio device,
@@ -285,6 +290,12 @@ kiểm tra runtime có FFmpeg trên Windows.
   màu/font/layout, audio stream (kế hoạch §4.0).
 
 ### 5.2. Full ASS layout — cần đo font trên Windows
+
+> **Tiến độ 2026-11-06:** serializer và karaoke sweep đã có một fixture
+> raster đơn giản khớp Python baseline `c8dae55` ở sáu thời điểm. Harness
+> `tests/test_ass_raster_parity.ps1` so pixel RGB từ FFmpeg/libass. Fixture
+> cố định geometry để cô lập ASS; checklist full layout/font và render dưới
+> đây vẫn còn nguyên.
 
 - [ ] Port `layout.display_plan` sang Rust, dùng font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):

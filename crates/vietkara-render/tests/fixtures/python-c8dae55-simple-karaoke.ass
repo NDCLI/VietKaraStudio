@@ -1,0 +1,17 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Main,Arial,72,&H00b9ef52,&H00ffffff,&H002a2015,&H00000000,-1,0,0,0,100.0,100,0,0,1,2.0,0,7,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 1,0:00:00.00,0:00:03.00,Main,,0,0,0,,{\an7\pos(100.00,800.00)\fs72.000\1c&H00ffffff\1a&H00&\3c&H002a2015\3a&H00&\shad0\clip(82.04,0.00,257.96,1080.00)\t(1000,1500,\clip(257.96,0.00,257.96,1080.00))}Xin
+Dialogue: 3,0:00:00.00,0:00:03.00,Main,,0,0,0,,{\an7\pos(100.00,800.00)\fs72.000\1c&H00b9ef52\1a&H00&\3c&H002a2015\3a&H00&\shad0\clip(82.04,0.00,82.04,1080.00)\t(1000,1500,\clip(82.04,0.00,257.96,1080.00))}Xin
+Dialogue: 1,0:00:00.00,0:00:03.00,Main,,0,0,0,,{\an7\pos(260.00,800.00)\fs72.000\1c&H00ffffff\1a&H00&\3c&H002a2015\3a&H00&\shad0\clip(242.04,0.00,417.96,1080.00)\t(1500,2000,\clip(417.96,0.00,417.96,1080.00))}chào
+Dialogue: 3,0:00:00.00,0:00:03.00,Main,,0,0,0,,{\an7\pos(260.00,800.00)\fs72.000\1c&H00b9ef52\1a&H00&\3c&H002a2015\3a&H00&\shad0\clip(242.04,0.00,242.04,1080.00)\t(1500,2000,\clip(242.04,0.00,417.96,1080.00))}chào

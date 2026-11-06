@@ -476,7 +476,8 @@ Workspace hiện có bảy crate:
   các cấu hình Windows mục tiêu vẫn còn.
 - `crates/vietkara-render`: shared display plan, ASS lyrics/title/scene,
   background/overlay/audio graph, render profile, FFmpeg argv và output
-  verification; golden parity/raster và QA full render Windows còn mở.
+  verification; có raster golden đơn giản 6 khung hình so với Python baseline
+  `c8dae55`; full layout/font parity và QA full render Windows còn mở.
 - `crates/vietkara-ai-bridge`: JSON Lines process bridge với timeout, cancel
   và crash handling; `ai_worker.py` adapter đã nối recognition/alignment,
   separation, role suggestion và sync; model thật, phần cứng CPU/NVIDIA và
