@@ -1159,6 +1159,7 @@ impl Studio {
             match prepare_batch_item(
                 path,
                 &mut record,
+                &data_root,
                 &mut self.preview_layout,
                 window.text_system(),
             ) {
@@ -1255,7 +1256,7 @@ impl Studio {
 
     fn run_batch(
         &mut self,
-        mut record: BatchRecord,
+        record: BatchRecord,
         prepared: Vec<PreparedBatchRender>,
         data_root: PathBuf,
         cx: &mut Context<Self>,
@@ -1272,48 +1273,9 @@ impl Studio {
             let worker_cancel = cancel.clone();
             let (sender, receiver) = std::sync::mpsc::channel();
             let thread = std::thread::Builder::new().name("vietkara-batch-render".into()).spawn(move || {
-                record.status = BatchStatus::Running;
-                let _ = record.save(&data_root);
-                let mut cancelled = false;
-                for job in prepared {
-                    if worker_cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        cancelled = true;
-                        break;
-                    }
-                    let index = job.index;
-                    let name = record.items.get(index).map(|item| item.name.clone()).unwrap_or_default();
-                    record.mark_item_running(index);
-                    record.status = BatchStatus::Running;
-                    let _ = record.save(&data_root);
-                    let _ = sender.send(BatchRenderEvent::ItemStarted(index, name));
-                    let worker_target = job.target.clone();
-                    let result = render_project(
-                        job.project,
-                        job.plan,
-                        &job.project_path,
-                        &job.target,
-                        &worker_cancel,
-                        |progress| { let _ = sender.send(BatchRenderEvent::Progress(index, progress)); },
-                        || { let _ = sender.send(BatchRenderEvent::Fallback(index)); },
-                    ).map(|fallback| (worker_target, fallback));
-                    match &result {
-                        Ok((path, fallback)) => {
-                            record.mark_item_done(index, serde_json::json!({"output_path": path, "cpu_fallback": fallback}));
-                        }
-                        Err(_error) if worker_cancel.load(std::sync::atomic::Ordering::Relaxed) => {
-                            if let Some(item) = record.items.get_mut(index) { item.status = ItemStatus::Queued; item.error = None; }
-                            cancelled = true;
-                        }
-                        Err(error) => record.mark_item_error(index, error.clone()),
-                    }
-                    let _ = record.save(&data_root);
-                    let _ = sender.send(BatchRenderEvent::ItemFinished(index, result));
-                    if cancelled { break; }
-                    let _ = sender.send(BatchRenderEvent::Progress(index, 1.0));
-                }
-                record.status = if cancelled { BatchStatus::Cancelled } else { BatchStatus::Done };
-                let _ = record.save(&data_root);
-                let _ = sender.send(BatchRenderEvent::Finished(record, cancelled));
+                render_batch_items(record, prepared, &data_root, &worker_cancel, |event| {
+                    let _ = sender.send(event);
+                });
             });
             if let Err(error) = thread {
                 let _ = this.update(cx, |this, cx| {
@@ -5273,6 +5235,102 @@ fn load_latest_batch_record(data_root: &std::path::Path) -> Option<BatchRecord> 
     Some(latest)
 }
 
+fn render_batch_items(
+    record: BatchRecord,
+    prepared: Vec<PreparedBatchRender>,
+    data_root: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    emit: impl FnMut(BatchRenderEvent),
+) {
+    render_batch_items_with(
+        record,
+        prepared,
+        data_root,
+        cancel,
+        emit,
+        |job, cancel, progress, fallback| {
+            let worker_target = job.target.clone();
+            render_project(
+                job.project,
+                job.plan,
+                &job.project_path,
+                &job.target,
+                cancel,
+                progress,
+                fallback,
+            )
+            .map(|used_cpu_fallback| (worker_target, used_cpu_fallback))
+        },
+    );
+}
+
+fn render_batch_items_with(
+    mut record: BatchRecord,
+    prepared: Vec<PreparedBatchRender>,
+    data_root: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    emit: impl FnMut(BatchRenderEvent),
+    mut render: impl FnMut(
+        PreparedBatchRender,
+        &std::sync::atomic::AtomicBool,
+        &mut dyn FnMut(f64),
+        &mut dyn FnMut(),
+    ) -> Result<(PathBuf, bool), String>,
+) {
+    let emit = std::cell::RefCell::new(emit);
+    record.status = BatchStatus::Running;
+    let _ = record.save(data_root);
+    let mut cancelled = false;
+    for job in prepared {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            cancelled = true;
+            break;
+        }
+        let index = job.index;
+        let name = record
+            .items
+            .get(index)
+            .map(|item| item.name.clone())
+            .unwrap_or_default();
+        record.mark_item_running(index);
+        record.status = BatchStatus::Running;
+        let _ = record.save(data_root);
+        emit.borrow_mut()(BatchRenderEvent::ItemStarted(index, name));
+        let mut on_progress = |progress| {
+            emit.borrow_mut()(BatchRenderEvent::Progress(index, progress));
+        };
+        let mut on_fallback = || emit.borrow_mut()(BatchRenderEvent::Fallback(index));
+        let result = render(job, cancel, &mut on_progress, &mut on_fallback);
+        match &result {
+            Ok((path, fallback)) => record.mark_item_done(
+                index,
+                serde_json::json!({"output_path": path, "cpu_fallback": fallback}),
+            ),
+            Err(_error) if cancel.load(std::sync::atomic::Ordering::Relaxed) => {
+                if let Some(item) = record.items.get_mut(index) {
+                    item.status = ItemStatus::Queued;
+                    item.error = None;
+                }
+                cancelled = true;
+            }
+            Err(error) => record.mark_item_error(index, error.clone()),
+        }
+        let _ = record.save(data_root);
+        emit.borrow_mut()(BatchRenderEvent::ItemFinished(index, result));
+        if cancelled {
+            break;
+        }
+        emit.borrow_mut()(BatchRenderEvent::Progress(index, 1.0));
+    }
+    record.status = if cancelled {
+        BatchStatus::Cancelled
+    } else {
+        BatchStatus::Done
+    };
+    let _ = record.save(data_root);
+    emit.borrow_mut()(BatchRenderEvent::Finished(record, cancelled));
+}
+
 fn batch_beat_path(project: &Project, project_path: &std::path::Path) -> Result<PathBuf, String> {
     let name = project
         .beat
@@ -5417,6 +5475,7 @@ fn snapshot_batch_project(
 fn prepare_batch_item(
     project_path: PathBuf,
     record: &mut BatchRecord,
+    data_root: &std::path::Path,
     cache: &mut preview::PreviewLayoutCache,
     text_system: &gpui::WindowTextSystem,
 ) -> Result<PreparedBatchRender, String> {
@@ -5441,16 +5500,21 @@ fn prepare_batch_item(
         &vietkara_render::RenderProfile::from_project(&project).output_name(),
         &record.items,
     );
-    let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
     let index = record.items.len();
     let render_id = vietkara_domain::new_id();
-    let snapshot = snapshot_batch_project(
-        &batch_data_root(),
-        &record.id,
-        &render_id,
-        &project,
-        &project_path,
-    )?;
+    let snapshot =
+        snapshot_batch_project(data_root, &record.id, &render_id, &project, &project_path)?;
+    // Render the exact immutable project/media snapshot persisted in the queue.
+    // The source path is retained only for user-facing provenance and output placement.
+    let snapshot_project = vietkara_storage::load_project(&snapshot.project_path)
+        .map_err(|error| error.to_string())?;
+    let plan = preview::cached_display_plan(
+        cache,
+        &snapshot_project,
+        &snapshot_project.words,
+        text_system,
+    )
+    .clone();
     record.items.push(BatchItem {
         project_id: project.id.clone(),
         render_id,
@@ -5475,8 +5539,8 @@ fn prepare_batch_item(
     });
     Ok(PreparedBatchRender {
         index,
-        project,
-        project_path,
+        project: snapshot_project,
+        project_path: snapshot.project_path,
         target,
         plan,
     })
@@ -8988,6 +9052,102 @@ mod workspace_tests {
                 .unwrap_err()
                 .contains("Media snapshot bị thay đổi: beat_source.wav")
         );
+    }
+
+    #[test]
+    fn batch_worker_cancel_preserves_queue_and_retry_completes_pending_items() {
+        let root = tempfile::tempdir().unwrap();
+        let mut record = BatchRecord::new(
+            "VietKaraStudio",
+            "batch",
+            &["current".into()],
+            &["beat".into()],
+        )
+        .unwrap();
+        for index in 0..2 {
+            record.items.push(BatchItem {
+                project_id: format!("project-{index}"),
+                render_id: format!("render-{index}"),
+                name: format!("Song {index}"),
+                variant: serde_json::json!({"output_path":root.path().join(format!("{index}.mp4"))}),
+                directory: root.path().to_string_lossy().into_owned(),
+                assets: Vec::new(),
+                status: ItemStatus::Queued,
+                result: None,
+                error: None,
+            });
+        }
+        record.save(root.path()).unwrap();
+
+        let make_job = |index| PreparedBatchRender {
+            index,
+            project: Project::new(format!("Song {index}")),
+            project_path: root.path().join(format!("project-{index}.json")),
+            target: root.path().join(format!("{index}.mp4")),
+            plan: vietkara_render::layout::DisplayPlan {
+                width: 1,
+                height: 1,
+                font: String::new(),
+                rows: Vec::new(),
+                title: None,
+                countdowns: Vec::new(),
+            },
+        };
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let mut cancelled_record = None;
+        render_batch_items_with(
+            record,
+            vec![make_job(0), make_job(1)],
+            root.path(),
+            &cancel,
+            |event| {
+                if let BatchRenderEvent::Finished(record, true) = event {
+                    cancelled_record = Some(record);
+                }
+            },
+            |job, cancel, _progress, _fallback| {
+                assert_eq!(job.index, 0);
+                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                Err("cancelled during render".into())
+            },
+        );
+        let cancelled_record = cancelled_record.expect("worker reports cancellation");
+        assert_eq!(cancelled_record.status, BatchStatus::Cancelled);
+        assert_eq!(cancelled_record.completed, 0);
+        assert_eq!(cancelled_record.items[0].status, ItemStatus::Queued);
+        assert_eq!(cancelled_record.items[1].status, ItemStatus::Queued);
+
+        let restarted = BatchRecord::load(root.path(), &cancelled_record.id).unwrap();
+        cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+        let mut finished_record = None;
+        render_batch_items_with(
+            restarted,
+            vec![make_job(0), make_job(1)],
+            root.path(),
+            &cancel,
+            |event| {
+                if let BatchRenderEvent::Finished(record, false) = event {
+                    finished_record = Some(record);
+                }
+            },
+            |job, _cancel, progress, _fallback| {
+                progress(0.5);
+                Ok((job.target, false))
+            },
+        );
+        let finished_record = finished_record.expect("worker reports completion");
+        assert_eq!(finished_record.status, BatchStatus::Done);
+        assert_eq!(finished_record.completed, 2);
+        assert!(
+            finished_record
+                .items
+                .iter()
+                .all(|item| item.status == ItemStatus::Done)
+        );
+        let saved = BatchRecord::load(root.path(), &finished_record.id).unwrap();
+        assert_eq!(saved.completed, 2);
+        assert_eq!(saved.items[0].status, ItemStatus::Done);
+        assert_eq!(saved.items[1].status, ItemStatus::Done);
     }
 
     #[test]

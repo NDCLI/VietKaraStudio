@@ -438,7 +438,12 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   snapshot bị sửa. UI smoke với hai project tổng hợp chưa khởi chạy batch; quá
   trình điều khiển native dialog lệch focus sang ứng dụng khác, không có record
   hay output được tạo. Cần chạy lại qua UI trên phiên desktop ổn định rồi thử
-  cancel/restart giữa render.
+  cancel/restart giữa render. Regression test
+  `batch_worker_cancel_preserves_queue_and_retry_completes_pending_items` mô
+  phỏng hủy khi một item đang render, xác nhận item đó và các item sau còn
+  queued sau restart, rồi chạy lại queue đến trạng thái done. Enqueue ban đầu
+  hiện render từ project/media snapshot đã đóng băng thay vì đọc lại project
+  nguồn.
 - [x] Cấu hình AI lưu local cho `Tự động · NVIDIA/CPU` hoặc CPU, cùng các
   model Whisper small/medium/large-v3-turbo. Chế độ tự động chọn CUDA chỉ sau
   khi hardware probe kiểm tra được backend; Demucs giữ `--jobs 1`, model và
