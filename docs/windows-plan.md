@@ -801,3 +801,11 @@ trước khi bỏ thay đổi. Runtime Windows: tạo project từ nút và th�
 `Đã tạo project mới • chưa lưu`; bấm lại mở banner xác nhận; Hủy giữ dirty
 marker; Ctrl+N cũng mở cùng banner. Nhánh xác nhận bỏ state chưa lưu chưa
 được kích hoạt trong runtime.
+
+### W5: preview chọn dòng từ layout plan dùng chung
+
+Studio lấy các dòng đang hiển thị từ `DisplayPlan` cho cả karaoke,
+subtitle và lyricsmv. Bộ chọn dòng cũ của preview được giữ làm oracle test,
+không còn quyết định UI riêng cho non-karaoke. Tọa độ/phong cách của lyricsmv
+vẫn cần golden comparison với ASS; phần thay đổi này chỉ hợp nhất show-window
+và chọn row theo layout plan.

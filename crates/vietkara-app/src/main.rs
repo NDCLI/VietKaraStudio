@@ -3339,23 +3339,13 @@ impl Render for Studio {
             window.text_system(),
         );
         let active_plan_rows = preview::visible_plan_rows(layout, self.play_position, display_mode);
-        let active_lines = if display_mode == "karaoke" {
-            active_plan_rows
-                .iter()
-                .map(|&index| preview::VisibleLine {
-                    line: layout.rows[index].line,
-                    slot: layout.rows[index].slot,
-                })
-                .collect()
-        } else {
-            preview::visible_lines(
-                display_words,
-                &self.editor.project().anchors,
-                self.play_position,
-                display_mode,
-                duet,
-            )
-        };
+        let active_lines: Vec<_> = active_plan_rows
+            .iter()
+            .map(|&index| preview::VisibleLine {
+                line: layout.rows[index].line,
+                slot: layout.rows[index].slot,
+            })
+            .collect();
         let selected_id = self.selected_word.as_deref();
         let preview_line_element = |line: u32, size: f32, subdued: bool, line_color: u32| {
             let line_align = preview_alignment(display_align, line, &active_lines);

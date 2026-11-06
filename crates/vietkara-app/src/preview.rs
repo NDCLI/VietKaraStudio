@@ -1,9 +1,10 @@
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
-use vietkara_domain::{Anchor, Word, timing::map_time};
+#[cfg(test)]
+use std::collections::HashMap;
+use vietkara_domain::Word;
+#[cfg(test)]
+use vietkara_domain::{Anchor, timing::map_time};
 use vietkara_render::layout::{DisplayPlan, TextMeasurer};
 
 #[derive(Default)]
@@ -131,6 +132,7 @@ pub(super) fn visible_plan_rows(plan: &DisplayPlan, beat_time: f64, mode: &str) 
     }
 }
 
+#[cfg(test)]
 struct Row<'a> {
     line: u32,
     words: Vec<&'a Word>,
@@ -145,7 +147,9 @@ struct Row<'a> {
 
 /// Pick the lyric rows visible at the current beat time using the baseline
 /// studio.js show windows and lane arbitration. Word timestamps are in the
-/// reference clock; the returned rows are selected in beat-clock time.
+/// reference clock; the returned rows are selected in beat-clock time. This
+/// duplicate planner remains test-only as a parity oracle for the shared plan.
+#[cfg(test)]
 pub(super) fn visible_lines(
     words: &[Word],
     anchors: &[Anchor],
@@ -319,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_plan_selects_one_visible_row_per_lane() {
+    fn shared_plan_selects_visible_rows_for_karaoke_and_single_line_modes() {
         let row = |index, line, slot, start, end, show_start, show_end| {
             vietkara_render::layout::DisplayRow {
                 index,
@@ -356,6 +360,7 @@ mod tests {
         };
         assert_eq!(visible_plan_rows(&plan, 3.5, "karaoke"), vec![2, 1]);
         assert_eq!(visible_plan_rows(&plan, 3.5, "subtitle"), vec![1]);
+        assert_eq!(visible_plan_rows(&plan, 3.5, "lyricsmv"), vec![1]);
     }
 
     #[test]
