@@ -1272,15 +1272,32 @@ impl RenderInputs {
             };
             let y = (baseline - font_size * 2.05).max(0.0);
             let size = (font_size * 0.7).round().max(2.0) as u32;
-            let mut lines: BTreeMap<u32, (f64, f64)> = BTreeMap::new();
+            let mut lines: BTreeMap<u32, Vec<(f64, f64)>> = BTreeMap::new();
             for word in &project.words {
                 let start = vietkara_domain::timing::map_time(word.start, &project.anchors, false);
                 let end = vietkara_domain::timing::map_time(word.end, &project.anchors, false);
-                let line = lines.entry(word.line).or_insert((start, end));
-                line.0 = line.0.min(start);
-                line.1 = line.1.max(end);
+                lines.entry(word.line).or_default().push((start, end));
             }
-            let mut ordered = lines.into_values().collect::<Vec<_>>();
+            let mut ordered = Vec::new();
+            for mut words in lines.into_values() {
+                words.sort_by(|left, right| left.0.total_cmp(&right.0));
+                let mut chunk: Option<(f64, f64)> = None;
+                for (start, end) in words {
+                    if let Some(current) = chunk.as_mut() {
+                        if start - current.1 > 4.0 {
+                            ordered.push(*current);
+                            chunk = Some((start, end));
+                        } else {
+                            current.1 = current.1.max(end);
+                        }
+                    } else {
+                        chunk = Some((start, end));
+                    }
+                }
+                if let Some(chunk) = chunk {
+                    ordered.push(chunk);
+                }
+            }
             ordered.sort_by(|left, right| left.0.total_cmp(&right.0));
             let mut previous_end: f64 = 0.0;
             for (index, (start, end)) in ordered.iter().enumerate() {
@@ -2519,6 +2536,47 @@ mod tests {
                     "start":start,
                     "end":start+0.5,
                     "line":line,
+                    "role":"all"
+                }))
+                .unwrap(),
+            );
+        }
+
+        let mut inputs = RenderInputs::new("beat.wav", 20.0);
+        inputs
+            .configure_overlays_from_project(&project, directory.path(), 1920, 1080)
+            .unwrap();
+        assert_eq!(inputs.countdown.len(), 2);
+        assert!((inputs.countdown[0].start - 0.95).abs() < 0.001);
+        assert!((inputs.countdown[0].end - 4.95).abs() < 0.001);
+        assert!((inputs.countdown[1].start - 10.95).abs() < 0.001);
+        assert!((inputs.countdown[1].end - 14.95).abs() < 0.001);
+    }
+
+    #[test]
+    fn image_countdown_splits_a_line_after_a_long_lyric_pause() {
+        let directory = tempfile::tempdir().unwrap();
+        write_png_header(&directory.path().join("countdown.png"), 64, 64);
+        let mut project = vietkara_domain::Project::new("same-line pause");
+        project.settings.extra.extend(
+            serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(
+                serde_json::json!({
+                    "countdown":"image",
+                    "countdown_seconds":4,
+                    "display_mode":"karaoke"
+                }),
+            )
+            .unwrap(),
+        );
+        for (index, start) in [5.0, 15.0].into_iter().enumerate() {
+            project.words.push(
+                serde_json::from_value(serde_json::json!({
+                    "id":format!("{:032x}", index + 1),
+                    "line_uid":"00000000000000000000000000000011",
+                    "text":"Xin",
+                    "start":start,
+                    "end":start+0.5,
+                    "line":0,
                     "role":"all"
                 }))
                 .unwrap(),
