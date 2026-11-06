@@ -419,6 +419,10 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   vietkara-app --tests` và workspace clippy pass.
 - [ ] Chạy test batch, smoke test render thực tế và xác minh resume/cancel khi
   app bị đóng giữa chừng trên Windows trước khi gọi batch là production-ready.
+  App unit test nay mô phỏng record hai mục (một done, một running), restart,
+  giữ nguyên kết quả đã xong và chỉ requeue mục đang chạy; sửa source sau crash
+  vẫn dùng media snapshot, còn snapshot bị đổi sẽ bị fingerprint từ chối. Đây
+  chưa thay cho thao tác Cancel/đóng cửa sổ khi batch đang render trong runtime.
 - [x] Cấu hình AI lưu local cho `Tự động · NVIDIA/CPU` hoặc CPU, cùng các
   model Whisper small/medium/large-v3-turbo. Chế độ tự động chọn CUDA chỉ sau
   khi hardware probe kiểm tra được backend; Demucs giữ `--jobs 1`, model và

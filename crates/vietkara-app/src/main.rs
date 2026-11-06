@@ -5444,6 +5444,26 @@ fn prepare_resumed_batch_item(
     text_system: &gpui::WindowTextSystem,
 ) -> Result<PreparedBatchRender, String> {
     let _source_project_path = project_path;
+    let project_path = validate_batch_snapshot(item)?;
+    let project =
+        vietkara_storage::load_project(&project_path).map_err(|error| error.to_string())?;
+    let target = item
+        .variant
+        .get("output_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| "Thiếu đường dẫn đầu ra trong hàng đợi".to_owned())?;
+    let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
+    Ok(PreparedBatchRender {
+        index,
+        project,
+        project_path,
+        target,
+        plan,
+    })
+}
+
+fn validate_batch_snapshot(item: &BatchItem) -> Result<PathBuf, String> {
     let project_path = item
         .variant
         .get("snapshot_project_path")
@@ -5484,22 +5504,7 @@ fn prepare_resumed_batch_item(
             return Err(format!("Media snapshot bị thay đổi: {name}"));
         }
     }
-    let project =
-        vietkara_storage::load_project(&project_path).map_err(|error| error.to_string())?;
-    let target = item
-        .variant
-        .get("output_path")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .ok_or_else(|| "Thiếu đường dẫn đầu ra trong hàng đợi".to_owned())?;
-    let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
-    Ok(PreparedBatchRender {
-        index,
-        project,
-        project_path,
-        target,
-        plan,
-    })
+    Ok(project_path)
 }
 
 impl Render for Studio {
@@ -8849,6 +8854,15 @@ mod workspace_tests {
     #[test]
     fn startup_recovers_running_batch_item_as_queued() {
         let dir = tempfile::tempdir().unwrap();
+        let batch_dir = dir.path().join("batch-renders");
+        let source_dir = dir.path().join("source");
+        std::fs::create_dir_all(&batch_dir).unwrap();
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(source_dir.join("beat.wav"), b"source beat before crash").unwrap();
+        let project_path = source_dir.join("project.json");
+        let mut project = Project::new("Bài hát nguồn");
+        project.beat = Some(serde_json::json!({"filename":"beat.wav","duration":4.0}));
+        std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
         let mut record = BatchRecord::new(
             "VietKaraStudio",
             "batch",
@@ -8857,22 +8871,107 @@ mod workspace_tests {
         )
         .unwrap();
         record.status = BatchStatus::Running;
+        let first_id = vietkara_domain::new_id();
+        let first_dir = BatchRecord::record_path(dir.path(), &record.id)
+            .parent()
+            .unwrap()
+            .join("items")
+            .join(&first_id);
+        std::fs::create_dir_all(&first_dir).unwrap();
+        let first_snapshot = first_dir.join("project.json");
+        std::fs::write(&first_snapshot, serde_json::to_vec(&project).unwrap()).unwrap();
+        std::fs::write(first_dir.join("beat.wav"), b"immutable snapshot beat").unwrap();
+        let first_snapshot_hash = vietkara_storage::sha256_file(&first_snapshot).unwrap();
+        let first_beat_hash = vietkara_storage::sha256_file(&first_dir.join("beat.wav")).unwrap();
+        let first_output = dir.path().join("done.mp4");
+        let mut done = BatchItem {
+            project_id: project.id.clone(),
+            render_id: first_id,
+            name: "Đã xong".into(),
+            variant: serde_json::json!({
+                "source_project_path":project_path,
+                "snapshot_project_path":first_snapshot,
+                "snapshot_project_sha256":first_snapshot_hash,
+                "snapshot_media":{"beat.wav":first_beat_hash},
+                "output_path":first_output,
+            }),
+            directory: source_dir.to_string_lossy().into_owned(),
+            assets: vec![first_dir.join("beat.wav").to_string_lossy().into_owned()],
+            status: ItemStatus::Queued,
+            result: None,
+            error: None,
+        };
+        done.status = ItemStatus::Done;
+        done.result = Some(serde_json::json!({"output_path":"done.mp4"}));
+        record.completed = 1;
+        record.items.push(done);
+        let second_id = vietkara_domain::new_id();
+        let second_dir = BatchRecord::record_path(dir.path(), &record.id)
+            .parent()
+            .unwrap()
+            .join("items")
+            .join(&second_id);
+        std::fs::create_dir_all(&second_dir).unwrap();
+        let second_snapshot = second_dir.join("project.json");
+        std::fs::write(&second_snapshot, serde_json::to_vec(&project).unwrap()).unwrap();
+        std::fs::write(second_dir.join("beat.wav"), b"beat snapshot").unwrap();
+        let second_snapshot_hash = vietkara_storage::sha256_file(&second_snapshot).unwrap();
+        let second_beat_hash = vietkara_storage::sha256_file(&second_dir.join("beat.wav")).unwrap();
         record.items.push(BatchItem {
-            project_id: "project".into(),
-            render_id: "render".into(),
-            name: "Bài hát".into(),
-            variant: serde_json::json!({}),
-            directory: dir.path().to_string_lossy().into_owned(),
-            assets: Vec::new(),
+            project_id: project.id,
+            render_id: second_id,
+            name: "Đang render".into(),
+            variant: serde_json::json!({
+                "source_project_path":project_path,
+                "snapshot_project_path":second_snapshot,
+                "snapshot_project_sha256":second_snapshot_hash,
+                "snapshot_media":{"beat.wav":second_beat_hash},
+                "output_path":dir.path().join("pending.mp4"),
+            }),
+            directory: source_dir.to_string_lossy().into_owned(),
+            assets: vec![second_dir.join("beat.wav").to_string_lossy().into_owned()],
             status: ItemStatus::Running,
             result: None,
             error: None,
         });
+        record.next_index = 1;
         record.save(dir.path()).unwrap();
 
         let recovered = load_latest_batch_record(dir.path()).unwrap();
         assert_eq!(recovered.status, BatchStatus::Cancelled);
-        assert_eq!(recovered.items[0].status, ItemStatus::Queued);
+        assert_eq!(recovered.completed, 1);
+        assert_eq!(recovered.items[0].status, ItemStatus::Done);
+        assert_eq!(
+            recovered.items[0].result.as_ref().unwrap()["output_path"],
+            "done.mp4"
+        );
+        assert_eq!(recovered.items[1].status, ItemStatus::Queued);
+        assert_eq!(recovered.first_pending(), 1);
+        std::fs::write(
+            source_dir.join("beat.wav"),
+            b"source changed after the batch started",
+        )
+        .unwrap();
+        let saved_snapshot_beat = std::fs::read(second_dir.join("beat.wav")).unwrap();
+        assert_eq!(saved_snapshot_beat, b"beat snapshot");
+        let expected_snapshot_hash = recovered.items[1].variant["snapshot_media"]["beat.wav"]
+            .as_str()
+            .unwrap();
+        assert_eq!(
+            vietkara_storage::sha256_file(&second_dir.join("beat.wav")).unwrap(),
+            expected_snapshot_hash
+        );
+        assert!(validate_batch_snapshot(&recovered.items[1]).is_ok());
+        std::fs::write(second_dir.join("beat.wav"), b"tampered beat snapshot").unwrap();
+        assert!(
+            validate_batch_snapshot(&recovered.items[1])
+                .unwrap_err()
+                .contains("Media snapshot bị thay đổi")
+        );
+        assert_eq!(
+            BatchRecord::load(dir.path(), &record.id).unwrap().items[1].status,
+            ItemStatus::Queued
+        );
     }
 
     #[test]
