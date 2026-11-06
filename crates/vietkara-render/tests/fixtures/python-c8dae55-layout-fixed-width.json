@@ -1,0 +1,575 @@
+{
+  "baseline_commit": "c8dae557ce941485150aa4e6b525f6b136e8319f",
+  "measurer": "font_text character count × size × 0.5 × horizontal scale",
+  "project": {
+    "schema": 2,
+    "id": "00000000000000000000000000000001",
+    "name": "Python layout geometry golden",
+    "beat": {
+      "duration": 32.0
+    },
+    "anchors": [
+      {
+        "ref": 0.0,
+        "beat": 1.25
+      },
+      {
+        "ref": 32.0,
+        "beat": 33.25
+      }
+    ],
+    "settings": {
+      "font": "Arial",
+      "font_size": 120,
+      "aspect": "landscape",
+      "display_mode": "karaoke",
+      "singing_mode": "duet",
+      "role_icons": false,
+      "sung_gradient": false,
+      "line_animation": "none",
+      "horizontal_scale": 110,
+      "horizontal_offset": -3,
+      "vertical_offset": 5,
+      "line_height": 1.25,
+      "outline_width": 3,
+      "shadow": 2,
+      "align": "justify",
+      "position": "bottom",
+      "countdown": "none",
+      "title_enabled": false
+    },
+    "words": [
+      {
+        "id": "00000000000000000000000000000001",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "Nhiều",
+        "start": 0.5,
+        "end": 0.8,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": true
+      },
+      {
+        "id": "00000000000000000000000000000002",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "khi",
+        "start": 0.8400000000000001,
+        "end": 1.1400000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000003",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "anh",
+        "start": 1.1800000000000002,
+        "end": 1.4800000000000002,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000004",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "mong",
+        "start": 1.52,
+        "end": 1.82,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000005",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "được",
+        "start": 1.86,
+        "end": 2.16,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000006",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "một",
+        "start": 2.2,
+        "end": 2.5,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000007",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "lần",
+        "start": 2.54,
+        "end": 2.84,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000008",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "nói",
+        "start": 7.880000000000001,
+        "end": 8.180000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000009",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "ra",
+        "start": 8.22,
+        "end": 8.520000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000a",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "hết",
+        "start": 8.56,
+        "end": 8.860000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000b",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "tất",
+        "start": 8.9,
+        "end": 9.200000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000c",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "cả",
+        "start": 9.24,
+        "end": 9.540000000000001,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000d",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "thay",
+        "start": 9.58,
+        "end": 9.88,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000e",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "vì",
+        "start": 9.92,
+        "end": 10.22,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "0000000000000000000000000000000f",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "ngồi",
+        "start": 10.260000000000002,
+        "end": 10.560000000000002,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000010",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "lặng",
+        "start": 10.600000000000001,
+        "end": 10.900000000000002,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000011",
+        "line_uid": "00000000000000000000000000000064",
+        "text": "im",
+        "start": 10.940000000000001,
+        "end": 11.240000000000002,
+        "line": 0,
+        "role": "male",
+        "row": 0,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000012",
+        "line_uid": "00000000000000000000000000000065",
+        "text": "Xin",
+        "start": 10.4,
+        "end": 10.700000000000001,
+        "line": 1,
+        "role": "female",
+        "row": 1,
+        "section": true
+      },
+      {
+        "id": "00000000000000000000000000000013",
+        "line_uid": "00000000000000000000000000000065",
+        "text": "chào",
+        "start": 10.0,
+        "end": 10.3,
+        "line": 1,
+        "role": "female",
+        "row": 1,
+        "section": null
+      },
+      {
+        "id": "00000000000000000000000000000014",
+        "line_uid": "00000000000000000000000000000066",
+        "text": "Điệp",
+        "start": 18.4,
+        "end": 18.7,
+        "line": 2,
+        "role": "male",
+        "row": 0,
+        "section": true
+      },
+      {
+        "id": "00000000000000000000000000000015",
+        "line_uid": "00000000000000000000000000000066",
+        "text": "khúc",
+        "start": 18.0,
+        "end": 18.3,
+        "line": 2,
+        "role": "male",
+        "row": 0,
+        "section": null
+      }
+    ]
+  },
+  "expected": {
+    "width": 1920,
+    "height": 1080,
+    "rows": [
+      {
+        "index": 0,
+        "line": 0,
+        "slot": 0,
+        "start": 1.75,
+        "end": 3.41,
+        "show_start": 0.25,
+        "show_end": 3.41,
+        "x": 38.4,
+        "y": 450.0,
+        "width": 1518.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "left",
+        "role": "male",
+        "text": "Nhiều khi anh mong được",
+        "section_start": true,
+        "section_end": false,
+        "words": [
+          {
+            "text": "Nhiều",
+            "display_text": "Nhiều",
+            "start": 1.75,
+            "end": 2.05,
+            "x": 38.4,
+            "width": 330.0
+          },
+          {
+            "text": "khi",
+            "display_text": "khi",
+            "start": 2.09,
+            "end": 2.39,
+            "x": 434.4,
+            "width": 198.0
+          },
+          {
+            "text": "anh",
+            "display_text": "anh",
+            "start": 2.43,
+            "end": 2.7300000000000004,
+            "x": 698.4,
+            "width": 198.0
+          },
+          {
+            "text": "mong",
+            "display_text": "mong",
+            "start": 2.77,
+            "end": 3.0700000000000003,
+            "x": 962.4,
+            "width": 264.0
+          },
+          {
+            "text": "được",
+            "display_text": "được",
+            "start": 3.1100000000000003,
+            "end": 3.41,
+            "x": 1292.4,
+            "width": 264.0
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "line": 0,
+        "slot": 0,
+        "start": 3.45,
+        "end": 4.09,
+        "show_start": 3.45,
+        "show_end": 4.6899999999999995,
+        "x": 38.4,
+        "y": 450.0,
+        "width": 462.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "left",
+        "role": "male",
+        "text": "một lần",
+        "section_start": false,
+        "section_end": true,
+        "words": [
+          {
+            "text": "một",
+            "display_text": "một",
+            "start": 3.45,
+            "end": 3.75,
+            "x": 38.4,
+            "width": 198.0
+          },
+          {
+            "text": "lần",
+            "display_text": "lần",
+            "start": 3.79,
+            "end": 4.09,
+            "x": 302.4,
+            "width": 198.0
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "line": 0,
+        "slot": 0,
+        "start": 9.13,
+        "end": 11.47,
+        "show_start": 7.630000000000001,
+        "show_end": 11.47,
+        "x": 38.4,
+        "y": 450.0,
+        "width": 1650.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "left",
+        "role": "male",
+        "text": "nói ra hết tất cả thay vì",
+        "section_start": true,
+        "section_end": false,
+        "words": [
+          {
+            "text": "nói",
+            "display_text": "nói",
+            "start": 9.13,
+            "end": 9.430000000000001,
+            "x": 38.4,
+            "width": 198.0
+          },
+          {
+            "text": "ra",
+            "display_text": "ra",
+            "start": 9.47,
+            "end": 9.770000000000001,
+            "x": 302.4,
+            "width": 132.0
+          },
+          {
+            "text": "hết",
+            "display_text": "hết",
+            "start": 9.81,
+            "end": 10.110000000000001,
+            "x": 500.4,
+            "width": 198.0
+          },
+          {
+            "text": "tất",
+            "display_text": "tất",
+            "start": 10.15,
+            "end": 10.450000000000001,
+            "x": 764.4,
+            "width": 198.0
+          },
+          {
+            "text": "cả",
+            "display_text": "cả",
+            "start": 10.49,
+            "end": 10.790000000000001,
+            "x": 1028.4,
+            "width": 132.0
+          },
+          {
+            "text": "thay",
+            "display_text": "thay",
+            "start": 10.83,
+            "end": 11.13,
+            "x": 1226.4,
+            "width": 264.0
+          },
+          {
+            "text": "vì",
+            "display_text": "vì",
+            "start": 11.17,
+            "end": 11.47,
+            "x": 1556.4,
+            "width": 132.0
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "line": 1,
+        "slot": 1,
+        "start": 11.25,
+        "end": 11.950000000000001,
+        "show_start": 7.630000000000001,
+        "show_end": 12.55,
+        "x": 1238.4,
+        "y": 738.0,
+        "width": 528.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "right",
+        "role": "female",
+        "text": "chào Xin",
+        "section_start": false,
+        "section_end": false,
+        "words": [
+          {
+            "text": "chào",
+            "display_text": "chào",
+            "start": 11.25,
+            "end": 11.55,
+            "x": 1238.4,
+            "width": 264.0
+          },
+          {
+            "text": "Xin",
+            "display_text": "Xin",
+            "start": 11.65,
+            "end": 11.950000000000001,
+            "x": 1568.4,
+            "width": 198.0
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "line": 0,
+        "slot": 0,
+        "start": 11.510000000000002,
+        "end": 12.490000000000002,
+        "show_start": 11.510000000000002,
+        "show_end": 13.090000000000002,
+        "x": 38.4,
+        "y": 450.0,
+        "width": 792.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "left",
+        "role": "male",
+        "text": "ngồi lặng im",
+        "section_start": false,
+        "section_end": true,
+        "words": [
+          {
+            "text": "ngồi",
+            "display_text": "ngồi",
+            "start": 11.510000000000002,
+            "end": 11.810000000000002,
+            "x": 38.4,
+            "width": 264.0
+          },
+          {
+            "text": "lặng",
+            "display_text": "lặng",
+            "start": 11.850000000000001,
+            "end": 12.150000000000002,
+            "x": 368.4,
+            "width": 264.0
+          },
+          {
+            "text": "im",
+            "display_text": "im",
+            "start": 12.190000000000001,
+            "end": 12.490000000000002,
+            "x": 698.4,
+            "width": 132.0
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "line": 2,
+        "slot": 0,
+        "start": 19.25,
+        "end": 19.95,
+        "show_start": 17.75,
+        "show_end": 20.55,
+        "x": 38.4,
+        "y": 450.0,
+        "width": 594.0,
+        "height": 144.0,
+        "font_size": 120,
+        "align": "left",
+        "role": "male",
+        "text": "khúc Điệp",
+        "section_start": true,
+        "section_end": true,
+        "words": [
+          {
+            "text": "khúc",
+            "display_text": "khúc",
+            "start": 19.25,
+            "end": 19.55,
+            "x": 38.4,
+            "width": 264.0
+          },
+          {
+            "text": "Điệp",
+            "display_text": "Điệp",
+            "start": 19.65,
+            "end": 19.95,
+            "x": 368.4,
+            "width": 264.0
+          }
+        ]
+      }
+    ]
+  }
+}

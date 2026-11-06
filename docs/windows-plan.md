@@ -295,7 +295,13 @@ kiểm tra runtime có FFmpeg trên Windows.
 > raster đơn giản khớp Python baseline `c8dae55` ở sáu thời điểm. Harness
 > `tests/test_ass_raster_parity.ps1` so pixel RGB từ FFmpeg/libass. Fixture
 > cố định geometry để cô lập ASS; checklist full layout/font và render dưới
-> đây vẫn còn nguyên.
+> đây vẫn còn nguyên. Golden layout bổ sung
+> `crates/vietkara-render/tests/fixtures/python-c8dae55-layout-fixed-width.json`
+> đối chiếu `layout.display_plan` Python–Rust trên cùng project duet, lyric
+> wrap, khoảng nghỉ dài và beat anchors, dùng cùng measurer ký tự cố định.
+> `cargo test -p vietkara-render --test layout_python_golden` pass. Nó kiểm
+> chứng quy tắc planner độc lập với font; không thay thế đo/shaping Arial và
+> font bundled trên Windows hay golden title/icon/countdown.
 
 - [ ] Chốt parity đầy đủ cho `layout.display_plan` với font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):
