@@ -2142,6 +2142,7 @@ impl Studio {
         #[cfg(windows)]
         if let Some(worker) = &self.playback {
             let state = worker.snapshot();
+            let playback_error = merge_playback_error(state.error, self.playback_error.as_deref());
             let playing = state.state == vietkara_media::PlayerState::Playing;
             let timeline_position = timeline::track_to_timeline_time(
                 self.listen_track,
@@ -2161,12 +2162,12 @@ impl Studio {
             if self.playing != playing
                 || (self.play_position - timeline_position).abs() > 0.005
                 || self.play_duration != timeline_duration
-                || self.playback_error != state.error
+                || self.playback_error != playback_error
             {
                 self.playing = playing;
                 self.play_position = timeline_position;
                 self.play_duration = timeline_duration;
-                self.playback_error = state.error;
+                self.playback_error = playback_error;
                 cx.notify();
             }
             if ended && self.tapping.is_some() {
@@ -4634,6 +4635,17 @@ fn additional_output_devices(devices: &[String], default_device: Option<&str>) -
         .collect()
 }
 
+fn merge_playback_error(
+    worker_error: Option<String>,
+    current_error: Option<&str>,
+) -> Option<String> {
+    worker_error.or_else(|| {
+        current_error
+            .filter(|error| error.starts_with("Chưa có "))
+            .map(str::to_owned)
+    })
+}
+
 fn audio_metadata(project: &Project, slot: AudioSlot) -> Option<&Value> {
     match slot {
         AudioSlot::Beat => project.beat.as_ref(),
@@ -5370,6 +5382,20 @@ mod workspace_tests {
             additional_output_devices(&devices, None),
             ["Speakers", "Headphones"]
         );
+    }
+
+    #[test]
+    fn worker_snapshot_does_not_clear_a_missing_audio_warning() {
+        let missing = "Chưa có beat.wav; hãy nhập hoặc relink track đang nghe";
+        assert_eq!(
+            merge_playback_error(None, Some(missing)),
+            Some(missing.into())
+        );
+        assert_eq!(
+            merge_playback_error(Some("File audio hỏng".into()), Some(missing)),
+            Some("File audio hỏng".into())
+        );
+        assert_eq!(merge_playback_error(None, Some("Seek thất bại")), None);
     }
 
     #[test]
