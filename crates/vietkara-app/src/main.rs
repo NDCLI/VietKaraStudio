@@ -4029,7 +4029,11 @@ impl Render for Studio {
                         if !this.saving && !this.autosaving { window.remove_window(); }
                     })))
                 .child(div().cursor_pointer().px_3().child("Tiếp tục chỉnh sửa")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| {this.confirm_close=false;cx.notify();})))))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| {
+                        this.confirm_close=false;
+                        this.close_after_save_window=None;
+                        cx.notify();
+                    })))))
             .when(self.confirm_open || self.confirm_new, |root| root.child(div().flex().gap_3().p_3()
                 .child(if self.confirm_new {
                     "Project chưa lưu. Lưu hoặc bỏ thay đổi trước khi tạo project mới."
