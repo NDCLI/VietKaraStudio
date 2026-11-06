@@ -10,8 +10,9 @@ use gpui::{
     uniform_list,
 };
 use serde_json::Value;
+use vietkara_ai_bridge::{AiKind, AiRequest, Worker, WorkerConfig};
 use vietkara_domain::{
-    Project, Word,
+    Anchor, Project, Word,
     edit::{Command, Editor},
 };
 
@@ -49,6 +50,20 @@ struct TapSession {
     clock: vietkara_domain::tapping::TapTiming,
     words: Vec<Word>,
     wall: std::time::Instant,
+}
+
+struct PendingSyncSuggestion {
+    project_id: String,
+    reference_path: PathBuf,
+    beat_path: PathBuf,
+    base_anchors: Vec<Anchor>,
+    result: Value,
+}
+
+enum SyncEvent {
+    Started(std::sync::Arc<std::sync::atomic::AtomicBool>),
+    Progress(f32, String),
+    Finished(Result<Value, String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +116,10 @@ struct Studio {
     autosave_status: String,
     autosaving: bool,
     autosave_pending: bool,
+    sync_running: bool,
+    sync_progress: f32,
+    sync_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pending_sync: Option<PendingSyncSuggestion>,
     _autosave_task: Task<()>,
     left_tab_media: bool,
     inspector_design: bool,
@@ -798,11 +817,13 @@ impl Studio {
     fn choose_audio(&mut self, slot: AudioSlot, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
+            || self.sync_running
             || self.recovery.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.pending_audio.is_some()
             || self.pending_lyrics.is_some()
+            || self.pending_sync.is_some()
         {
             return;
         }
@@ -846,6 +867,7 @@ impl Studio {
             || self.timeline_drag.is_some()
             || self.pending_audio.is_some()
             || self.pending_lyrics.is_some()
+            || self.pending_sync.is_some()
         {
             return;
         }
@@ -1611,7 +1633,11 @@ impl Studio {
         cx.notify();
     }
     fn accept_audio(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.autosaving || self.tapping.is_some() || self.timeline_drag.is_some()
+        if self.saving
+            || self.autosaving
+            || self.sync_running
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
         {
             return;
         }
@@ -2258,12 +2284,255 @@ impl Studio {
         self.import_lyrics_file(false, cx);
     }
 
+    fn suggest_audio_sync(&mut self, cx: &mut Context<Self>) {
+        if self.sync_running {
+            if let Some(cancel) = &self.sync_cancel {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                self.edit_status = "Đang hủy phân tích đồng bộ…".into();
+                cx.notify();
+            }
+            return;
+        }
+        if self.saving
+            || self.autosaving
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_sync.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.confirm_close
+            || self.confirm_open
+            || self.confirm_new
+        {
+            return;
+        }
+        let Some(project_path) = self.path.as_deref() else {
+            self.edit_status = "Hãy lưu project trước khi phân tích đồng bộ audio".into();
+            cx.notify();
+            return;
+        };
+        let Some(reference_path) = project_audio_file(
+            self.editor.project(),
+            Some(project_path),
+            AudioSlot::Reference,
+        ) else {
+            self.edit_status = "Project chưa có bản hát hợp lệ để phân tích".into();
+            cx.notify();
+            return;
+        };
+        let Some(beat_path) =
+            project_audio_file(self.editor.project(), Some(project_path), AudioSlot::Beat)
+        else {
+            self.edit_status = "Project chưa có beat hợp lệ để phân tích".into();
+            cx.notify();
+            return;
+        };
+        let project_id = self.editor.project().id.clone();
+        let base_anchors = self.editor.project().anchors.clone();
+        let worker_script = match ai_worker_script() {
+            Ok(path) => path,
+            Err(error) => {
+                self.edit_status = error;
+                cx.notify();
+                return;
+            }
+        };
+        let python = std::env::var("VIETKARA_PYTHON").unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "python".into()
+            } else {
+                "python3".into()
+            }
+        });
+        let request = AiRequest::new(
+            AiKind::SyncSuggest,
+            project_id.clone(),
+            serde_json::json!({
+                "reference": reference_path,
+                "beat": beat_path,
+            }),
+            Value::Object(serde_json::Map::new()),
+        );
+        let config = WorkerConfig::new(python)
+            .arg(worker_script.to_string_lossy().into_owned())
+            .timeout(std::time::Duration::from_secs(30 * 60));
+        let reference_path = reference_path.to_path_buf();
+        let beat_path = beat_path.to_path_buf();
+        self.sync_running = true;
+        self.sync_progress = 0.0;
+        self.sync_cancel = None;
+        self.pending_sync = None;
+        self.edit_status = "Đang phân tích tương quan bản hát và beat…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let worker_thread = std::thread::Builder::new()
+                .name("vietkara-audio-sync".into())
+                .spawn(move || match Worker::spawn(config, request) {
+                    Ok(mut worker) => {
+                        let _ = sender.send(SyncEvent::Started(worker.cancel_flag()));
+                        let result = worker
+                            .run(|progress, message| {
+                                let _ =
+                                    sender.send(SyncEvent::Progress(progress, message.to_owned()));
+                            })
+                            .map_err(|error| error.to_string());
+                        let _ = sender.send(SyncEvent::Finished(result));
+                    }
+                    Err(error) => {
+                        let _ = sender.send(SyncEvent::Finished(Err(error.to_string())));
+                    }
+                });
+            if let Err(error) = worker_thread {
+                let _ = this.update(cx, |this, cx| {
+                    this.sync_running = false;
+                    this.sync_cancel = None;
+                    this.edit_status = format!("Không khởi chạy được phân tích đồng bộ: {error}");
+                    cx.notify();
+                });
+                return;
+            }
+            let mut finished = false;
+            while !finished {
+                Timer::after(std::time::Duration::from_millis(100)).await;
+                loop {
+                    match receiver.try_recv() {
+                        Ok(SyncEvent::Started(cancel)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_cancel = Some(cancel);
+                                cx.notify();
+                            });
+                        }
+                        Ok(SyncEvent::Progress(progress, message)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_progress = progress.clamp(0.0, 100.0);
+                                this.edit_status = format!("{message} · {:.0}%", progress);
+                                cx.notify();
+                            });
+                        }
+                        Ok(SyncEvent::Finished(result)) => {
+                            finished = true;
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.sync_cancel = None;
+                                match result {
+                                    Ok(result)
+                                        if this.editor.project().id == project_id
+                                            && this.path.as_deref().is_some_and(|path| {
+                                                project_audio_file(
+                                                    this.editor.project(),
+                                                    Some(path),
+                                                    AudioSlot::Reference,
+                                                ) == Some(reference_path.clone())
+                                                    && project_audio_file(
+                                                        this.editor.project(),
+                                                        Some(path),
+                                                        AudioSlot::Beat,
+                                                    ) == Some(beat_path.clone())
+                                            }) =>
+                                    {
+                                        match validate_sync_suggestion(
+                                            this.editor.project(),
+                                            &result,
+                                        ) {
+                                            Ok(_) => {
+                                                this.pending_sync = Some(PendingSyncSuggestion {
+                                                    project_id: project_id.clone(),
+                                                    reference_path: reference_path.clone(),
+                                                    beat_path: beat_path.clone(),
+                                                    base_anchors: base_anchors.clone(),
+                                                    result,
+                                                });
+                                                this.edit_status =
+                                                    "Có gợi ý đồng bộ; project chưa thay đổi"
+                                                        .into();
+                                            }
+                                            Err(error) => this.edit_status = error,
+                                        }
+                                    }
+                                    Ok(_) => {
+                                        this.edit_status =
+                                            "Project hoặc file audio đã đổi; bỏ gợi ý cũ".into();
+                                    }
+                                    Err(error) => this.edit_status = error,
+                                }
+                                cx.notify();
+                            });
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            finished = true;
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.sync_cancel = None;
+                                this.edit_status =
+                                    "Worker đồng bộ dừng đột ngột, không trả kết quả".into();
+                                cx.notify();
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn accept_sync_suggestion(&mut self, cx: &mut Context<Self>) {
+        let Some(suggestion) = self.pending_sync.take() else {
+            return;
+        };
+        let sources_match = self.editor.project().id == suggestion.project_id
+            && self.editor.project().anchors == suggestion.base_anchors
+            && self.path.as_deref().is_some_and(|path| {
+                project_audio_file(self.editor.project(), Some(path), AudioSlot::Reference)
+                    == Some(suggestion.reference_path.clone())
+                    && project_audio_file(self.editor.project(), Some(path), AudioSlot::Beat)
+                        == Some(suggestion.beat_path.clone())
+            });
+        if !sources_match {
+            self.edit_status =
+                "Project, audio hoặc mốc đã đổi; hãy phân tích lại trước khi áp dụng".into();
+            cx.notify();
+            return;
+        }
+        let anchors = match validate_sync_suggestion(self.editor.project(), &suggestion.result) {
+            Ok(anchors) => anchors,
+            Err(error) => {
+                self.edit_status = error;
+                cx.notify();
+                return;
+            }
+        };
+        self.edit_status = match self.editor.execute(Command::SetAnchors(anchors)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                "Đã áp dụng gợi ý đồng bộ • chưa lưu".into()
+            }
+            Err(error) => error.to_string(),
+        };
+        self.selected_anchor = None;
+        cx.notify();
+    }
+
+    fn dismiss_sync_suggestion(&mut self, cx: &mut Context<Self>) {
+        if self.pending_sync.take().is_some() {
+            self.edit_status = "Đã bỏ gợi ý đồng bộ; project không thay đổi".into();
+            cx.notify();
+        }
+    }
+
     fn import_lyrics_file(&mut self, is_srt: bool, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
+            || self.sync_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_sync.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -2395,12 +2664,15 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.rendering
+            || self.sync_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.confirm_close
+            || self.confirm_open
+            || self.confirm_new
         {
             return;
         }
@@ -2417,6 +2689,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.rendering
+            || self.sync_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
@@ -2439,6 +2712,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.rendering
+            || self.sync_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
@@ -2468,6 +2742,7 @@ impl Studio {
                 self.tapping = None;
                 self.pending_lyrics = None;
                 self.pending_audio = None;
+                self.pending_sync = None;
                 self.background_video_frame = None;
                 self.background_frame_requested_at = -1.0;
                 self.background_frame_pending = false;
@@ -2529,6 +2804,7 @@ impl Studio {
     fn choose_open(&mut self, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
+            || self.sync_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
@@ -2578,6 +2854,7 @@ impl Studio {
                     Ok(Some((path, editor, recovery))) => {
                         this.path = Some(path);
                         this.editor = editor;
+                        this.pending_sync = None;
                         this.selected_anchor = None;
                         this.recovery = recovery;
                         this.autosave_pending = false;
@@ -2890,6 +3167,7 @@ impl Studio {
                 this.edit_status = match result {
                     Ok(()) => {
                         this.path = Some(saved_path);
+                        this.pending_sync = None;
                         this.dirty = false;
                         this.confirm_open = false;
                         this.confirm_new = false;
@@ -3989,6 +4267,13 @@ impl Render for Studio {
                     .child(div().cursor_pointer().child("Hoàn tất (Enter)")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.finish_tapping(true,cx))))
                     .child(format!("Từ {} / {}",self.tapping.as_ref().map(|s|s.clock.index+1).unwrap_or(0),self.editor.project().words.len()))))
+            .child(div().flex().items_center().gap_3().px_5().py_2()
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
+                    .child(if self.sync_running { "Hủy phân tích đồng bộ" } else { "Gợi ý đồng bộ bản hát/beat" })
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.suggest_audio_sync(cx))))
+                .when(self.sync_running,|bar|bar
+                    .child(format!("{:.0}%",self.sync_progress))
+                    .child(self.edit_status.clone())))
             .when(!missing_audio.is_empty(), |root| root.child(
                 div().flex().items_center().gap_3().px_4().py_2().bg(rgb(theme::ACCENT_SURFACE))
                     .child("Thiếu file audio trong thư mục project:")
@@ -4018,6 +4303,16 @@ impl Render for Studio {
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_lyrics(cx))))
                 .child(div().cursor_pointer().px_3().child("Hủy")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_lyrics=None;this.edit_status="Đã hủy nhập lời".into();cx.notify();})))))
+            .when(self.pending_sync.is_some(), |root| root.child(div().flex().items_center().gap_3().p_3().bg(rgb(theme::ACCENT_SURFACE))
+                .child(format!("Gợi ý đồng bộ · {} · lệch {:.2}s · tỷ lệ {:.3}",
+                    self.pending_sync.as_ref().and_then(|item|item.result.get("confidence")).and_then(Value::as_str).unwrap_or("chưa rõ"),
+                    self.pending_sync.as_ref().and_then(|item|item.result.get("offset_seconds")).and_then(Value::as_f64).unwrap_or(0.0),
+                    self.pending_sync.as_ref().and_then(|item|item.result.get("beat_per_reference")).and_then(Value::as_f64).unwrap_or(1.0)))
+                .child(self.pending_sync.as_ref().and_then(|item|item.result.get("structure")).and_then(Value::as_str).unwrap_or("").to_owned())
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SUCCESS_ACTIVE)).px_3().py_1().child("Áp dụng mốc (một bước hoàn tác)")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.accept_sync_suggestion(cx))))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1().child("Bỏ gợi ý")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.dismiss_sync_suggestion(cx))))))
             .when(self.confirm_close, |root| root.child(div().flex().gap_3().p_3()
                 .child("Project chưa lưu. Lưu trước khi đóng hoặc chọn đóng không lưu.")
                 .child(div().cursor_pointer().px_3().child("Lưu và đóng")
@@ -4748,6 +5043,51 @@ fn project_audio_file(
     Some(project_path?.parent()?.join(relative))
 }
 
+fn ai_worker_script() -> Result<PathBuf, String> {
+    if let Some(path) = std::env::var_os("VIETKARA_AI_WORKER").map(PathBuf::from) {
+        return path
+            .is_file()
+            .then_some(path.clone())
+            .ok_or_else(|| format!("Không tìm thấy AI worker: {}", path.display()));
+    }
+    let mut roots = Vec::new();
+    if let Ok(executable) = std::env::current_exe()
+        && let Some(parent) = executable.parent()
+    {
+        roots.extend(parent.ancestors().map(PathBuf::from));
+    }
+    if let Ok(directory) = std::env::current_dir() {
+        roots.extend(directory.ancestors().map(PathBuf::from));
+    }
+    roots.dedup();
+    roots
+        .into_iter()
+        .map(|root| root.join("ai_worker.py"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            "Không tìm thấy ai_worker.py; đặt VIETKARA_AI_WORKER trỏ tới worker đã cài đặt".into()
+        })
+}
+
+fn validate_sync_suggestion(project: &Project, result: &Value) -> Result<Vec<Anchor>, String> {
+    if result.get("requires_confirmation").and_then(Value::as_bool) != Some(true) {
+        return Err("Worker không đánh dấu gợi ý cần xác nhận".into());
+    }
+    let anchors: Vec<Anchor> = serde_json::from_value(
+        result
+            .get("anchors")
+            .cloned()
+            .ok_or_else(|| "Worker không trả danh sách mốc".to_owned())?,
+    )
+    .map_err(|error| format!("Danh sách mốc từ worker không hợp lệ: {error}"))?;
+    let mut candidate = project.clone();
+    candidate.anchors = anchors.clone();
+    candidate
+        .validate()
+        .map_err(|error| format!("Danh sách mốc từ worker không hợp lệ: {error}"))?;
+    Ok(anchors)
+}
+
 fn audio_slot_missing(
     project: &Project,
     project_path: Option<&std::path::Path>,
@@ -5347,6 +5687,15 @@ fn main() {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
                         weak.update(cx, |studio: &mut Studio, cx| {
+                            if studio.sync_running {
+                                if let Some(cancel) = &studio.sync_cancel {
+                                    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                studio.edit_status =
+                                    "Đang dừng phân tích đồng bộ trước khi đóng cửa sổ".into();
+                                cx.notify();
+                                return false;
+                            }
                             if studio.saving || studio.autosaving {
                                 studio.edit_status =
                                     "Đang ghi file, vui lòng chờ trước khi đóng".into();
@@ -5453,6 +5802,10 @@ fn main() {
                         confirm_open: false,
                         confirm_new: false,
                         confirm_close: false,
+                        sync_running: false,
+                        sync_progress: 0.0,
+                        sync_cancel: None,
+                        pending_sync: None,
                         close_after_save_window: None,
                         navigate_after_save: None,
                         pending_lyrics: None,
@@ -5499,6 +5852,30 @@ fn main() {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn sync_suggestion_is_advisory_and_validates_anchors_without_mutating_project() {
+        let project = Project::new("sync");
+        let suggestion = serde_json::json!({
+            "requires_confirmation": true,
+            "anchors": [{"ref": 0.0, "beat": 2.0}, {"ref": 10.0, "beat": 12.0}],
+        });
+        let anchors = validate_sync_suggestion(&project, &suggestion).unwrap();
+        assert_eq!(anchors.len(), 2);
+        assert!(project.anchors.is_empty());
+
+        let unconfirmed = serde_json::json!({
+            "requires_confirmation": false,
+            "anchors": [{"ref": 0.0, "beat": 0.0}],
+        });
+        assert!(validate_sync_suggestion(&project, &unconfirmed).is_err());
+
+        let invalid = serde_json::json!({
+            "requires_confirmation": true,
+            "anchors": [{"ref": 1.0, "beat": 3.0}, {"ref": 0.0, "beat": 4.0}],
+        });
+        assert!(validate_sync_suggestion(&project, &invalid).is_err());
+    }
 
     #[test]
     fn legacy_voice_labels_map_into_the_two_duet_roles() {

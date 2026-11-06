@@ -10,6 +10,7 @@ vietkara-domain = { path = "../vietkara-domain" }
 vietkara-storage = { path = "../vietkara-storage" }
 vietkara-media = { path = "../vietkara-media" }
 vietkara-render = { path = "../vietkara-render" }
+vietkara-ai-bridge = { path = "../vietkara-ai-bridge" }
 serde_json = "1"
 unicode-segmentation = "1.10"
 

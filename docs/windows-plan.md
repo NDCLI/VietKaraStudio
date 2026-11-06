@@ -333,8 +333,10 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   language, lời, preference, region và tùy chọn runtime.
 - [ ] Hoàn tất port/reuse audio sync (`audio_sync.py`) trong app và tích
   hợp cache; hiện JSONL worker đã nhận `sync_suggest`, chạy thuật toán
-  Python hiện tại và chỉ trả anchors advisory yêu cầu xác nhận. Cache và UI
-  xác nhận/apply anchors vẫn còn mở; cache không được trả nhầm fingerprint.
+  Python hiện tại và chỉ trả anchors advisory yêu cầu xác nhận. Studio hiện
+  hiển thị confidence/offset/structure, kiểm tra project, file nguồn và anchors
+  nền trước khi áp dụng bằng một `SetAnchors` undo step. Cache audio sync và
+  runtime xác nhận trên Windows vẫn còn mở; cache không được trả nhầm fingerprint.
 - [ ] Port flow: separation, recognition/alignment, align region, role
   suggestion; project không bị ghi đè trước khi người dùng xác nhận
   kết quả AI.
