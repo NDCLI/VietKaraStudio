@@ -53,13 +53,9 @@ fn role_color(
     fallback: &str,
 ) -> String {
     let key = match row.role.as_str() {
-        "male" => "role_a_color",
-        "female" => "role_b_color",
+        "male" | "voice_c" | "voice_e" => "role_a_color",
+        "female" | "voice_d" | "voice_f" => "role_b_color",
         "all" => "role_all_color",
-        "voice_c" => "role_c_color",
-        "voice_d" => "role_d_color",
-        "voice_e" => "role_e_color",
-        "voice_f" => "role_f_color",
         "unknown" => "role_unknown_color",
         _ => return fallback.to_owned(),
     };

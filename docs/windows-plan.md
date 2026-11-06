@@ -703,6 +703,13 @@ Save As, Mở, nhập SRT/beat, autosave 30 giây. Các mục đó cần thao t�
 hoặc công cụ UI automation; không coi bằng chứng hiển thị này là parity
 tương tác.
 
+### W3: giới hạn duet về hai lane
+
+Editor chỉ cho luân phiên các vai Cùng hát, Nam, Nữ và Chưa rõ. Các vai
+legacy `voice_c`…`voice_f` vẫn được bảo toàn trong project cũ; khi preview/
+ASS, `voice_c`/`voice_e` dùng lane Nam và `voice_d`/`voice_f` dùng lane Nữ.
+Không còn thêm lane/màu vai thứ ba đến thứ sáu trong giao diện.
+
 ### Tham khảo GPUI Kit
 
 `https://gpui-kit.com/` (trang hiện giới thiệu gpui-kit 0.9.0) hữu ích làm

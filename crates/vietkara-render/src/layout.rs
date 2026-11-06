@@ -646,7 +646,11 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             }
         }
         let role = if duet && display_mode == "karaoke" {
-            first.word.role.clone()
+            match first.word.role.as_str() {
+                "voice_c" | "voice_e" => "male".to_owned(),
+                "voice_d" | "voice_f" => "female".to_owned(),
+                role => role.to_owned(),
+            }
         } else {
             "all".into()
         };
@@ -701,10 +705,10 @@ pub fn display_plan<M: TextMeasurer>(project: &Project, measure: &M) -> DisplayP
             "male" => setting_color(settings, "role_a_color", "#52efb9"),
             "female" => setting_color(settings, "role_b_color", "#ff7ab6"),
             "all" => setting_color(settings, "role_all_color", "#52efb9"),
-            "voice_c" => setting_color(settings, "role_c_color", "#ffd166"),
-            "voice_d" => setting_color(settings, "role_d_color", "#8ecbff"),
-            "voice_e" => setting_color(settings, "role_e_color", "#c7a0ff"),
-            "voice_f" => setting_color(settings, "role_f_color", "#ff9a76"),
+            // Legacy projects can contain more than two voice identities. Keep
+            // their data, but render them with the two supported duet lanes.
+            "voice_c" | "voice_e" => setting_color(settings, "role_a_color", "#52efb9"),
+            "voice_d" | "voice_f" => setting_color(settings, "role_b_color", "#ff7ab6"),
             _ => setting_color(settings, "role_unknown_color", "#ffffff"),
         };
         let role_marker = (marker_width > 0.0).then(|| RoleMarker {
@@ -857,7 +861,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_folds_all_duet_tracks_into_two_slots_and_maps_anchors() {
+    fn planner_folds_legacy_duet_tracks_into_two_roles_and_two_slots() {
         let roles = ["male", "female", "voice_c", "voice_d", "voice_e", "voice_f"];
         let mut project = Project {
             schema: 2,
@@ -889,13 +893,16 @@ mod tests {
             plan.rows.iter().map(|row| row.slot).collect::<Vec<_>>(),
             [0, 1, 0, 1, 0, 1]
         );
-        assert_eq!(
-            plan.rows
-                .iter()
-                .filter(|row| row.role_marker.is_some())
-                .count(),
-            2
-        );
+        let marker_colors: Vec<_> = plan
+            .rows
+            .iter()
+            .filter_map(|row| row.role_marker.as_ref().map(|marker| marker.color.clone()))
+            .collect();
+        assert_eq!(marker_colors.len(), roles.len());
+        assert_eq!(marker_colors[0], marker_colors[2]);
+        assert_eq!(marker_colors[2], marker_colors[4]);
+        assert_eq!(marker_colors[1], marker_colors[3]);
+        assert_eq!(marker_colors[3], marker_colors[5]);
         assert!(plan.rows.iter().all(|row| row.slot <= 1));
         assert_eq!(plan.rows[0].start, 4.0);
     }

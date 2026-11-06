@@ -78,6 +78,7 @@ số thập phân, từ trống bị bỏ), không assert ID cụ thể.
 | Word text | `strip()`, cắt 200 ký tự, bỏ từ trống | Cùng quy tắc, đếm theo ký tự (không phải byte) | ✅ test |
 | Word timing | `start >= 0`, `end > start`, làm tròn 4 chữ số | Cùng quy tắc; lỗi `InvalidWordTime` | ✅ test |
 | Role | Không hợp lệ → `"all"` (không lỗi) | `migrate()` ép về `"all"`; `validate()` vẫn báo `UnknownRole` với project chưa chuẩn hóa | ✅ test |
+| Duet lanes | Baseline có các vai mở rộng `voice_c`…`voice_f` | Studio hiển thị/chỉnh hai vai Nam/Nữ; dữ liệu vai cũ được giữ nguyên khi load/save, nhưng preview và ASS gập `voice_c`/`voice_e` vào Nam, `voice_d`/`voice_f` vào Nữ | ✅ quyết định sản phẩm; kiểm thử renderer |
 | Word fields giữ lại | `estimated` (luôn có), `locked`/`section`/`manual` (chỉ khi true), `section_name` (cắt 40 ký tự), `label_color` (`#RRGGBB`, lỗi nếu sai, lưu lowercase), `row` (int 0–5, lỗi nếu sai) | Typed fields tương ứng, serialize bỏ `None`/false để khớp Python | ✅ test |
 | Anchors | Sắp xếp theo `ref`, `>= 0`, khoảng cách `>= 0.02` cả `ref` và `beat` | `migrate()` sắp xếp trước khi validate; cùng ngưỡng | ✅ test |
 | Unknown fields | `validate_words` *bỏ* field lạ ở cấp word khi save qua Python; project-level field lạ được giữ trong dict | Rust giữ unknown fields ở cấp project/word qua `serde(flatten)` — **an toàn hơn Python, cố tình khác**: round-trip Rust không làm mất field lạ; khi project quay lại Python và save, Python có thể bỏ field lạ ở cấp word (ghi rõ để không bất ngờ) | ✅ test, khác biệt đã ghi |

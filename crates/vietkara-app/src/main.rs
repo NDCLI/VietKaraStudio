@@ -576,9 +576,10 @@ impl Studio {
             cx.notify();
             return;
         }
-        let roles = [
-            "all", "male", "female", "voice_c", "voice_d", "voice_e", "voice_f", "unknown",
-        ];
+        // The editor exposes only the two duet lanes. Legacy voice_c..voice_f
+        // values remain readable, but cycling a role moves into the current
+        // two-lane model instead of creating more lane identities.
+        let roles = ["all", "male", "female", "unknown"];
         let index = roles
             .iter()
             .position(|role| *role == selected.role)
@@ -3301,12 +3302,8 @@ impl Render for Studio {
                 .iter()
                 .find(|word| word.line == line)
                 .map(|word| match word.role.as_str() {
-                    "male" => "role_a_color",
-                    "female" => "role_b_color",
-                    "voice_c" => "role_c_color",
-                    "voice_d" => "role_d_color",
-                    "voice_e" => "role_e_color",
-                    "voice_f" => "role_f_color",
+                    "male" | "voice_c" | "voice_e" => "role_a_color",
+                    "female" | "voice_d" | "voice_f" => "role_b_color",
                     "unknown" => "role_unknown_color",
                     _ => "role_all_color",
                 });
@@ -5119,12 +5116,8 @@ fn title_preview_motion(
 
 fn role_label(role: &str) -> &'static str {
     match role {
-        "male" => "Nam",
-        "female" => "Nữ",
-        "voice_c" => "Giọng 3",
-        "voice_d" => "Giọng 4",
-        "voice_e" => "Giọng 5",
-        "voice_f" => "Giọng 6",
+        "male" | "voice_c" | "voice_e" => "Nam",
+        "female" | "voice_d" | "voice_f" => "Nữ",
         "unknown" => "Chưa rõ",
         _ => "Cùng hát",
     }
@@ -5337,6 +5330,14 @@ fn main() {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn legacy_voice_labels_map_into_the_two_duet_roles() {
+        assert_eq!(role_label("voice_c"), "Nam");
+        assert_eq!(role_label("voice_e"), "Nam");
+        assert_eq!(role_label("voice_d"), "Nữ");
+        assert_eq!(role_label("voice_f"), "Nữ");
+    }
 
     #[test]
     fn playback_track_resolves_to_managed_audio_file() {
