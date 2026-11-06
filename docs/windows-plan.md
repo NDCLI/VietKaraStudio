@@ -478,6 +478,13 @@ giữ các câu không chọn nguyên trạng, kể cả câu khóa; chỉ dòng
 - [ ] Đóng gói Windows: portable/installer (`packaging/`,
   `VietKaraStudio-Nuitka.iss` / `VietKaraStudio.iss` làm tham chiếu),
   đóng gói FFmpeg + Python runtime theo thành phần; model tải riêng.
+  Trên máy build, portable stage build4 đã tạo manifest SHA-256 cho 29.980
+  file, xác minh toàn bộ payload và khởi chạy được GPUI. Smoke qua bridge Rust
+  dùng Python/runtime trong stage nhận dạng Whisper small trên RTX 3060; Setup
+  build5 tạo được, 3.005.170.583 byte, SHA-256
+  `8f46586dd431481e8ed883f0455828ccff8790ebb2512b441a1e638741df8a19`.
+  Đây chưa phải kiểm thử cài đặt/nâng cấp trên máy Windows sạch; model tải
+  riêng và không được đóng gói.
 - [ ] Test trên máy sạch Windows 10/11 x64, đường dẫn Unicode, CPU-only
   và NVIDIA; kiểm tra upgrade từ bản cũ (1.1.1 → 1.1.7 → bản Rust).
 - [ ] Smoke test sau cài đặt, crash recovery, file association,

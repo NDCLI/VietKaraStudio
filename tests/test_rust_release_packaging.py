@@ -14,6 +14,39 @@ assert SPEC is not None and SPEC.loader is not None
 split_rust_release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(split_rust_release)
 
+INSTALLER_SCRIPT = Path(__file__).resolve().parents[1] / "packaging" / "build_rust_installer.py"
+INSTALLER_SPEC = importlib.util.spec_from_file_location("build_rust_installer", INSTALLER_SCRIPT)
+assert INSTALLER_SPEC is not None and INSTALLER_SPEC.loader is not None
+build_rust_installer = importlib.util.module_from_spec(INSTALLER_SPEC)
+INSTALLER_SPEC.loader.exec_module(build_rust_installer)
+
+
+def test_installer_stage_verifier_ignores_generated_python_bytecode(tmp_path: Path) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    payload = stage / "runtime" / "python.exe"
+    payload.parent.mkdir()
+    payload.write_bytes(b"python runtime")
+    manifest_path = stage / "BUILD-INFO.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    manifest = {
+        "files": [{
+            "path": "runtime/python.exe",
+            "size": payload.stat().st_size,
+            "sha256": build_rust_installer.sha256(payload),
+        }]
+    }
+    bytecode = stage / "runtime" / "Lib" / "__pycache__" / "runtime.cpython-312.pyc"
+    bytecode.parent.mkdir(parents=True)
+    bytecode.write_bytes(b"generated during smoke")
+
+    build_rust_installer.verify_stage(stage, manifest_path, manifest)
+
+    unexpected = stage / "unexpected.bin"
+    unexpected.write_bytes(b"not in manifest")
+    with pytest.raises(SystemExit, match="contents do not match"):
+        build_rust_installer.verify_stage(stage, manifest_path, manifest)
+
 
 def test_split_records_exact_part_sizes_and_hashes(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "sample-setup.exe"

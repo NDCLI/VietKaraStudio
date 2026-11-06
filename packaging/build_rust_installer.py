@@ -24,11 +24,23 @@ def sha256(path: Path) -> str:
 
 
 def verify_stage(stage: Path, manifest_path: Path, manifest: dict) -> None:
-    expected = {item["path"]: item for item in manifest.get("files", [])}
+    expected = {
+        item["path"]: item for item in manifest.get("files", [])
+        if "__pycache__" not in Path(item["path"]).parts
+        and Path(item["path"]).suffix not in {".pyc", ".pyo"}
+    }
     entries = list(stage.rglob("*"))
     if any(path.is_symlink() for path in entries):
         raise SystemExit("Stage contains a symbolic link; refusing to install external files.")
-    files = [path for path in entries if path.is_file() and path != manifest_path]
+    # Python may create bytecode during packaged-runtime smoke tests. The installer
+    # explicitly excludes these transient files, so they are not manifest payload.
+    files = [
+        path for path in entries
+        if path.is_file()
+        and path != manifest_path
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    ]
     actual_names = {path.relative_to(stage).as_posix() for path in files}
     if actual_names != expected.keys():
         raise SystemExit("Stage contents do not match BUILD-INFO.json.")
