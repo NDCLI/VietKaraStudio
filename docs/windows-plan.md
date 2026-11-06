@@ -657,6 +657,15 @@ thấy block quanh từ 123–146. Culling giảm số node được tạo/layou
 hiện vẫn quét toàn bộ words để tìm phần giao viewport; waveform bins được
 quét tối đa 1.600 bin mỗi nguồn.
 
+Đã thêm `TimelineWordIndex` cache các interval đã map theo anchor và prefix
+maximum end. Trên project ổn định, binary search tìm candidate viewport rồi
+chỉ xét các interval giao nhau; kết quả vẫn sắp theo thứ tự project để giữ
+z-order/hit testing. Cache rebuild khi backing words hoặc anchors đổi; drag/
+tap preview dùng staging scan để không đọc index cũ. Test cover word order
+không theo thời gian, interval dài bắt đầu ngoài viewport và invalidation
+mapping khi anchors đổi. Build Windows mới sau thay đổi cache được mở lại
+với fixture 3.000 từ; cuộn ngang vẫn hiện đúng nhóm block khoảng 123–146.
+
 ### W3: kiểm thử gom mốc (sau commit 516dd2d)
 
 Lượt gom kiểm thử đầu tiên cho code viết chưa build trước đó. `cargo check`

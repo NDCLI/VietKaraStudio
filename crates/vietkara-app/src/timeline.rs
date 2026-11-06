@@ -36,6 +36,76 @@ fn visible_timeline_interval(
     )
 }
 
+#[derive(Default)]
+pub(super) struct TimelineWordIndex {
+    words_ptr: usize,
+    words_len: usize,
+    anchors_ptr: usize,
+    anchors_len: usize,
+    entries: Vec<(f64, f64, usize)>,
+    prefix_max_end: Vec<f64>,
+}
+
+impl TimelineWordIndex {
+    fn rebuild(&mut self, words: &[Word], anchors: &[vietkara_domain::Anchor]) {
+        self.words_ptr = words.as_ptr() as usize;
+        self.words_len = words.len();
+        self.anchors_ptr = anchors.as_ptr() as usize;
+        self.anchors_len = anchors.len();
+        self.entries = words
+            .iter()
+            .enumerate()
+            .map(|(index, word)| {
+                (
+                    vietkara_domain::timing::map_time(word.start, anchors, false),
+                    vietkara_domain::timing::map_time(word.end, anchors, false),
+                    index,
+                )
+            })
+            .collect();
+        self.entries.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        self.prefix_max_end.clear();
+        let mut max_end = f64::NEG_INFINITY;
+        for entry in &self.entries {
+            max_end = max_end.max(entry.1);
+            self.prefix_max_end.push(max_end);
+        }
+    }
+
+    fn visible_indices(
+        &mut self,
+        words: &[Word],
+        anchors: &[vietkara_domain::Anchor],
+        start: f64,
+        end: f64,
+    ) -> Vec<usize> {
+        if self.words_ptr != words.as_ptr() as usize
+            || self.words_len != words.len()
+            || self.anchors_ptr != anchors.as_ptr() as usize
+            || self.anchors_len != anchors.len()
+        {
+            self.rebuild(words, anchors);
+        }
+
+        let first = self
+            .prefix_max_end
+            .partition_point(|prefix_end| *prefix_end < start);
+        let after_last = self.entries.partition_point(|entry| entry.0 <= end);
+        let mut visible = self.entries[first..after_last]
+            .iter()
+            .filter(|entry| entry.1 >= start)
+            .map(|entry| entry.2)
+            .collect::<Vec<_>>();
+        // Preserve the project order for overlapping blocks and hit testing.
+        visible.sort_unstable();
+        visible
+    }
+}
+
 pub(super) fn track_to_timeline_time(
     slot: AudioSlot,
     position: f64,
@@ -601,6 +671,24 @@ impl Studio {
         };
         let (visible_start, visible_end) =
             visible_timeline_interval(scroll_offset, viewport_width, zoom, duration);
+        let visible_word_indices = if self.timeline_drag.is_none() && self.tapping.is_none() {
+            self.timeline_word_index.borrow_mut().visible_indices(
+                &project.words,
+                anchors,
+                visible_start,
+                visible_end,
+            )
+        } else {
+            words
+                .iter()
+                .enumerate()
+                .filter_map(|(index, word)| {
+                    let start = map(word.start).max(0.0);
+                    let end = map(word.end).max(start);
+                    (end >= visible_start && start <= visible_end).then_some(index)
+                })
+                .collect()
+        };
         let mut content = div().relative().w(px(width)).h(px(178.)).bg(rgb(0x151820));
         let step = (duration / 100.).ceil().max(1.);
         for tick in 0..=(duration / step) as usize {
@@ -701,12 +789,12 @@ impl Studio {
                     ),
             );
         }
-        for (index, word) in words.iter().enumerate() {
+        for index in visible_word_indices {
+            let Some(word) = words.get(index) else {
+                continue;
+            };
             let start = map(word.start).max(0.);
             let end = map(word.end).max(start);
-            if end < visible_start || start > visible_end {
-                continue;
-            }
             let id = word.id.clone();
             let selected = Some(&word.id) == self.selected_word.as_ref();
             content = content.child(
@@ -856,11 +944,31 @@ impl Studio {
 mod tests {
     use super::super::AudioSlot;
     use super::{
-        anchors_valid, clamp_seek_position, insert_anchor_at_beat, remove_anchor_at,
-        suggest_anchor_alignment, timeline_to_track_time, track_to_timeline_time,
+        TimelineWordIndex, anchors_valid, clamp_seek_position, insert_anchor_at_beat,
+        remove_anchor_at, suggest_anchor_alignment, timeline_to_track_time, track_to_timeline_time,
         visible_timeline_interval, waveform_timeline_interval,
     };
-    use vietkara_domain::Anchor;
+    use vietkara_domain::{Anchor, Word};
+
+    fn word(index: usize, start: f64, end: f64) -> Word {
+        Word {
+            id: format!("{index:032x}"),
+            text: format!("Từ{index}"),
+            start,
+            end,
+            line_uid: format!("{:032x}", index + 100),
+            role: "all".into(),
+            line: index as u32,
+            estimated: true,
+            locked: None,
+            section: None,
+            section_name: None,
+            manual: None,
+            label_color: None,
+            row: None,
+            extra: Default::default(),
+        }
+    }
 
     #[test]
     fn timeline_seek_is_clamped_and_rejects_non_finite_values() {
@@ -886,6 +994,33 @@ mod tests {
             visible_timeline_interval(0.0, 0.0, 100.0, 20.0),
             (0.0, 20.0)
         );
+    }
+
+    #[test]
+    fn timeline_word_index_keeps_long_overlaps_and_source_order() {
+        let words = vec![
+            word(0, 0.0, 15.0),
+            word(1, 8.0, 9.0),
+            word(2, 10.0, 11.0),
+            word(3, 4.0, 30.0),
+            word(4, 12.1, 13.0),
+        ];
+        let mut index = TimelineWordIndex::default();
+
+        assert_eq!(index.visible_indices(&words, &[], 10.0, 12.0), [0, 2, 3]);
+    }
+
+    #[test]
+    fn timeline_word_index_rebuilds_when_anchor_mapping_changes() {
+        let words = vec![word(0, 0.0, 1.0), word(1, 2.0, 3.0)];
+        let mut index = TimelineWordIndex::default();
+        assert!(index.visible_indices(&words, &[], 10.0, 11.0).is_empty());
+
+        let anchors = vec![Anchor {
+            r#ref: 0.0,
+            beat: 10.0,
+        }];
+        assert_eq!(index.visible_indices(&words, &anchors, 10.0, 11.0), [0]);
     }
 
     #[test]
