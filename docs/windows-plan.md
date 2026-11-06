@@ -743,6 +743,20 @@ hay enumerate thiết bị trên UI thread. Mới qua compile/Clippy; cần ki�
 runtime với ít nhất hai thiết bị, đồng thời test lỗi khi thiết bị đã chọn
 bị rút khỏi máy.
 
+Runtime Windows trên build mới: khi mở fixture v2, thanh transport hiển thị
+`Thiết bị: Mặc định`. Fixture này thiếu `beat.wav`, vì vậy chưa kiểm tra
+enumerate từ playback worker hay đổi output device.
+
+### W4: Save As và Open trên cửa sổ studio
+
+Trên bản fixture v2 ở `target/runtime-save-reopen/fixture/`, Ctrl+Shift+S
+mở native Save As; lưu `project-copy.json` thành công và UI báo `Đã lưu
+project`. Đọc file xác nhận schema 2, 4 từ, ID và `future_python_field`
+được giữ. Ctrl+O mở native Open; chọn `project-copy.json` trả về studio
+với tên `Bài hát tiếng Việt`, 4 từ/2 dòng và UI báo `Đã mở project`.
+Thao tác save rồi mở lại đã chạy trong cùng process; kiểm tra đóng app rồi
+khởi động lại từ file copy vẫn còn.
+
 ### W3: runtime tap-sync trên Windows
 
 Fixture Save As ban đầu có một từ `locked=true`; UI từ chối bắt đầu phiên
