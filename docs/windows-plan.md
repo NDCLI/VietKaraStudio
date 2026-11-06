@@ -406,8 +406,12 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   không làm hỏng lượt phân tích. Nếu fingerprint đổi trong lúc worker chạy,
   lượt đó báo lỗi và không cache kết quả. Root dùng `OBS_DATA_DIR`, mặc định
   `%LOCALAPPDATA%\VietKaraStudio` trên Windows.
-- [ ] Runtime xác nhận sync trên Windows với fixture audio; cache không được
+- [x] Runtime xác nhận sync trên Windows với fixture audio; cache không được
   trả nhầm fingerprint.
+  Integration test `worker_runtime` gọi worker JSONL thật qua `vietkara-ai-bridge`,
+  phát hiện intro 6s, kiểm tra cache hit, đổi beat làm cache miss và phát hiện
+  intro 7s, rồi hủy lượt CPU đang chạy. Windows pass trong 5,18 giây; fixture
+  tổng hợp 48s, không dùng model.
 - [x] Nối flow separation, recognition/alignment, align region và role
   suggestion; project chỉ thay đổi sau khi người dùng xác nhận kết quả AI.
   `cargo check --workspace --tests` pass; model thật/cancel end-to-end vẫn
