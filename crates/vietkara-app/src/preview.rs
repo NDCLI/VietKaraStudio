@@ -203,11 +203,11 @@ pub(super) fn visible_lines(
     let mut block_start = 0usize;
     let role_slots = HashMap::from([
         ("male", 0u8),
+        ("voice_c", 0),
+        ("voice_e", 0),
         ("female", 1),
-        ("voice_c", 2),
-        ("voice_d", 3),
-        ("voice_e", 4),
-        ("voice_f", 5),
+        ("voice_d", 1),
+        ("voice_f", 1),
     ]);
     for index in 0..rows.len() {
         let new_block =
@@ -223,7 +223,6 @@ pub(super) fn visible_lines(
                 .row
                 .or_else(|| role_slots.get(first.role.as_str()).copied())
                 .unwrap_or(fallback_slot)
-                % 2
         } else if mode == "karaoke" {
             fallback_slot
         } else {

@@ -4,6 +4,17 @@
 >
 > **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
 >
+> **Tiến độ 2026-11-06 — artwork vai hát và hai lane:**
+> - Đóng gói đủ chín role icon PNG của baseline vào `vietkara-render`; lượng tử
+>   xuống 32 màu và cache hình học scanline. Preview GPUI và ASS xuất dùng chung
+>   geometry, ASS tự chứa artwork nên không cần file ảnh cạnh project.
+> - Inspector cho đổi biến thể màu của icon Nam, Nữ và Cùng hát. Legacy
+>   `voice_c`/`voice_e` map trực tiếp Nam (lane 0), `voice_d`/`voice_f` map Nữ
+>   (lane 1); test-only preview oracle cũng bỏ mô hình sáu slot.
+> - `cargo fmt`, `cargo check --workspace` và `git diff --check` pass. Thêm
+>   regression tests nhưng chưa chạy theo yêu cầu gom test cuối; cần kiểm tra
+>   ảnh preview/export trên Windows. Commit `1dc84aa` đã push lên nhánh rewrite.
+>
 > **Tiến độ 2026-11-05 — Giai đoạn 0 + đầu Giai đoạn 2 (xong, kiểm chứng trên Linux):**
 > - `docs/compatibility-matrix.md` mới: ma trận P0/P1/P2, hợp đồng tương thích
 >   Python ↔ Rust, fixture v1/v2.
