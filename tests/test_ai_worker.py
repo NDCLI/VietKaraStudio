@@ -42,6 +42,36 @@ def test_dispatch_maps_recognition_to_existing_worker(tmp_path, monkeypatch):
     assert progress == [(25, "Đang nhận dạng")]
 
 
+def test_dispatch_maps_sync_suggestion_to_python_analysis(tmp_path, monkeypatch):
+    calls = []
+    module = ModuleType("audio_sync")
+
+    def suggest(reference, beat, job):
+        calls.append((reference, beat))
+        job.check()
+        job.update(42, "Đang kiểm tra đoạn")
+        return {
+            "anchors": [{"ref": 0.0, "beat": 2.0}],
+            "requires_confirmation": True,
+        }
+
+    module.suggest = suggest
+    monkeypatch.setitem(sys.modules, "audio_sync", module)
+    progress = []
+    payload = request(
+        "sync_suggest",
+        input={"reference": str(tmp_path / "reference.wav"),
+               "beat": str(tmp_path / "beat.wav")},
+    )
+
+    result = ai_worker.dispatch(payload, lambda *event: progress.append(event))
+
+    assert calls == [(tmp_path / "reference.wav", tmp_path / "beat.wav")]
+    assert result == {"anchors": [{"ref": 0.0, "beat": 2.0}],
+                      "requires_confirmation": True}
+    assert progress == [(42, "Đang kiểm tra đoạn")]
+
+
 def test_dispatch_uses_cache_on_match_and_stores_cache_miss(tmp_path, monkeypatch):
     worker_calls = []
     cache = {"result": None}

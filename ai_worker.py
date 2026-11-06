@@ -14,7 +14,25 @@ import tempfile
 from pathlib import Path
 
 PROTOCOL_VERSION = 1
-KINDS = frozenset(("separate", "recognize", "align", "align_region", "role_suggest"))
+KINDS = frozenset(("separate", "recognize", "align", "align_region", "role_suggest",
+                   "sync_suggest"))
+
+
+class _SyncProgress:
+    """Adapt the audio-sync job callbacks to the JSONL progress stream.
+
+    Cancellation stops the worker process in the bridge, so check() is only
+    needed to preserve the audio_sync job interface between progress reports.
+    """
+
+    def __init__(self, report_progress):
+        self.report_progress = report_progress
+
+    def check(self):
+        return None
+
+    def update(self, progress, message):
+        self.report_progress(progress, message)
 
 
 def _required_text(mapping, key):
@@ -39,6 +57,13 @@ def dispatch(request, report_progress):
     options = request.get("options")
     if not isinstance(inputs, dict) or not isinstance(options, dict):
         raise ValueError("input và options phải là JSON object.")
+
+    if kind == "sync_suggest":
+        reference = Path(_required_text(inputs, "reference"))
+        beat = Path(_required_text(inputs, "beat"))
+        from audio_sync import suggest
+
+        return suggest(reference, beat, _SyncProgress(report_progress))
 
     if kind in ("recognize", "align", "align_region"):
         from worker import run

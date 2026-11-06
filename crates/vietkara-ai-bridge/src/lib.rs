@@ -107,6 +107,7 @@ pub enum AiKind {
     Align,
     AlignRegion,
     RoleSuggest,
+    SyncSuggest,
 }
 
 /// One AI request, sent as a single JSON line on the worker's stdin.
@@ -599,6 +600,7 @@ mod tests {
             (AiKind::Align, "align"),
             (AiKind::AlignRegion, "align_region"),
             (AiKind::RoleSuggest, "role_suggest"),
+            (AiKind::SyncSuggest, "sync_suggest"),
         ];
         for (kind, expected) in cases {
             let request = test_request(kind);

@@ -331,8 +331,10 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
 - [x] Tái sử dụng `analysis_cache.py` trong worker JSONL khi caller truyền
   `options.data_root`/`cache_root`; key gồm fingerprint nguồn, model,
   language, lời, preference, region và tùy chọn runtime.
-- [ ] Port/reuse audio sync (`audio_sync.py`) và hoàn tất tích hợp cache
-  với mọi luồng; cache không được trả nhầm kết quả khác fingerprint.
+- [ ] Hoàn tất port/reuse audio sync (`audio_sync.py`) trong app và tích
+  hợp cache; hiện JSONL worker đã nhận `sync_suggest`, chạy thuật toán
+  Python hiện tại và chỉ trả anchors advisory yêu cầu xác nhận. Cache và UI
+  xác nhận/apply anchors vẫn còn mở; cache không được trả nhầm fingerprint.
 - [ ] Port flow: separation, recognition/alignment, align region, role
   suggestion; project không bị ghi đè trước khi người dùng xác nhận
   kết quả AI.
