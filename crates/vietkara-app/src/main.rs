@@ -6623,52 +6623,53 @@ impl Render for Studio {
                 div()
                     .flex()
                     .flex_wrap()
+                    .items_center()
                     .justify_start()
                     .gap_2()
-                    .px_5()
-                    .py_3()
+                    .px_4()
+                    .py_2()
                     .bg(rgb(theme::SURFACE))
                     .child(format!(
                         "VietKara Studio  /  {}{}",
                         self.editor.project().name,
                         if self.dirty { " *" } else { "" }
                     ))
-                    .child(div().cursor_pointer().px_3().child("Project mới (Ctrl+N)")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("＋ Mới")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.new_project(cx))))
-                    .child(div().cursor_pointer().px_3().child("Nhập SRT")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Nhập SRT")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.import_srt(cx))))
-                    .child(div().cursor_pointer().px_3().child("Mở project")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Mở project")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.open(cx))))
-                    .child(div().cursor_pointer().px_3().child("Nhập preset")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Nhập preset")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.choose_preset(cx))))
-                    .child(div().cursor_pointer().px_3().child("Xuất preset")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Xuất preset")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.export_preset(cx))))
-                    .child(div().cursor_pointer().px_3().child("Lưu preset")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Lưu preset")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.save_custom_preset(cx))))
-                    .child(div().cursor_pointer().px_3().child(format!("Preset ({})", self.bundled_presets.len() + self.custom_presets.len()))
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child(format!("Preset ({})", self.bundled_presets.len() + self.custom_presets.len()))
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_preset_catalog(cx))))
-                    .child(div().cursor_pointer().px_3().child(if self.diagnostics_running {"Đang chẩn đoán…"} else {"Chẩn đoán"})
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child(if self.diagnostics_running {"Đang chẩn đoán…"} else {"Chẩn đoán"})
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.run_diagnostics(cx))))
-                    .child(div().cursor_pointer().px_3().child("Cập nhật")
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Cập nhật")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.run_updater(cx))))
-                    .child(div().cursor_pointer().px_3().child(if self.rendering {
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child(if self.rendering {
                         format!("Hủy {} ({:.0}%)", if self.active_batch { "batch" } else { "xuất" }, self.render_progress * 100.0)
                     } else { "Xuất video".into() })
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| {
                             if this.rendering { this.cancel_export(cx); }
                             else { this.export_video(window,cx); }
                         })))
-                    .child(div().cursor_pointer().px_3().child(if self.pending_batch_projects.is_empty() {
+                    .child(div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child(if self.pending_batch_projects.is_empty() {
                         "Chọn project batch".to_owned()
                     } else {
                         format!("Chọn lại ({} project)", self.pending_batch_projects.len())
                     }).on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| this.choose_batch_projects(cx))))
                     .when(!self.pending_batch_projects.is_empty() && !self.rendering, |bar| bar.child(
-                        div().cursor_pointer().px_3().child("Bắt đầu batch")
+                        div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Bắt đầu batch")
                             .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| this.start_pending_batch(window, cx)))
                     ))
                     .when(!self.rendering && self.batch_record.as_ref().is_some_and(|record| record.status != BatchStatus::Done || record.failed > 0), |bar| bar.child(
-                        div().cursor_pointer().px_3().child("Tiếp tục batch")
+                        div().cursor_pointer().rounded_md().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_2().text_size(px(12.)).child("Tiếp tục batch")
                             .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| this.resume_batch(window, cx)))
                     ))
                     .child(
@@ -7138,7 +7139,7 @@ impl Render for Studio {
                                                             })))
                                                     })
                                                 .when(preview_rows.is_empty() && !title_visible,|empty|empty
-                                                        .child(div().text_size(px(15.)).text_color(rgb(theme::TEXT_MUTED)).child(if display_words.is_empty(){"Nạp lời để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
+                                                        .child(div().rounded_md().bg(rgb(0x192431)).px_4().py_3().text_size(px(15.)).text_color(rgb(theme::TEXT_MUTED)).child(if display_words.is_empty(){"Nhập lời · SRT để xem trước karaoke"}else{"Tua đến câu để xem trước"}))))),
                                     ),
                             )
                             .child(
@@ -7183,8 +7184,8 @@ impl Render for Studio {
                             .bg(rgb(theme::SURFACE))
                             .rounded_md()
                             .p_3()
-                            .child(div().flex().gap_2().mb_2()
-                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                            .child(div().flex().gap_1().mb_3().p_1().rounded_md().bg(rgb(theme::CANVAS))
+                                .child(div().flex_1().text_center().cursor_pointer().px_2().py_2().rounded_sm().text_size(px(12.))
                                     .bg(rgb(if !self.inspector_design {theme::ACCENT_SURFACE}else{theme::CANVAS}))
                                     .child("Từ")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
@@ -7193,7 +7194,7 @@ impl Render for Studio {
                                         this.set_word_input(&text,cx);
                                         cx.notify();
                                     })))
-                                .child(div().cursor_pointer().px_2().py_1().rounded_sm()
+                                .child(div().flex_1().text_center().cursor_pointer().px_2().py_2().rounded_sm().text_size(px(12.))
                                     .bg(rgb(if self.inspector_design {theme::ACCENT_SURFACE}else{theme::CANVAS}))
                                     .child("Thiết kế")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
@@ -7203,7 +7204,7 @@ impl Render for Studio {
                                         cx.notify();
                                     })))
                             .when(!self.inspector_design,|panel|panel
-                            .child("TỪ ĐANG CHỌN")
+                            .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_SUBTLE)).child("TỪ ĐANG CHỌN"))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                 .child("AI căn lại câu này · giữ các câu khác")
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
