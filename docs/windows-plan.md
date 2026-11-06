@@ -323,11 +323,13 @@ kiểm tra runtime có FFmpeg trên Windows.
 
 > **Tiến độ 2026-11-06:** test `verify_output_accepts_real_render_and_rejects_wrong_expectations`
 > giải mã frame từ MP4 FFmpeg thật và kiểm tra pixel trước/trong scene,
-> decoration, image countdown và logo pulse. Phép đo phát hiện dynamic scene
+> decoration, image countdown, logo pulse và nền video ngắn được loop đúng
+> theo beat. Phép đo phát hiện dynamic scene
 > opacity bị chia 100 hai lần (scene gần như trong suốt); đã sửa và xác nhận
 > pixel theo alpha nội suy. Decoration opacity cũng được kiểm tra qua hai
-> keyframe. Đây là kiểm tra runtime compositing, chưa thay cho golden MP4/audio
-> đầy đủ.
+> keyframe. Nền video được lấy mẫu bốn thời điểm qua hai vòng lặp; MP4 giữ thời
+> lượng beat và audio AAC. Đây là các kiểm tra runtime compositing/source hẹp,
+> chưa thay cho golden MP4/audio đầy đủ.
 
 **Hoàn tất khi:** preview/export không lệch các thuộc tính đã cam kết,
 progress/cancel hoạt động, export folder + render info đúng.

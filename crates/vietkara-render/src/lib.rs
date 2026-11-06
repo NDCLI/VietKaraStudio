@@ -3054,4 +3054,109 @@ mod tests {
         );
         assert!((verify_output(&out, 2.0, 320, 240).unwrap().duration - 2.0).abs() < 0.1);
     }
+
+    #[test]
+    fn video_background_loops_to_beat_duration_and_preserves_beat_audio() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        std::fs::create_dir(root.join("fonts")).unwrap();
+        std::fs::write(
+            root.join("lyrics.ass"),
+            "[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 240\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Main,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,7,0,0,0,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
+        )
+        .unwrap();
+
+        let ffmpeg = "ffmpeg";
+        let beat = root.join("beat.wav");
+        let audio = std::process::Command::new(ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-ar",
+                "44100",
+            ])
+            .arg(&beat)
+            .output()
+            .unwrap();
+        assert!(audio.status.success(), "beat generation failed");
+
+        let background = root.join("short-background.mp4");
+        let generated_background = std::process::Command::new(ffmpeg)
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=64x64:r=2:d=0.5",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=64x64:r=2:d=0.5",
+                "-filter_complex",
+                "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+                "-map",
+                "[v]",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&background)
+            .output()
+            .unwrap();
+        assert!(
+            generated_background.status.success(),
+            "background generation failed: {}",
+            String::from_utf8_lossy(&generated_background.stderr)
+        );
+
+        let profile = RenderProfile {
+            fps: Fps::Fixed(10.0),
+            frame_size_override: Some((320, 240)),
+            ..RenderProfile::default()
+        };
+        let mut inputs = RenderInputs::new("beat.wav", 2.0);
+        inputs.background = Some(RenderBackground::Video(background));
+        inputs.beat = beat;
+        let command = ffmpeg_command(&profile, &inputs).unwrap();
+        let output_path = root.join("karaoke.mp4");
+        let rendered = std::process::Command::new(&command[0])
+            .args(&command[1..])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(
+            rendered.status.success(),
+            "video background render failed: {}",
+            String::from_utf8_lossy(&rendered.stderr)
+        );
+
+        let verified = verify_output(&output_path, 2.0, 320, 240).unwrap();
+        assert!((verified.duration - 2.0).abs() < 0.1);
+        assert_eq!(verified.width, 320);
+        assert_eq!(verified.height, 240);
+        assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        for (time, red) in [(0.25, true), (0.75, false), (1.25, true), (1.75, false)] {
+            let pixel = render_pixel(&command[0], root, &output_path, time, 10, 10);
+            if red {
+                assert!(
+                    pixel[0] > 180 && pixel[2] < 70,
+                    "expected red at {time}s: {pixel:?}"
+                );
+            } else {
+                assert!(
+                    pixel[2] > 180 && pixel[0] < 70,
+                    "expected blue at {time}s: {pixel:?}"
+                );
+            }
+        }
+    }
 }
