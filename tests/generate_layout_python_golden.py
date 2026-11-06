@@ -87,7 +87,17 @@ project = {
         "align": "justify",
         "position": "bottom",
         "countdown": "none",
-        "title_enabled": False,
+        "title_enabled": True,
+        "title_text": "Bài hát tiếng Việt để đối chiếu title layout",
+        "title_credit": "Trình bày: Ca sĩ thử nghiệm",
+        "title_font": "Arial",
+        "title_size": 120,
+        "title_x": 50,
+        "title_y": 28,
+        "title_start": 0,
+        "title_end": 8,
+        "title_effect_seconds": 0.7,
+        "title_template": "midnight",
     },
     "words": words,
 }
@@ -116,11 +126,33 @@ for row in plan["rows"]:
         }
     )
 
+title = plan["title"]
+title_expected = {
+    key: title[key]
+    for key in (
+        "start", "end", "effect_seconds", "enter", "exit", "color", "outline",
+        "outline_width", "shadow", "shadow_color", "weight", "italic", "font",
+        "template",
+    )
+}
+title_expected["rows"] = [
+    {key: row[key] for key in ("text", "display_text", "x", "y", "width", "size")}
+    for row in title["rows"]
+]
+title_expected["template"] = {
+    key: title["box"][key]
+    for key in ("x", "y", "width", "height", "colors", "opacity", "border",
+                "border_width", "radius")
+}
+
 output = {
     "baseline_commit": "c8dae557ce941485150aa4e6b525f6b136e8319f",
     "measurer": "font_text character count × size × 0.5 × horizontal scale",
     "project": project,
-    "expected": {"width": plan["width"], "height": plan["height"], "rows": rows},
+    "expected": {
+        "width": plan["width"], "height": plan["height"], "rows": rows,
+        "title": title_expected,
+    },
 }
 fixture = ROOT / "crates" / "vietkara-render" / "tests" / "fixtures" / "python-c8dae55-layout-fixed-width.json"
 fixture.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -554,7 +554,10 @@ fn title_layout<M: TextMeasurer>(
         let box_x = (f64::from(width) * 0.02).max(
             (f64::from(width) * title_x - box_width / 2.0).min(f64::from(width) * 0.98 - box_width),
         );
-        let text_inset = pad_x + (content_width * 1.02 - content_width) / 2.0;
+        // ASS/export rows use width_factor=1 in the Python baseline. The 1.02
+        // inset belongs only to its preview rows and must not shift the shared
+        // export layout.
+        let text_inset = pad_x;
         for row in &mut rows {
             row.x = box_x + text_inset;
             row.y = row.y + box_y + pad_y - first_y;

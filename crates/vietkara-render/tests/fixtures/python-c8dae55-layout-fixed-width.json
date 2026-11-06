@@ -36,7 +36,17 @@
       "align": "justify",
       "position": "bottom",
       "countdown": "none",
-      "title_enabled": false
+      "title_enabled": true,
+      "title_text": "Bài hát tiếng Việt để đối chiếu title layout",
+      "title_credit": "Trình bày: Ca sĩ thử nghiệm",
+      "title_font": "Arial",
+      "title_size": 120,
+      "title_x": 50,
+      "title_y": 28,
+      "title_start": 0,
+      "title_end": 8,
+      "title_effect_seconds": 0.7,
+      "title_template": "midnight"
     },
     "words": [
       {
@@ -570,6 +580,53 @@
           }
         ]
       }
-    ]
+    ],
+    "title": {
+      "start": 0,
+      "end": 8.0,
+      "effect_seconds": 0.7,
+      "enter": "fade",
+      "exit": "fade",
+      "color": "#ffffff",
+      "outline": "#15202a",
+      "outline_width": 3.0,
+      "shadow": 2.0,
+      "shadow_color": "#000000",
+      "weight": 700,
+      "italic": false,
+      "font": "Arial",
+      "template": {
+        "x": 102.87709090909084,
+        "y": 283.6363636363636,
+        "width": 1714.2458181818183,
+        "height": 185.08450909090905,
+        "colors": [
+          "#101a2b",
+          "#1c2b42"
+        ],
+        "opacity": 95,
+        "border": "#e8c568",
+        "border_width": 2,
+        "radius": 8
+      },
+      "rows": [
+        {
+          "text": "Bài hát tiếng Việt để đối chiếu title layout",
+          "display_text": "Bài hát tiếng Việt để đối chiếu title layout",
+          "x": 134.39999999999992,
+          "y": 302.4,
+          "width": 1651.2,
+          "size": 75.05454545454546
+        },
+        {
+          "text": "Trình bày: Ca sĩ thử nghiệm",
+          "display_text": "Trình bày: Ca sĩ thử nghiệm",
+          "x": 134.39999999999992,
+          "y": 411.2290909090908,
+          "width": 435.6916363636364,
+          "size": 32.27345454545455
+        }
+      ]
+    }
   }
 }

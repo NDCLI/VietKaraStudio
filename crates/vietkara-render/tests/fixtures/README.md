@@ -10,10 +10,11 @@ serialization from platform-specific font measurement; layout and raster
 parity still require separate Windows golden tests.
 
 `python-c8dae55-layout-fixed-width.json` records `layout.display_plan` for a
-shared project containing wrapped duet lyrics, a long pause, and beat anchors.
-Python and Rust use the same deterministic per-character width function, so
-the test covers row splitting, lane assignment, timing windows, alignment,
-and each word's coordinates without hiding platform font differences. The
-checked-in fixture was generated from the same baseline commit. To regenerate
-it, set `VIETKARA_PYTHON_ROOT` to that Python checkout and run
+shared project containing wrapped duet lyrics, a long pause, beat anchors,
+and a title card with credit and template. Python and Rust use the same
+deterministic per-character width function, so the test covers row splitting,
+lane assignment, timing windows, alignment, lyric and title coordinates, and
+title box geometry without hiding platform font differences. The checked-in
+fixture was generated from the same baseline commit. To regenerate it, set
+`VIETKARA_PYTHON_ROOT` to that Python checkout and run
 `python tests/generate_layout_python_golden.py`.
