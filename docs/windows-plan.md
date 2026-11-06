@@ -754,6 +754,8 @@ Snapshot playback giữ riêng tên default device. UI chỉ loại thiết bị
 khi danh sách xác nhận được thiết bị đó; nếu Windows không có default nhưng
 vẫn enumerate output khác, thiết bị đầu tiên không bị ẩn. Có unit test cho
 cả hai trường hợp; runtime nhiều thiết bị vẫn chưa thực hiện.
+Worker vẫn được khởi tạo khi project chưa có audio để thanh chọn output có
+thể enumerate thiết bị độc lập với việc đã nạp beat hay chưa.
 
 Lỗi mở file/giải mã, mở output mặc định hoặc output bị ngắt/bận có thêm ngữ
 cảnh và bước xử lý tiếng Việt trong snapshot hiển thị ở transport. Worker test

@@ -2012,26 +2012,35 @@ impl Studio {
         #[cfg(windows)]
         {
             self.playback = None;
-            let Some(directory) = self.path.as_ref().and_then(|p| p.parent()) else {
-                return;
-            };
-            let path = project_audio_file(
-                self.editor.project(),
-                self.path.as_deref(),
-                self.listen_track,
-            )
-            .unwrap_or_else(|| directory.join(audio_slot_filename(self.listen_track)));
-            if !path.is_file() {
-                self.playback_error = Some(format!(
-                    "Chưa có {}; hãy nhập hoặc relink track đang nghe",
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or("audio")
-                ));
-                return;
-            }
+            let path = self.path.as_ref().and_then(|project_path| {
+                let directory = project_path.parent()?;
+                Some(
+                    project_audio_file(
+                        self.editor.project(),
+                        Some(project_path),
+                        self.listen_track,
+                    )
+                    .unwrap_or_else(|| directory.join(audio_slot_filename(self.listen_track))),
+                )
+            });
             match Playback::new() {
                 Ok(worker) => {
+                    // Keep the worker alive even when the project has no audio
+                    // yet: it also owns output-device enumeration for the UI.
+                    let Some(path) = path else {
+                        self.playback = Some(worker);
+                        return;
+                    };
+                    if !path.is_file() {
+                        self.playback_error = Some(format!(
+                            "Chưa có {}; hãy nhập hoặc relink track đang nghe",
+                            path.file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or("audio")
+                        ));
+                        self.playback = Some(worker);
+                        return;
+                    }
                     let command = self.output_device.clone().map_or_else(
                         || PlaybackCommand::Load(path.clone()),
                         |device| PlaybackCommand::LoadOnDevice {
