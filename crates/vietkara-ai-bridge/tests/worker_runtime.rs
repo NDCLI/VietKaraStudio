@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use vietkara_ai_bridge::{AiError, AiKind, AiRequest, Worker, WorkerConfig};
+use vietkara_ai_bridge::{AiError, AiKind, AiRequest, Worker, WorkerConfig, run_request};
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -151,4 +151,61 @@ fn real_jsonl_worker_syncs_caches_and_cancels_cpu_analysis() {
     let cancel = cancelled_worker.cancel_flag();
     let cancelled = cancelled_worker.run(|_, _| cancel.store(true, Ordering::SeqCst));
     assert!(matches!(cancelled, Err(AiError::Cancelled)));
+}
+
+#[test]
+#[ignore = "requires the separately installed Whisper small model and a speech WAV fixture"]
+fn installed_whisper_small_recognizes_speech_through_jsonl_worker() {
+    let root = workspace_root();
+    let vocals = PathBuf::from(
+        std::env::var("VIETKARA_SPEECH_FIXTURE")
+            .expect("VIETKARA_SPEECH_FIXTURE must point to a speech WAV"),
+    );
+    let models_root = PathBuf::from(
+        std::env::var("VIETKARA_MODELS_ROOT")
+            .expect("VIETKARA_MODELS_ROOT must point to the app data root"),
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let request = AiRequest::new(
+        AiKind::Recognize,
+        vietkara_domain::new_id(),
+        serde_json::json!({ "vocals": vocals }),
+        serde_json::json!({
+            "device": "cpu",
+            "model": "small",
+            "language": "en",
+            "models_root": models_root,
+            "data_root": temp.path().join("app-data"),
+        }),
+    );
+    let mut progress = Vec::new();
+    let result = run_request(
+        WorkerConfig::new(python())
+            .arg(root.join("ai_worker.py").to_string_lossy().into_owned())
+            .timeout(Duration::from_secs(5 * 60))
+            .env("PYTHONIOENCODING", "utf-8"),
+        request,
+        |value, message| progress.push((value, message.to_owned())),
+    )
+    .unwrap();
+    assert!(progress.iter().any(|(value, _)| *value >= 50.0));
+    let words = result["words"]
+        .as_array()
+        .expect("worker returns word timings");
+    let transcript = words
+        .iter()
+        .filter_map(|word| word["text"].as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    assert!(transcript.contains("hello"), "recognized: {transcript}");
+    assert!(
+        transcript.contains("recognition"),
+        "recognized: {transcript}"
+    );
+    assert!(
+        words
+            .iter()
+            .all(|word| { word["start"].as_f64().is_some() && word["end"].as_f64().is_some() })
+    );
 }

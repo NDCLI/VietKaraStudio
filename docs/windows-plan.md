@@ -387,9 +387,13 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
 - [x] Các `kind`: `separate`, `recognize`, `align`, `align_region`,
   `role_suggest` — khớp `AiKind` trong `vietkara-ai-bridge`.
   Media truyền bằng path + metadata, không nhúng bytes.
-- [ ] Test end-to-end qua `vietkara-ai-bridge::run_request` với worker
+- [x] Test end-to-end qua `vietkara-ai-bridge::run_request` với worker
   thật (model nhỏ/tải riêng): progress hiển thị, cancel dừng worker,
   worker crash không treo app, timeout có lỗi rõ ràng.
+  Smoke Windows dùng model Whisper small đã tải riêng và speech WAV do
+  Windows SAPI tạo; `run_request` nhận đúng từ “hello”/“recognition”, timing
+  từng từ và progress. Test worker audio-sync thật xác nhận cancel dừng process;
+  test bridge unit bao phủ worker crash và timeout. Model inference chạy CPU.
 - [x] Không thay model/runtime ngay (Demucs/Whisper vẫn chạy bằng Python).
 
 ### 6.2. Audio sync, cache và batch render
@@ -414,8 +418,8 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   tổng hợp 48s, không dùng model.
 - [x] Nối flow separation, recognition/alignment, align region và role
   suggestion; project chỉ thay đổi sau khi người dùng xác nhận kết quả AI.
-  `cargo check --workspace --tests` pass; model thật/cancel end-to-end vẫn
-  cần smoke test Windows.
+  Smoke recognition bằng model Whisper small thật và cancel process bằng
+  worker CPU đã pass; CUDA/OOM fallback và model Demucs thật vẫn còn cần QA.
 - [x] Nối `vietkara-jobs::BatchRecord` vào app: chọn nhiều project JSON,
   đóng băng project JSON và media allowlist, tạo record bền vững, render tuần
   tự, progress/cancel, báo lỗi từng item, kiểm tra fingerprint snapshot khi
