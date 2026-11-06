@@ -7195,7 +7195,7 @@ impl Render for Studio {
                             .when(!self.inspector_design,|panel|panel
                             .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_SUBTLE)).child("TỪ ĐANG CHỌN"))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
-                                .child("AI căn lại câu này · giữ các câu khác")
+                                .child("AI căn câu này")
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
                                     let line=this.selected_word.as_ref().and_then(|id|this.editor.project().words.iter().find(|word|&word.id==id)).map(|word|word.line);
                                     if let Some(line)=line { this.run_lyrics_ai(Some(line),cx); }
