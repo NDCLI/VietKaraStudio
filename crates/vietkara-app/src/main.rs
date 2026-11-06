@@ -214,9 +214,8 @@ fn render_project(
     target: &std::path::Path,
     cancel: &std::sync::atomic::AtomicBool,
     mut report_progress: impl FnMut(f64),
-) -> Result<(), String> {
-    use std::process::{Command, Stdio};
-
+    mut report_fallback: impl FnMut(),
+) -> Result<bool, String> {
     let profile = vietkara_render::RenderProfile::from_project(&project);
     let expected_extension = profile.output_name();
     let expected_extension = std::path::Path::new(&expected_extension)
@@ -283,6 +282,7 @@ fn render_project(
     std::fs::create_dir(&temporary_directory)
         .map_err(|error| format!("Không tạo được thư mục render tạm: {error}"))?;
 
+    let mut cpu_fallback_used = false;
     let result = (|| {
         if cancel.load(std::sync::atomic::Ordering::Relaxed) {
             return Err("Đã hủy xuất video".into());
@@ -291,6 +291,7 @@ fn render_project(
             .map_err(|error| format!("Không tạo được thư mục font tạm: {error}"))?;
         let mut inputs = vietkara_render::RenderInputs::new(beat, duration);
         inputs.ffmpeg = ffmpeg.clone();
+        inputs.encoder = select_video_encoder(&project, &ffmpeg);
         inputs.audio_normalize = project.settings.audio_normalize;
         inputs
             .configure_background_from_project(&project, project_directory)
@@ -316,63 +317,44 @@ fn render_project(
         inputs.ass_file = PathBuf::from("lyrics.ass");
         inputs.fonts_dir = PathBuf::from("fonts");
 
+        let stderr_path = temporary_directory.join("ffmpeg.stderr.log");
         let arguments = vietkara_render::ffmpeg_command(&profile, &inputs)
             .map_err(|error| error.to_string())?;
-        let executable = arguments
-            .first()
-            .ok_or_else(|| "Lệnh FFmpeg rỗng".to_owned())?;
-        let stderr_path = temporary_directory.join("ffmpeg.stderr.log");
-        let stderr_file = std::fs::File::create(&stderr_path)
-            .map_err(|error| format!("Không tạo được log FFmpeg: {error}"))?;
-        let mut child = Command::new(executable)
-            .args(&arguments[1..])
-            .current_dir(&temporary_directory)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::from(stderr_file))
-            .spawn()
-            .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "Không đọc được tiến độ FFmpeg".to_owned())?;
-        let mut reader = std::io::BufReader::new(stdout);
-        let mut line = String::new();
-        let mut was_cancelled = false;
-        loop {
+        let first_encoder = inputs.encoder;
+        if let Err(first_error) = execute_ffmpeg(
+            &arguments,
+            &temporary_directory,
+            &stderr_path,
+            cancel,
+            duration,
+            &mut report_progress,
+        ) {
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                was_cancelled = true;
-                let _ = child.kill();
-                break;
+                return Err("Đã hủy xuất video".into());
             }
-            line.clear();
-            let bytes = std::io::BufRead::read_line(&mut reader, &mut line)
-                .map_err(|error| format!("Không đọc được tiến độ FFmpeg: {error}"))?;
-            if bytes == 0 {
-                break;
+            if first_encoder != vietkara_render::VideoEncoder::H264Nvenc
+                || !is_retryable_nvenc_error(&first_error)
+            {
+                return Err(first_error);
             }
-            if let Some(time) = line.strip_prefix("out_time=").and_then(parse_ffmpeg_time) {
-                report_progress((time / duration).clamp(0.0, 0.99));
-            }
-        }
-        drop(reader);
-        let status = child
-            .wait()
-            .map_err(|error| format!("Không lấy được trạng thái FFmpeg: {error}"))?;
-        if was_cancelled || cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err("Đã hủy xuất video".into());
-        }
-        if !status.success() {
-            let stderr = std::fs::read_to_string(&stderr_path).unwrap_or_default();
-            let detail = stderr
-                .chars()
-                .rev()
-                .take(1200)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect::<String>();
-            return Err(format_ffmpeg_failure(status.code(), detail.trim()));
+            report_fallback();
+            cpu_fallback_used = true;
+            inputs.encoder = vietkara_render::VideoEncoder::Libx264;
+            let cpu_arguments = vietkara_render::ffmpeg_command(&profile, &inputs)
+                .map_err(|error| error.to_string())?;
+            execute_ffmpeg(
+                &cpu_arguments,
+                &temporary_directory,
+                &stderr_path,
+                cancel,
+                duration,
+                &mut report_progress,
+            )
+            .map_err(|cpu_error| {
+                format!(
+                    "NVENC thất bại ({first_error}); xuất lại bằng CPU cũng thất bại: {cpu_error}"
+                )
+            })?;
         }
         let rendered = temporary_directory.join(profile.output_name());
         vietkara_render::verify_output_with_tools(
@@ -430,10 +412,167 @@ fn render_project(
             }
         }
         report_progress(1.0);
-        Ok(())
+        Ok(cpu_fallback_used)
     })();
     let _ = std::fs::remove_dir_all(&temporary_directory);
     result
+}
+
+fn select_video_encoder(
+    project: &Project,
+    ffmpeg: &std::path::Path,
+) -> vietkara_render::VideoEncoder {
+    use vietkara_render::VideoEncoder;
+
+    match project
+        .settings
+        .extra
+        .get("video_encoder")
+        .and_then(Value::as_str)
+        .unwrap_or("auto")
+    {
+        "cpu" => VideoEncoder::Libx264,
+        "nvenc" => VideoEncoder::H264Nvenc,
+        _ if probe_nvenc(ffmpeg) => VideoEncoder::H264Nvenc,
+        _ => VideoEncoder::Libx264,
+    }
+}
+
+/// Exercise the actual FFmpeg NVENC encoder before automatic selection.
+/// A full render still retries on CPU if the selected hardware path fails.
+fn probe_nvenc(ffmpeg: &std::path::Path) -> bool {
+    use std::process::{Command, Stdio};
+
+    let Ok(mut child) = Command::new(ffmpeg)
+        .args([
+            "-hide_banner",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=size=256x144:rate=30",
+            "-frames:v",
+            "3",
+            "-c:v",
+            "h264_nvenc",
+            "-f",
+            "null",
+            "-",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
+fn is_retryable_nvenc_error(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    [
+        "nvenc",
+        "unknown encoder",
+        "no capable devices",
+        "cannot load nvcuda",
+        "error while opening encoder",
+    ]
+    .iter()
+    .any(|needle| error.contains(needle))
+}
+
+fn execute_ffmpeg(
+    arguments: &[String],
+    working_directory: &std::path::Path,
+    stderr_path: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
+    duration: f64,
+    report_progress: &mut impl FnMut(f64),
+) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+
+    let executable = arguments
+        .first()
+        .ok_or_else(|| "Lệnh FFmpeg rỗng".to_owned())?;
+    let stderr_file = std::fs::File::create(stderr_path)
+        .map_err(|error| format!("Không tạo được log FFmpeg: {error}"))?;
+    let mut child = Command::new(executable)
+        .args(&arguments[1..])
+        .current_dir(working_directory)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr_file))
+        .spawn()
+        .map_err(|error| format!("Không chạy được FFmpeg: {error}"))?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("Không đọc được tiến độ FFmpeg".into());
+    };
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut line = String::new();
+    loop {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Đã hủy xuất video".into());
+        }
+        line.clear();
+        let bytes = match std::io::BufRead::read_line(&mut reader, &mut line) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("Không đọc được tiến độ FFmpeg: {error}"));
+            }
+        };
+        if bytes == 0 {
+            break;
+        }
+        if let Some(time) = line.strip_prefix("out_time=").and_then(parse_ffmpeg_time) {
+            report_progress((time / duration).clamp(0.0, 0.99));
+        }
+    }
+    drop(reader);
+    let status = child
+        .wait()
+        .map_err(|error| format!("Không lấy được trạng thái FFmpeg: {error}"))?;
+    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("Đã hủy xuất video".into());
+    }
+    if !status.success() {
+        let stderr = std::fs::read_to_string(stderr_path).unwrap_or_default();
+        let detail = stderr
+            .chars()
+            .rev()
+            .take(1200)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        return Err(format_ffmpeg_failure(status.code(), detail.trim()));
+    }
+    Ok(())
 }
 
 fn parse_ffmpeg_time(value: &str) -> Option<f64> {
@@ -485,7 +624,8 @@ fn format_ffmpeg_failure(code: Option<i32>, detail: &str) -> String {
 
 enum ExportEvent {
     Progress(f64),
-    Finished(Result<(), String>),
+    Fallback,
+    Finished(Result<(PathBuf, bool), String>),
 }
 
 impl Studio {
@@ -3166,8 +3306,13 @@ impl Studio {
                                 |progress| {
                                     let _ = sender.send(ExportEvent::Progress(progress));
                                 },
+                                || {
+                                    let _ = sender.send(ExportEvent::Fallback);
+                                },
                             );
-                            let _ = sender.send(ExportEvent::Finished(result));
+                            let _ = sender.send(ExportEvent::Finished(
+                                result.map(|fallback| (worker_target, fallback)),
+                            ));
                         });
                     match thread {
                         Ok(_) => loop {
@@ -3190,8 +3335,20 @@ impl Studio {
                                             return;
                                         }
                                     }
+                                    Ok(ExportEvent::Fallback) => {
+                                        if this
+                                            .update(cx, |this, cx| {
+                                                this.edit_status =
+                                                    "NVENC lỗi; đang thử xuất lại bằng CPU…".into();
+                                                cx.notify();
+                                            })
+                                            .is_err()
+                                        {
+                                            return;
+                                        }
+                                    }
                                     Ok(ExportEvent::Finished(result)) => {
-                                        finished = Some(result.map(|()| target.clone()));
+                                        finished = Some(result);
                                         break;
                                     }
                                     Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -3217,7 +3374,11 @@ impl Studio {
                 this.rendering = false;
                 this.render_cancel = None;
                 this.edit_status = match result {
-                    Ok(path) => format!("Đã xuất video: {}", path.display()),
+                    Ok((path, true)) => format!(
+                        "Đã xuất video bằng CPU sau khi NVENC lỗi: {}",
+                        path.display()
+                    ),
+                    Ok((path, false)) => format!("Đã xuất video: {}", path.display()),
                     Err(error) => error,
                 };
                 cx.notify();
@@ -3694,6 +3855,11 @@ impl Render for Studio {
             vietkara_domain::settings::RenderFps::Source => "Theo nguồn",
             vietkara_domain::settings::RenderFps::Thirty => "30 FPS",
             vietkara_domain::settings::RenderFps::Sixty => "60 FPS",
+        };
+        let export_encoder = match settings.extra.get("video_encoder").and_then(Value::as_str) {
+            Some("cpu") => "CPU · libx264",
+            Some("nvenc") => "NVIDIA · NVENC (có fallback CPU)",
+            _ => "Tự động · ưu tiên NVENC, fallback CPU",
         };
         let export_audio = match settings.audio_output {
             vietkara_domain::settings::AudioOutput::Beat => "Beat",
@@ -4742,7 +4908,7 @@ impl Render for Studio {
                                         let text=this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").to_owned();
                                         this.set_word_input(&text,cx);
                                         cx.notify();
-                                    }))))
+                                    })))
                             .when(!self.inspector_design,|panel|panel
                             .child("TỪ ĐANG CHỌN")
                             .child(div().mt_3().child("Lời bài hát"))
@@ -5052,6 +5218,13 @@ impl Render for Studio {
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(format!("Chất lượng: {export_quality}"))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.render_quality=match settings.render_quality {vietkara_domain::settings::RenderQuality::Standard=>vietkara_domain::settings::RenderQuality::High,vietkara_domain::settings::RenderQuality::High=>vietkara_domain::settings::RenderQuality::Maximum,vietkara_domain::settings::RenderQuality::Maximum=>vietkara_domain::settings::RenderQuality::Standard},cx))))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                    .child(format!("Encoder: {export_encoder}"))
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                        let current=this.editor.project().settings.extra.get("video_encoder").and_then(Value::as_str).unwrap_or("auto");
+                                        let next=match current {"auto"=>"cpu","cpu"=>"nvenc",_=>"auto"};
+                                        this.update_setting("video_encoder",Value::String(next.into()),cx);
+                                    }))))
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(format!("Tốc độ khung hình: {export_fps}"))
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.update_typed_settings(|settings|settings.render_fps=match settings.render_fps {vietkara_domain::settings::RenderFps::Source=>vietkara_domain::settings::RenderFps::Thirty,vietkara_domain::settings::RenderFps::Thirty=>vietkara_domain::settings::RenderFps::Sixty,vietkara_domain::settings::RenderFps::Sixty=>vietkara_domain::settings::RenderFps::Source},cx))))
@@ -6423,13 +6596,22 @@ mod workspace_tests {
             &target,
             &cancel,
             |value| progress = progress.max(value),
+            || {},
         )
         .unwrap();
         assert!(target.is_file());
         assert!(progress > 0.0);
         let original_size = std::fs::metadata(&target).unwrap().len();
-        let error =
-            render_project(project, plan, &project_path, &target, &cancel, |_| {}).unwrap_err();
+        let error = render_project(
+            project,
+            plan,
+            &project_path,
+            &target,
+            &cancel,
+            |_| {},
+            || {},
+        )
+        .unwrap_err();
         assert!(error.contains("đã tồn tại"));
         assert_eq!(std::fs::metadata(&target).unwrap().len(), original_size);
     }

@@ -31,8 +31,8 @@
 //!   supported; bundled fonts and custom bitmap role artwork remain open.
 //! * Scene image and decoration position/scale/alpha, logo effects and custom
 //!   image countdown overlays are supported. GPUI export runs on a worker
-//!   thread, reports FFmpeg progress and can be cancelled; NVENC fallback
-//!   remains outside this slice.
+//!   thread, reports FFmpeg progress, can be cancelled, probes NVENC and
+//!   retries with libx264 when a hardware encoder failure is detected.
 //! * `verify_output` prefers `ffprobe` JSON and falls back to parsing
 //!   `ffmpeg -i` stderr when the probe binary is unavailable, matching
 //!   the Python baseline.

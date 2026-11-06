@@ -850,3 +850,12 @@ khi không tìm thấy ffprobe; fallback kiểm tra đủ luồng video/audio, t
 lượng nếu đọc được và kích thước frame nếu có trong summary. Export app giờ
 cho phép thiếu ffprobe nhưng vẫn yêu cầu FFmpeg để render. Workspace check
 pass; cần bổ sung test fallback và xác minh bằng FFmpeg trong đợt test gom.
+
+### W5: Auto/NVENC và fallback encoder
+
+Cài đặt xuất có Auto/CPU/NVIDIA. Auto chạy probe NVENC 3 frame bằng chính
+FFmpeg đã chọn; khi NVENC được chọn và lỗi nhắc encoder/driver/device, app
+hiện trạng thái chuyển CPU rồi render lại bằng libx264. Lỗi ngoài encoder
+không bị retry. Kết quả hoàn tất cho biết có fallback CPU hay không. Workspace
+check pass; cần kiểm thử CPU-only, probe NVENC thật và lỗi NVENC trong lượt
+test/render cuối.
