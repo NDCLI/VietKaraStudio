@@ -1958,6 +1958,15 @@ fn verify_output_with_ffmpeg(
             ))
         })?;
     let summary = String::from_utf8_lossy(&output.stderr);
+    parse_ffmpeg_output_summary(&summary, duration, width, height)
+}
+
+fn parse_ffmpeg_output_summary(
+    summary: &str,
+    duration: f64,
+    width: u32,
+    height: u32,
+) -> Result<VerifiedOutput, RenderError> {
     let has_video = summary.contains("Video:");
     let has_audio = summary.contains("Audio:");
     if !has_video || !has_audio {
@@ -1980,7 +1989,9 @@ fn verify_output_with_ffmpeg(
         .split(|character: char| !(character.is_ascii_digit() || character == 'x'))
         .find_map(|part| {
             let (width, height) = part.split_once('x')?;
-            Some((width.parse::<u32>().ok()?, height.parse::<u32>().ok()?))
+            let width = width.parse::<u32>().ok()?;
+            let height = height.parse::<u32>().ok()?;
+            (width > 0 && height > 0).then_some((width, height))
         });
     let (actual_width, actual_height) = actual_size.unwrap_or((0, 0));
     if actual_size.is_some() && (actual_width != width || actual_height != height) {
@@ -2020,6 +2031,14 @@ fn parse_probe_duration(value: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ffprobe_available() -> bool {
+        let probe = std::env::var_os("OBS_FFPROBE").unwrap_or_else(|| "ffprobe".into());
+        std::process::Command::new(probe)
+            .arg("-version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+    }
 
     fn write_png_header(path: &Path, width: u32, height: u32) {
         let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
@@ -2860,6 +2879,34 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn ffmpeg_summary_fallback_validates_streams_duration_and_geometry() {
+        let summary = "Input #0, mov, from 'render.mp4':\n  Duration: 00:00:02.00, start: 0.000000, bitrate: 1000 kb/s\n  Stream #0:0: Video: h264, yuv420p, 320x240, 30 fps\n  Stream #0:1: Audio: aac, 44100 Hz, stereo\n";
+        let verified = parse_ffmpeg_output_summary(summary, 2.0, 320, 240).unwrap();
+        assert_eq!(verified.duration, 2.0);
+        assert_eq!((verified.width, verified.height), (320, 240));
+        assert_eq!(verified.video_codec, None);
+        assert_eq!(verified.audio_codec, None);
+
+        assert!(matches!(
+            parse_ffmpeg_output_summary(summary, 5.0, 320, 240),
+            Err(RenderError::DurationMismatch(_, _))
+        ));
+        assert!(matches!(
+            parse_ffmpeg_output_summary(summary, 2.0, 1920, 1080),
+            Err(RenderError::SizeMismatch(320, 240, 1920, 1080))
+        ));
+        assert!(matches!(
+            parse_ffmpeg_output_summary(
+                "Duration: 00:00:02.00\nVideo: h264, 320x240",
+                2.0,
+                320,
+                240
+            ),
+            Err(RenderError::MissingStreams)
+        ));
+    }
+
     /// Integration test: render a real 2 s colour video with the exact
     /// argv `ffmpeg_command` produces, then verify it.
     #[test]
@@ -2914,8 +2961,13 @@ mod tests {
         let verified = verify_output(&out, 2.0, 320, 240).unwrap();
         assert_eq!(verified.width, 320);
         assert_eq!(verified.height, 240);
-        assert_eq!(verified.video_codec.as_deref(), Some("h264"));
-        assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        if ffprobe_available() {
+            assert_eq!(verified.video_codec.as_deref(), Some("h264"));
+            assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        } else {
+            assert_eq!(verified.video_codec, None);
+            assert_eq!(verified.audio_codec, None);
+        }
         assert!((verified.duration - 2.0).abs() < 0.1);
         let samples = sample_frames(&out, &root.join("qa-frames"), 2.0, Path::new(&argv[0]))
             .expect("finished render should yield reviewable frame samples");
@@ -3215,7 +3267,11 @@ mod tests {
         assert!((verified.duration - 2.0).abs() < 0.1);
         assert_eq!(verified.width, 320);
         assert_eq!(verified.height, 240);
-        assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        if ffprobe_available() {
+            assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        } else {
+            assert_eq!(verified.audio_codec, None);
+        }
         for (time, red) in [(0.25, true), (0.75, false), (1.25, true), (1.75, false)] {
             let pixel = render_pixel(&command[0], root, &output_path, time, 320, 10, 10);
             if red {

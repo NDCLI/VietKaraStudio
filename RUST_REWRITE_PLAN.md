@@ -1,6 +1,18 @@
 # VietKara Studio: kế hoạch chuyển dần sang Rust + GPUI
 
 > **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
+
+> **Tiến độ 2026-11-06 — batch UI và xác minh FFmpeg fallback:** toolbar GPUI
+> được phép wrap để nút batch không bị cắt ở cửa sổ thấp/rộng. Tách parser
+> summary FFmpeg để unit test fallback; test FFmpeg 7 không có ffprobe phát
+> hiện và sửa việc nhận mã codec `0x...` thành kích thước video. `cargo test
+> --workspace` pass trên Windows với Python `.venv` và cặp FFmpeg/ffprobe từ
+> portable build4. `cargo clippy --workspace --all-targets -- -D warnings`,
+> `cargo fmt --all -- --check` và `git diff --check` cũng pass. Whisper small
+> model test vẫn ignored vì cần model/fixture riêng; UI batch, runtime NVENC,
+> QA cài đặt máy sạch và phát hành/update E2E còn mở. Node tapping/timeline
+> 14/14 pass. Python suite baseline riêng 162/173 pass; 11 fail ở test export,
+> phân vai vocal và UI/video baseline, không thuộc workspace Rust.
 >
 > **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
 >

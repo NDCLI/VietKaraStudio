@@ -1107,8 +1107,15 @@ chạy cùng lượt kiểm thử cuối.
 `verify_output_with_tools` ưu tiên ffprobe JSON, chỉ chuyển sang `ffmpeg -i`
 khi không tìm thấy ffprobe; fallback kiểm tra đủ luồng video/audio, thời
 lượng nếu đọc được và kích thước frame nếu có trong summary. Export app giờ
-cho phép thiếu ffprobe nhưng vẫn yêu cầu FFmpeg để render. Workspace check
-pass; cần bổ sung test fallback và xác minh bằng FFmpeg trong đợt test gom.
+cho phép thiếu ffprobe nhưng vẫn yêu cầu FFmpeg để render. Parser fallback
+được tách dùng chung giữa runtime và unit test; regression test kiểm tra luồng
+audio/video, duration, kích thước đúng/sai và summary thiếu luồng. Test parser
+pass; chạy thật bằng FFmpeg 7 từ portable build4 phát hiện mã codec `0x...`
+bị nhận nhầm thành kích thước 0×N. Parser đã bỏ cặp kích thước 0 và test
+render/ASS/video/profile cùng fallback pass. `cargo test --workspace` pass
+với FFmpeg/ffprobe build4 và Python `.venv`; `cargo fmt` và workspace Clippy
+`-D warnings` pass. Python baseline suite riêng 162/173 pass, còn 11 lỗi ở
+export, phân vai vocal và UI/video baseline; Node tapping/timeline 14/14 pass.
 
 ### W5: Auto/NVENC và fallback encoder
 

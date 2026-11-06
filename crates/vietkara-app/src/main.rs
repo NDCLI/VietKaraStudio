@@ -6512,7 +6512,9 @@ impl Render for Studio {
             .child(
                 div()
                     .flex()
-                    .justify_between()
+                    .flex_wrap()
+                    .justify_start()
+                    .gap_2()
                     .px_5()
                     .py_3()
                     .bg(rgb(theme::SURFACE))

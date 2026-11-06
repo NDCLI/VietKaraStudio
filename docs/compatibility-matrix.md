@@ -51,7 +51,7 @@
 |---|---|---|
 | `vietkara-jobs` | `engine.Job`, `app.py::persist_job`/`recover_jobs`, `batch_render.py` (record state machine) | ✅ lifecycle/cancel/persist/recover, batch `first_pending`/retry |
 | `vietkara-media` | `media_tools.probe_video`, `engine.waveform`/`convert`, `render_info._audio_metrics`/`fps_value` | ✅ ffprobe JSON + fallback `ffmpeg -i`, WAV PCM/float, waveform peak = max tuyệt đối trên mọi kênh (đã sửa để khớp Python; mono mix sẽ triệt tiêu stereo ngược pha), metrics, `NullPlayer` + fake clock. Không có thiết bị audio thật. |
-| `vietkara-render` | `subtitles.py`, `layout.py`, `render_info.py`, `engine.render` | ✅ `display_plan`, ASS lyrics/title/role artwork/scenes/countdown, render profile, backgrounds/overlays/audio normalize, FFmpeg command và output verification. Golden parity và runtime fixture vẫn cần chốt trên Windows. |
+| `vietkara-render` | `subtitles.py`, `layout.py`, `render_info.py`, `engine.render` | ✅ `display_plan`, ASS lyrics/title/role artwork/scenes/countdown, render profile, backgrounds/overlays/audio normalize, FFmpeg command và output verification. Windows `cargo test --workspace` pass với FFmpeg/ffprobe từ portable build4; test render fallback FFmpeg không ffprobe cũng pass. Golden parity đầy đủ và runtime fixture sản phẩm vẫn cần chốt. |
 | `vietkara-ai-bridge` | `worker.py` qua adapter `ai_worker.py`, plan §3.4/Phase 5 | ✅ JSON Lines v1, spawn/timeout/cancel/crash recovery và adapter separation/recognition/alignment/role/sync. Runtime với model thật vẫn cần smoke test trên Windows. |
 
 ## Fixture
