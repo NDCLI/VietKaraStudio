@@ -3504,6 +3504,29 @@ impl Render for Studio {
                     .get("subtitle_box")
                     .and_then(Value::as_bool)
                     .unwrap_or(true));
+        let preview_outline_width = settings
+            .extra
+            .get("outline_width")
+            .and_then(Value::as_f64)
+            .unwrap_or(3.0)
+            .clamp(0.0, 12.0) as f32
+            * preview_scale;
+        let preview_outline_color = setting_color(settings, "outline_unsung", 0x15202a);
+        let preview_outline_opacity = settings
+            .extra
+            .get("outline_unsung_opacity")
+            .and_then(Value::as_f64)
+            .unwrap_or(100.0)
+            .clamp(0.0, 100.0) as f32
+            / 100.0;
+        let preview_shadow_color = setting_color(settings, "shadow_color", 0x000000);
+        let preview_shadow = settings
+            .extra
+            .get("shadow")
+            .and_then(Value::as_f64)
+            .unwrap_or(1.0)
+            .clamp(0.0, 15.0) as f32
+            * preview_scale;
         let mut current_preview: Vec<_> = if display_mode == "karaoke"
             && !active_plan_rows.is_empty()
         {
@@ -3634,44 +3657,52 @@ impl Render for Studio {
                     .unwrap_or(1.4);
                 vietkara_render::layout::lyricsmv_rows(layout, row_index, style, line_height)
                     .into_iter()
-                    .map(|item| {
+                    .flat_map(|item| {
                         let row = item.row;
                         let color = if item.active {
                             sung_color
                         } else {
                             unsung_color
                         };
-                        div()
-                            .absolute()
-                            .left(px(row.x as f32 * preview_scale))
-                            .top(px(row.y as f32 * preview_scale))
-                            .text_size(px(row.font_size as f32 * preview_scale))
-                            .text_color(rgb(color))
-                            .font_family(settings.font.clone())
-                            .when(italic, |text| text.italic())
-                            .opacity(item.opacity_percent as f32 / 100.0)
-                            .child(vietkara_render::layout::font_text(
-                                &row.text,
-                                &settings.font,
-                            ))
+                        let opacity = item.opacity_percent as f32 / 100.0;
+                        preview_text_layers(
+                            &row.text,
+                            row.x as f32 * preview_scale,
+                            row.y as f32 * preview_scale,
+                            row.font_size as f32 * preview_scale,
+                            PreviewTextStyle {
+                                font: &settings.font,
+                                italic,
+                                fill_color: color,
+                                outline_color: preview_outline_color,
+                                outline_width: preview_outline_width,
+                                outline_opacity: preview_outline_opacity * opacity,
+                                shadow_color: preview_shadow_color,
+                                shadow: preview_shadow,
+                                opacity,
+                            },
+                        )
                     })
                     .collect()
             } else {
                 let row = &layout.rows[row_index];
-                vec![
-                    div()
-                        .absolute()
-                        .left(px(row.x as f32 * preview_scale))
-                        .top(px(row.y as f32 * preview_scale))
-                        .text_size(px(row.font_size as f32 * preview_scale))
-                        .text_color(rgb(unsung_color))
-                        .font_family(settings.font.clone())
-                        .when(italic, |text| text.italic())
-                        .child(vietkara_render::layout::font_text(
-                            &row.text,
-                            &settings.font,
-                        )),
-                ]
+                preview_text_layers(
+                    &row.text,
+                    row.x as f32 * preview_scale,
+                    row.y as f32 * preview_scale,
+                    row.font_size as f32 * preview_scale,
+                    PreviewTextStyle {
+                        font: &settings.font,
+                        italic,
+                        fill_color: unsung_color,
+                        outline_color: preview_outline_color,
+                        outline_width: preview_outline_width,
+                        outline_opacity: preview_outline_opacity,
+                        shadow_color: preview_shadow_color,
+                        shadow: preview_shadow,
+                        opacity: 1.0,
+                    },
+                )
             }
         } else {
             preview_rows
@@ -4753,6 +4784,66 @@ fn preview_alignment(
 
 fn preview_hex_color(value: &str) -> u32 {
     u32::from_str_radix(value.strip_prefix('#').unwrap_or(value), 16).unwrap_or(0xffffff)
+}
+
+struct PreviewTextStyle<'a> {
+    font: &'a str,
+    italic: bool,
+    fill_color: u32,
+    outline_color: u32,
+    outline_width: f32,
+    outline_opacity: f32,
+    shadow_color: u32,
+    shadow: f32,
+    opacity: f32,
+}
+
+fn preview_text_layers(
+    text: &str,
+    x: f32,
+    y: f32,
+    font_size: f32,
+    style: PreviewTextStyle<'_>,
+) -> Vec<gpui::Div> {
+    let text = vietkara_render::layout::font_text(text, style.font);
+    let layer = |offset_x: f32, offset_y: f32, color: u32, alpha: f32| {
+        div()
+            .absolute()
+            .left(px(x + offset_x))
+            .top(px(y + offset_y))
+            .text_size(px(font_size))
+            .text_color(rgb(color))
+            .font_family(style.font.to_owned())
+            .when(style.italic, |text| text.italic())
+            .opacity(alpha.clamp(0.0, 1.0))
+            .child(text.clone())
+    };
+    let mut layers = Vec::with_capacity(10);
+    if style.shadow > 0.0 {
+        layers.push(layer(
+            style.shadow,
+            style.shadow,
+            style.shadow_color,
+            style.opacity,
+        ));
+    }
+    if style.outline_width > 0.0 {
+        let diagonal = style.outline_width * std::f32::consts::FRAC_1_SQRT_2;
+        for (dx, dy) in [
+            (-style.outline_width, 0.0),
+            (style.outline_width, 0.0),
+            (0.0, -style.outline_width),
+            (0.0, style.outline_width),
+            (-diagonal, -diagonal),
+            (diagonal, -diagonal),
+            (-diagonal, diagonal),
+            (diagonal, diagonal),
+        ] {
+            layers.push(layer(dx, dy, style.outline_color, style.outline_opacity));
+        }
+    }
+    layers.push(layer(0.0, 0.0, style.fill_color, style.opacity));
+    layers
 }
 
 #[derive(Debug, PartialEq)]

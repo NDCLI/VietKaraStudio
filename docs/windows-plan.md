@@ -808,5 +808,6 @@ Studio lấy các dòng đang hiển thị từ `DisplayPlan` cho cả karaoke,
 subtitle và lyricsmv. Lyricsmv dùng chung phép tạo dòng ghost cho cỡ chữ,
 tọa độ, khoảng cách và opacity với ASS; preview không còn tự xếp bằng cỡ
 34/22 px. Preview cũng áp dụng font family của project và chỉ vẽ role marker
-ở các dòng đang thấy. Bộ chọn dòng cũ chỉ còn làm oracle test. Golden ảnh
-Windows và đối chiếu raster/outline với ASS vẫn chưa làm.
+ở các dòng đang thấy; subtitle/lyricsmv dựng outline và shadow theo thông số
+project bằng các lớp text preview. Bộ chọn dòng cũ chỉ còn làm oracle test.
+Golden ảnh Windows và đối chiếu raster của outline với ASS vẫn chưa làm.
