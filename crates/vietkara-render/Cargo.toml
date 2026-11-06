@@ -14,3 +14,4 @@ unicode-normalization.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+serde_json = { workspace = true }

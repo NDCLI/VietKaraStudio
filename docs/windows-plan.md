@@ -333,10 +333,10 @@ kiểm tra runtime có FFmpeg trên Windows.
 - [x] Mở rộng `vietkara-render`: scene/logo/countdown overlays,
   video/image background, guide audio (`amix`), audio normalize
   (`loudnorm`), NVENC fallback sang libx264 khi lỗi (như `engine.render`).
-- [ ] Xuất MP4 tối thiểu đạt parity fixture, audio dùng đúng beat gốc;
+- [x] Xuất MP4 tối thiểu đạt parity fixture, audio dùng đúng beat gốc;
   `verify_output` + sample frames (`render_info.verify_output` /
   `sample_frames`) phải pass.
-- [ ] Lỗi FFmpeg hiển thị được nguyên nhân có thể hành động (không chỉ
+- [x] Lỗi FFmpeg hiển thị được nguyên nhân có thể hành động (không chỉ
   mã lỗi).
 
 > **Tiến độ 2026-11-06:** test `verify_output_accepts_real_render_and_rejects_wrong_expectations`
@@ -347,8 +347,23 @@ kiểm tra runtime có FFmpeg trên Windows.
 > pixel theo alpha nội suy. Decoration opacity cũng được kiểm tra qua hai
 > keyframe. Nền video được lấy mẫu bốn thời điểm qua hai vòng lặp; MP4 giữ thời
 > lượng beat và audio AAC. Đây là các kiểm tra runtime compositing/source hẹp,
-> chưa thay cho golden MP4/audio đầy đủ. Test render thật cũng xác nhận frame
+> chưa thay cho golden full-song MP4/audio. Test render thật cũng xác nhận frame
 > portrait 1080×1920 và landscape 4K 3840×2160 cùng pixel nền dự kiến.
+
+> **Tiến độ 2026-11-06:** thêm `vietkara_render::sample_frames` tạo ba PNG
+> tại các mốc `min(0.5,duration/4)`, `duration/2`, `max(0,duration-0.5)`.
+> Test renderer dựng MP4 thật, `verify_output` xác nhận H.264/AAC, duration,
+> kích thước và giải mã PNG mẫu. Test `vietkara-app` gọi `render_project`
+> thật với project/audio fixture trong đường dẫn Unicode, sau đó xác nhận
+> ffprobe và frame PNG từ file MP4 đã publish. Hai integration test pass;
+> đây là nghiệm thu CPU fixture 1–2 giây, chưa thay cho golden full song.
+
+- [x] Lỗi FFmpeg hiển thị được nguyên nhân có thể hành động (không chỉ mã lỗi).
+
+> `execute_ffmpeg` phân loại file/media thiếu hoặc hỏng, quyền ghi, hết dung
+> lượng, encoder và thiếu bộ nhớ; UI giữ chi tiết stderr cuối để chẩn đoán.
+> Test `ffmpeg_failure_messages_suggest_a_specific_recovery` xác nhận mỗi
+> nhóm lỗi đưa ra bước khôi phục cụ thể và giữ nguyên chi tiết FFmpeg.
 
 **Hoàn tất khi:** preview/export không lệch các thuộc tính đã cam kết,
 progress/cancel hoạt động, export folder + render info đúng.

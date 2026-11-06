@@ -1737,6 +1737,65 @@ pub struct VerifiedOutput {
     pub audio_codec: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SampledFrames {
+    pub times: Vec<f64>,
+    pub files: Vec<PathBuf>,
+}
+
+/// Decode three representative frames from a finished video. This mirrors
+/// the Python render QA sampling times and leaves PNGs for visual review.
+pub fn sample_frames(
+    video: &Path,
+    destination: &Path,
+    duration: f64,
+    ffmpeg: &Path,
+) -> Result<SampledFrames, RenderError> {
+    if !video.is_file() {
+        return Err(RenderError::ProbeFailed(
+            "Không tìm thấy video để lấy frame mẫu".into(),
+        ));
+    }
+    if !duration.is_finite() || duration <= 0.0 {
+        return Err(RenderError::ProbeFailed(
+            "Thời lượng video không hợp lệ để lấy frame mẫu".into(),
+        ));
+    }
+    let mut times = [
+        (duration / 4.0).min(0.5),
+        duration / 2.0,
+        (duration - 0.5).max(0.0),
+    ]
+    .into_iter()
+    .map(|time| (time * 100.0).round() / 100.0)
+    .collect::<Vec<_>>();
+    times.sort_by(f64::total_cmp);
+    times.dedup();
+    std::fs::create_dir_all(destination)?;
+    let mut files = Vec::with_capacity(times.len());
+    for (index, time) in times.iter().enumerate() {
+        let path = destination.join(format!("sample-{index}.png"));
+        let output = std::process::Command::new(ffmpeg)
+            .args(["-y", "-v", "error", "-ss"])
+            .arg(format!("{time:.2}"))
+            .arg("-i")
+            .arg(video)
+            .args(["-frames:v", "1", "-update", "1"])
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .output()?;
+        if !output.status.success() || !path.is_file() || std::fs::metadata(&path)?.len() == 0 {
+            let detail = String::from_utf8_lossy(&output.stderr);
+            return Err(RenderError::ProbeFailed(format!(
+                "Không giải mã được frame mẫu tại {time:.2}s: {}",
+                detail.trim()
+            )));
+        }
+        files.push(path);
+    }
+    Ok(SampledFrames { times, files })
+}
+
 fn json_f64(value: Option<&serde_json::Value>) -> f64 {
     match value {
         Some(serde_json::Value::Number(n)) => n.as_f64().unwrap_or(0.0),
@@ -2858,6 +2917,18 @@ mod tests {
         assert_eq!(verified.video_codec.as_deref(), Some("h264"));
         assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
         assert!((verified.duration - 2.0).abs() < 0.1);
+        let samples = sample_frames(&out, &root.join("qa-frames"), 2.0, Path::new(&argv[0]))
+            .expect("finished render should yield reviewable frame samples");
+        assert_eq!(samples.times, vec![0.5, 1.0, 1.5]);
+        assert_eq!(samples.files.len(), 3);
+        assert!(samples.files.iter().all(|path| path.is_file()));
+        let decoded = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(&samples.files[0])
+            .args(["-f", "null", "-"])
+            .output()
+            .unwrap();
+        assert!(decoded.status.success(), "sample PNG should decode");
 
         assert!(matches!(
             verify_output(&out, 2.0, 1920, 1080),

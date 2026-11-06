@@ -8800,6 +8800,23 @@ mod workspace_tests {
     use super::*;
 
     #[test]
+    fn ffmpeg_failure_messages_suggest_a_specific_recovery() {
+        let cases = [
+            ("No such file or directory", "relink file bị thiếu"),
+            ("Permission denied", "quyền ghi"),
+            ("No space left on device", "hết dung lượng"),
+            ("Unknown encoder 'h264_nvenc'", "encoder"),
+            ("Cannot allocate memory", "Thiếu bộ nhớ"),
+        ];
+        for (detail, expected) in cases {
+            let message = format_ffmpeg_failure(Some(1), detail);
+            assert!(message.contains(expected), "{detail} => {message}");
+            assert!(message.contains(detail));
+        }
+        assert!(format_ffmpeg_failure(Some(1), "").contains("mã Some(1)"));
+    }
+
+    #[test]
     fn batch_target_avoids_overwriting_existing_exports() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("song.mp4"), b"existing").unwrap();
@@ -9435,7 +9452,7 @@ mod workspace_tests {
         std::fs::create_dir(&project_directory).unwrap();
         std::fs::create_dir(&output_directory).unwrap();
         let ffmpeg = vietkara_media::find_binary("ffmpeg").unwrap();
-        let audio = std::process::Command::new(ffmpeg)
+        let audio = std::process::Command::new(&ffmpeg)
             .args([
                 "-y",
                 "-v",
@@ -9503,6 +9520,22 @@ mod workspace_tests {
         .unwrap();
         assert!(target.is_file());
         assert!(progress > 0.0);
+        let ffprobe = vietkara_media::find_binary("ffprobe").unwrap();
+        let verified =
+            vietkara_render::verify_output_with_ffprobe(&target, 1.0, 1920, 1080, &ffprobe)
+                .expect("published MP4 must contain beat audio and a matching video stream");
+        assert_eq!((verified.width, verified.height), (1920, 1080));
+        assert_eq!(verified.audio_codec.as_deref(), Some("aac"));
+        assert!((verified.duration - 1.0).abs() < 0.1);
+        let samples = vietkara_render::sample_frames(
+            &target,
+            &output_directory.join("qa-frames"),
+            1.0,
+            &ffmpeg,
+        )
+        .expect("published MP4 should yield three reviewable frames");
+        assert_eq!(samples.times, vec![0.25, 0.5]);
+        assert!(samples.files.iter().all(|path| path.is_file()));
         let original_size = std::fs::metadata(&target).unwrap().len();
         let error = render_project(
             project,
