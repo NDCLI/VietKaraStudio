@@ -6,7 +6,7 @@ mod ui_preferences;
 use gpui::{
     App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
     MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window,
-    WindowBounds, WindowOptions, actions, div, img, prelude::*, px, rgb, size,
+    WindowBounds, WindowOptions, actions, div, img, prelude::*, px, rgb, size, uniform_list,
 };
 use serde_json::Value;
 use vietkara_domain::{
@@ -3586,33 +3586,62 @@ impl Render for Studio {
             }
         }
         let timeline = self.timeline_view(cx);
-        let lyric_rows = display_words.iter().map(|line: &Word| {
-            let id = line.id.clone();
-            let selected = Some(&line.id) == self.selected_word.as_ref();
-            let active =
-                self.playing && reference_position >= line.start && reference_position < line.end;
-            div()
-                .cursor_pointer()
-                .bg(rgb(if selected {
-                    theme::ACCENT_SURFACE
-                } else if active {
-                    theme::SUCCESS_ACTIVE
-                } else {
-                    theme::SURFACE
-                }))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _, _, cx| this.select_word(id.clone(), cx)),
-                )
-                .flex()
-                .justify_between()
-                .px_3()
-                .py_2()
-                .border_b_1()
-                .border_color(rgb(theme::BORDER))
-                .child(format!("{:05.2}  {}", line.start, line.text))
-                .child(format!("{:05.2}", line.end))
-        });
+        let active_reference_position = reference_position;
+        let lyric_rows = uniform_list(
+            "lyric-list",
+            display_words.len(),
+            cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                let words = this
+                    .timeline_drag
+                    .as_ref()
+                    .map(|session| session.words.as_slice())
+                    .or_else(|| {
+                        this.tapping
+                            .as_ref()
+                            .map(|session| session.words.as_slice())
+                    })
+                    .unwrap_or(&this.editor.project().words);
+                range
+                    .filter_map(|index| words.get(index).map(|line| (index, line)))
+                    .map(|(index, line)| {
+                        let id = line.id.clone();
+                        let selected = Some(&line.id) == this.selected_word.as_ref();
+                        let active = this.playing
+                            && active_reference_position >= line.start
+                            && active_reference_position < line.end;
+                        div()
+                            .id(index)
+                            .cursor_pointer()
+                            .bg(rgb(if selected {
+                                theme::ACCENT_SURFACE
+                            } else if active {
+                                theme::SUCCESS_ACTIVE
+                            } else {
+                                theme::SURFACE
+                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, _, cx| this.select_word(id.clone(), cx)),
+                            )
+                            .flex()
+                            .justify_between()
+                            .px_3()
+                            .py_2()
+                            .border_b_1()
+                            .border_color(rgb(theme::BORDER))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
+                                    .child(format!("{:05.2}  {}", line.start, line.text)),
+                            )
+                            .child(format!("{:05.2}", line.end))
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        );
 
         div()
             .key_context("Studio")
@@ -3872,7 +3901,7 @@ impl Render for Studio {
                             .when(!self.left_tab_media,|panel|panel
                                 .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED))
                                     .child(format!("{} từ · {} dòng",self.editor.project().words.len(),self.editor.project().words.iter().map(|w|w.line).max().map(|line|line+1).unwrap_or(0))))
-                                .child(div().id("lyric-list").flex_1().overflow_y_scroll().mt_2().children(lyric_rows))
+                                .child(lyric_rows.flex_1().mt_2())
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child("✎  Ước lượng mốc từ TXT")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_plain_lyrics(cx))))),

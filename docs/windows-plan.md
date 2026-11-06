@@ -635,6 +635,13 @@ mouseup/up-out; delta tính zoom và scroll. Khóa các lệnh đổi state tron
 drag, zoom giữ nguyên trong gesture. Cần kiểm tra event routing/capture
 và borrow/lifetime khi gom build/test; chưa tuyên bố runtime đạt.
 
+Đã chuyển danh sách lời bên trái sang `gpui::uniform_list` của GPUI 0.2.2:
+callback chỉ tạo row trong visible range, selection vẫn gọi cùng action và
+highlight active word lấy từ playback snapshot của lần render. Nội dung mỗi
+row được giữ một dòng để thỏa điều kiện chiều cao đồng nhất của UniformList.
+`cargo check -p vietkara-app` pass; cần runtime smoke test với project dài
+để xác nhận scroll/selection và hiệu năng trên Windows.
+
 ### W3: kiểm thử gom mốc (sau commit 516dd2d)
 
 Lượt gom kiểm thử đầu tiên cho code viết chưa build trước đó. `cargo check`
