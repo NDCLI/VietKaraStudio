@@ -46,8 +46,9 @@
 >   `docs/windows-plan.md`. Đây là snapshot kiểm thử, chưa phải GitHub release.
 > - Lượt test gom đã chạy: Rust workspace, Clippy `-D warnings`, fmt check,
 >   Python **188/188**, Node **17/17**, cùng smoke ghép part bằng PowerShell 5.1.
->   Build3 Setup cài/gỡ silent pass và payload được xác minh. Còn QA máy sạch,
->   launch/shortcut trên máy đích, IME/DPI đầy đủ và updater E2E với release thật.
+>   Build3 Setup cài/gỡ silent pass; cài lại trong workspace cho thấy app mở
+>   được, shortcut Desktop trỏ đúng launcher. Còn QA máy sạch, IME/DPI đầy đủ
+>   sau cài và updater E2E với release thật.
 >
 > **Tiến độ 2026-11-06 — artwork vai hát và hai lane:**
 > - Đóng gói đủ chín role icon PNG của baseline vào `vietkara-render`; lượng tử

@@ -476,8 +476,10 @@ cấu hình Python/worker/FFmpeg, đặt `OBS_DATA_DIR` sang
 data. SHA-256 setup đã đối chiếu với sidecar. Silent per-user install và
 uninstall pass trong `releases/installer-smoke/`; app/launcher payload có sau
 cài đặt và sentinel trong app data vẫn còn sau uninstall. Đã xóa sentinel sau
-kiểm tra. Shortcut và launch sau cài chưa xác minh. Updater/rollback và QA máy
-sạch vẫn còn mở. Build script hiện đối chiếu toàn bộ 16.540 file stage với
+kiểm tra. Một lượt smoke mới bằng build3 trong thư mục workspace xác nhận app
+mở cửa sổ GPUI, Desktop shortcut trỏ đúng launcher; silent uninstall exit 0.
+Updater/rollback và QA máy sạch vẫn còn mở. Build script hiện đối chiếu toàn
+bộ 16.540 file stage với
 manifest trước khi tạo installer; `--verify-only` đã chạy pass trên stage.
 
 Đã nối nút “Cập nhật” trong Studio tới `VietKaraUpdater.exe`. App chặn mở helper
@@ -508,9 +510,12 @@ Build3 local được dựng sau khi thêm updater (không phải canonical GitH
 - Portable archive verified 16,541 entries and CRC/checksum. Silent per-user
   Setup install and uninstall both exited 0; expected launcher/app/Python/
   worker files existed after install, and app-data marker survived uninstall.
+- Reinstall to `target/installer-launch-smoke/app` opened the full GPUI Studio
+  window. Desktop shortcut target matched the installed launcher, and silent
+  uninstall exited 0; temporary install payload was removed.
 
-Chưa xác minh trên Windows sạch, chưa kiểm tra launch/shortcut tương tác sau
-cài, và updater chưa thể chạy E2E khi chưa có Rust GitHub Release công khai.
+Chưa xác minh trên Windows sạch, IME/DPI sau cài chưa được chạy lại, và updater
+chưa thể chạy E2E khi chưa có Rust GitHub Release công khai.
 
 Script chia release Rust giờ cũng đóng gói `Ghep-File.ps1`, `Ghep-File.cmd` và
 hướng dẫn vào thư mục upload. Joiner xác minh tên file, kích thước/hash từng
