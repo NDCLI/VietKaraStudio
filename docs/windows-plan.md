@@ -53,7 +53,9 @@ Kiểm chứng trên Linux 2026-11-05: `cargo test` 6 crate **62/62 pass**,
 **Chưa xong — tất cả ở dưới đây, đều cần Windows (trừ khi ghi rõ):**
 
 - Spike GPUI/Windows/IME/playback (Giai đoạn 1) — `cargo check` và mở cửa sổ
-  app đã pass trên Windows; kiểm tra IME/DPI/Unicode/playback thủ công còn mở.
+  app đã pass trên Windows. Người dùng xác nhận Telex, Open/Save As + kéo
+  file trong dialog spike, resize dọc và scale 125%; scale 150%, VNI/TCVN3
+  và playback trên nhiều thiết bị vẫn chưa xác nhận.
 - Phát audio bằng thiết bị thật, waveform/playhead thật, tap-sync thật.
 - Golden parity cho ASS/layout và render trên fixture Windows vẫn cần chốt;
   `vietkara-render` đã có `display_plan`, builder ASS và pipeline nền/scene/
@@ -156,16 +158,15 @@ viết lại ở đây. Tóm tắt các bước và điểm quyết định:
    cập nhật `docs/windows-spike.md` §5 và `docs/compatibility-matrix.md`,
    push lên nhánh `codex/rust-gpui-rewrite`.
 
-**Kết quả Windows 2026-11-05:** bước tự động đã pass trên PowerShell 5.1
-(6 crate 62/62, fmt, clippy, `cargo check -p vietkara-app`,
-`cargo test --workspace`, workspace clippy); Python baseline 167/167 và
-Node tapping/timeline 14/14 cũng pass. Python suite cần `resources/source`,
-được nối tạm từ assets local có sẵn và đã gỡ junction sau test. App mở được
-cửa sổ. Bước thủ công chưa đủ để quyết định go/no-go: xem kết quả chi tiết
-trong `docs/windows-spike.md` §4–5. GO tiếp tục W3 theo quyết định và giới hạn ở windows-spike.md §5. Các spike riêng đã xác nhận mở/hủy dialog
-native, dán Unicode, Ctrl+A và Telex cơ bản (`as` → `á`, Space commit,
-Backspace trước/sau commit). Chưa đủ chuỗi Telex, DPI/resize và chọn
-đường dẫn qua dialog; xem bảng bằng chứng hiện tại trong runbook.
+**Kết quả Windows 2026-11-05/06:** bước tự động pass trên PowerShell 5.1
+(6 crate 62/62, fmt, Clippy, `cargo check -p vietkara-app`,
+`cargo test --workspace`, workspace Clippy); Python baseline 167/167 và
+Node tapping/timeline 14/14 cũng pass. Người dùng sau đó xác nhận thử Telex,
+Open/Save As và kéo file trong dialog spike, resize dọc, cùng scale 125%;
+ảnh xác nhận chữ tiếng Việt và scale 1.25. Scale 150%, VNI/TCVN3, runtime
+playback nhiều thiết bị và round-trip trên toàn bộ fixture Studio vẫn còn mở.
+Xem mức bằng chứng chi tiết tại `docs/windows-spike.md` §4–5. Quyết định
+GPUI 0.2.2 là GO; không đồng nghĩa parity production đã hoàn tất.
 
 **Điểm dừng (kế hoạch gốc §4.1):** nếu GPUI không đáp ứng IME, file
 dialog hoặc render ổn định, **dừng ở đây** — giữ `vietkara-domain` /

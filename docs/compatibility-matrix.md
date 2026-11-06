@@ -12,8 +12,10 @@
 - Host kiểm chứng Linux: x86_64. `cargo check/test -p vietkara-domain` và
   `-p vietkara-storage` chạy được.
 - `vietkara-app` (GPUI 0.2.2) chưa được build/run trên Linux. Trên Windows,
-  `cargo check` và mở cửa sổ đã pass; kiểm tra thủ công GPUI/IME/playback
-  vẫn còn mở, xem `RUST_REWRITE_PLAN.md` §4.1.
+  `cargo check`, release build, workspace tests/Clippy và runtime window đã
+  pass. Người dùng xác nhận Telex, Open/Save As + kéo file ở dialog spike,
+  resize dọc và scale 125%; scale 150%, VNI/TCVN3 và playback/export fixture
+  vẫn còn mở, xem `docs/windows-spike.md` §4–5.
 - Python baseline: `python3 -m pytest tests/test_timing.py tests/test_app.py -q`
   (xem README). Trong lần này chỉ chạy được `test_timing.py` (4/4 pass)
   và JS tapping/timeline (14/14 pass); `test_app.py` cần Flask và các
@@ -31,26 +33,25 @@
   `-- -D warnings`) sạch. FFmpeg/ffprobe 8.1.2 có sẵn trên máy Linux
   kiểm chứng, nên probe/render thật đã được test bằng file fixture
   sinh bằng ffmpeg.
-- Kết quả Windows 11 Pro x64 2026-11-05: PowerShell 5.1 chạy
+- Kết quả Windows 11 Pro x64 2026-11-05/06: PowerShell 5.1 chạy
   `scripts/windows-spike-check.ps1` thành công; Rust 1.99.1,
   `cargo fmt --check`, 6 crate **62/62 test**, `cargo clippy` với
   `-D warnings`, `cargo check -p vietkara-app`, `cargo test --workspace`
   và `cargo clippy --workspace --all-targets -- -D warnings` đều pass.
-  GPUI 0.2.2
-  đã mở được cửa sổ; Unicode tiếng Việt tĩnh và maximize/restore đã
-  quan sát được. IME, DPI, file picker, Unicode path round-trip và
-  responsiveness vẫn chưa kiểm chứng vì app mock chưa có control tương
-  ứng; quyết định go/no-go còn mở.
+  GPUI 0.2.2 đã mở cửa sổ; người dùng xác nhận IME Telex, thao tác
+  Open/Save As + kéo file trong dialog spike, resize dọc và scale 125%.
+  Scale 150%, VNI/TCVN3, runtime QA trên Studio và Windows sạch chưa được
+  xác nhận. Quyết định GPUI là GO theo runbook, chưa phải parity đầy đủ.
 - Baseline Python `pytest tests -q`: **167/167 pass**; Node tapping/timeline:
   **14/14 pass**. Python cần `resources/source`, không có trong Git checkout
   mới; dùng junction tạm tới asset local sẵn có rồi gỡ sau khi chạy test.
 
-## Crate mới (đợt 2, headless — không GUI, không thiết bị)
+## Trạng thái các crate Rust
 
 | Crate | Port từ Python | Trạng thái |
 |---|---|---|
 | `vietkara-jobs` | `engine.Job`, `app.py::persist_job`/`recover_jobs`, `batch_render.py` (record state machine) | ✅ lifecycle/cancel/persist/recover, batch `first_pending`/retry |
-| `vietkara-media` | `media_tools.probe_video`, `engine.waveform`/`convert`, `render_info._audio_metrics`/`fps_value` | ✅ ffprobe JSON + fallback `ffmpeg -i`, WAV PCM/float, waveform peak = max tuyệt đối trên mọi kênh (đã sửa để khớp Python; mono mix sẽ triệt tiêu stereo ngược pha), metrics, `NullPlayer` + fake clock. Không có thiết bị audio thật. |
+| `vietkara-media` | `media_tools.probe_video`, `engine.waveform`/`convert`, `render_info._audio_metrics`/`fps_value` | ✅ ffprobe JSON + fallback `ffmpeg -i`, WAV PCM/float, waveform peak = max tuyệt đối trên mọi kênh (đã sửa để khớp Python; mono mix sẽ triệt tiêu stereo ngược pha), metrics, `NullPlayer` + fake clock, và player thiết bị qua worker. Runtime thiết bị thật/seek/pause-resume vẫn cần fixture QA. |
 | `vietkara-render` | `subtitles.py`, `layout.py`, `render_info.py`, `engine.render` | ✅ `display_plan`, ASS lyrics/title/role artwork/scenes/countdown, render profile, backgrounds/overlays/audio normalize, FFmpeg command và output verification. Windows `cargo test --workspace` pass với FFmpeg/ffprobe từ portable build4; test render fallback FFmpeg không ffprobe cũng pass. Golden parity đầy đủ và runtime fixture sản phẩm vẫn cần chốt. |
 | `vietkara-ai-bridge` | `worker.py` qua adapter `ai_worker.py`, plan §3.4/Phase 5 | ✅ JSON Lines v1, spawn/timeout/cancel/crash recovery và adapter separation/recognition/alignment/role/sync. Runtime với model thật vẫn cần smoke test trên Windows. |
 

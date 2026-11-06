@@ -16,6 +16,16 @@
 > batch/AI trên project fixture, golden full-layout và recovery UI còn thiếu;
 > QA sạch, signing và updater E2E còn phụ thuộc môi trường/release công khai.
 
+> **Cập nhật UI/W2 2026-11-06:** sửa Inspector bị dàn ngang do sai container,
+> thêm empty state nhập SRT/TXT, giới hạn co dọc để timeline không bị đẩy khỏi
+> viewport, và migrate Inspector hẹp trong preferences cũ. Release build và
+> screenshot QA 1442×932 pass; workspace tests **58/58 app** cùng các crate
+> pass (Whisper model test riêng vẫn ignored), fmt và workspace Clippy pass.
+> Người dùng xác nhận Telex, dialog Open/Save As + kéo file, resize dọc và
+> Windows scale 125%. Vẫn chưa xác nhận scale 150%, VNI/TCVN3, runtime nhiều
+> thiết bị/export fixture, golden full-layout, QA Windows sạch hoặc updater
+> E2E với Rust release công khai.
+
 > **Tiến độ 2026-11-06 — batch UI và xác minh FFmpeg fallback:** toolbar GPUI
 > được phép wrap để nút batch không bị cắt ở cửa sổ thấp/rộng. Tách parser
 > summary FFmpeg để unit test fallback; test FFmpeg 7 không có ffprobe phát

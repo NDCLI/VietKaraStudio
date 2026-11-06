@@ -15,21 +15,18 @@
   render, ai-bridge) **62/62 pass**; `cargo fmt --check` và `cargo clippy
   --all-targets -- -D warnings` sạch; Python `tests/test_timing.py` 4/4,
   JS tapping/timeline 14/14.
-- `vietkara-app` (GPUI **0.2.2**) chưa được build/run trên Linux; trên
-  Windows `cargo check`, `cargo test --workspace`, workspace clippy và mở
-  cửa sổ đã pass ngày 2026-11-05.
-- **Giới hạn quan trọng của app hiện tại:** `crates/vietkara-app/src/main.rs`
-  chỉ là UI mô phỏng — chưa có action thật cho mở file, playback,
-  timeline, import, save hay export; cờ `playing` không bao giờ đổi.
-  Vì vậy các mục thủ công dưới đây kiểm chứng **khả năng của GPUI trên
-  Windows** (cửa sổ, IME, file picker, đường dẫn Unicode, không block UI),
-  không phải tính năng của app. Ghi rõ mục nào app chưa có, đừng đánh
-  "pass" cho tính năng chưa tồn tại.
-- Các crate headless `vietkara-jobs`/`vietkara-media`/`vietkara-render`/
-  `vietkara-ai-bridge` đã xong trên Linux (phần không cần GUI/thiết bị);
-  bước playback của spike vẫn chỉ dùng **fake clock** (đồng hồ giả tick
-  ngoài UI thread), chưa phát audio thật — thiết bị audio thật là việc
-  của spike, không phải của `vietkara-media` (`NullPlayer`).
+- `vietkara-app` dùng GPUI **0.2.2**; trên Windows `cargo check`,
+  `cargo test --workspace`, workspace Clippy và mở cửa sổ đã pass. Studio đã
+  có project lifecycle, dialog open/save, playback, lyrics/timeline,
+  preview/export và các panel chỉnh sửa; đây không còn là mock.
+- Các example `ime_spike` và `dialog_spike` vẫn là harness tách biệt để kiểm
+  IME/dialog. Kết quả của chúng chỉ chứng minh tương tác được thử trong spike;
+  không thay cho runtime QA của toàn bộ Studio. Các mục chưa chạy phải được
+  giữ riêng, không gộp thành pass chỉ vì ứng dụng build được.
+- `vietkara-media` đã có playback worker dùng thiết bị thật và fake clock cho
+  unit test. Phát/seek/pause trên thiết bị Windows cần được kiểm tra runtime
+  theo fixture hiện hành; unit test hoặc mock clock không chứng minh được
+  thiết bị cụ thể.
 - **Windows 11 Pro x64, 2026-11-05:** dùng Rust 1.99.1, GPUI 0.2.2,
   MSVC Build Tools và PowerShell 5.1. `scripts/windows-spike-check.ps1`
   chạy thành công: 6 crate headless **62/62 test**, `cargo fmt --check`,
@@ -41,10 +38,11 @@
 - Trong lần kiểm chứng này đã sửa import GPUI không tồn tại ở
   `vietkara-app`, chọn lệnh Python tương thích Windows cho fake worker
   tests, và sửa script để chạy được trên PowerShell 5.1.
-- **Kiểm tra thủ công chưa hoàn tất:** app hiện là mock và không có
-  control nhập liệu, file picker, playback hay job nền. Không kết luận
-  IME, DPI, Unicode path, resize bằng kéo mép hoặc responsiveness; chưa
-  có quyết định go/no-go cho GPUI. Xem bảng kết quả §4.
+- **Cập nhật sau kiểm tra trực tiếp của người dùng (2026-11-06):** gõ Telex
+  tiếng Việt, thao tác Open/Save As trong dialog spike, kéo file, resize dọc
+  và scale 125% được xác nhận ổn. Scale 150%, VNI/TCVN3 và runtime playback/
+  timeline/export trên toàn bộ fixture vẫn chưa được xác nhận. Bảng §4 ghi
+  từng mục và mức bằng chứng.
 
 ## 1. Máy và công cụ cần có
 
@@ -108,11 +106,11 @@ cargo run -p vietkara-app
 
 | # | Kiểm tra | Cách làm | Kết quả |
 |---|---|---|---|
-| 1 | Cửa sổ mở, resize | Kéo 4 cạnh/góc, maximize/minimize/restore | Mở cửa sổ: pass; maximize/restore: pass; dialog spike: kéo mép phải đổi viewport 900×500 → 719×500 ở scale 1, layout cập nhật; ảnh người dùng bổ sung viewport 831×637 và 1243×757, cho thấy cả hai chiều thay đổi; chưa xác minh đủ cạnh/góc hoặc studio |
-| 2 | DPI/scale | Đổi scale Windows 100% → 125% → 150%, mở lại app, kiểm tra chữ/layout có vỡ không | Người dùng xác nhận scale 1.25 hoạt động ổn; 1.5 chưa xác nhận riêng |
-| 3 | File picker / drag-drop | Mở file picker (nếu app chưa có nút, ghi "chưa có action" — đây là gap, không phải lỗi GPUI); kéo file project vào cửa sổ | Studio chưa có action; dialog spike riêng đã mở/hủy Open và Save As thành công (§8). Drag-drop chưa chạy |
-| 4 | IME tiếng Việt | Gõ bằng Telex: `Xin chào`, `Tạm biệt`, `Điệp khúc`; thử paste đoạn tiếng Việt; kiểm tra dấu hiển thị đúng, không mất ký tự | Spike riêng: dán `Xin chào, Tạm biệt, Điệp khúc` đúng dấu; Ctrl+A chọn toàn bộ: pass. Telex `as` → `á`, Space commit, Backspace trước/sau commit: đã quan sát thành công. Ảnh người dùng hiển thị `Xin chào Tạm Biệt, Điệp Khúc` và Ctrl+A selection; chưa xác nhận toàn bộ chuỗi được gõ Telex thay vì paste. Studio chưa có ô nhập. Base layout US không xác định TSF profile |
-| 5 | Phím Space / phím tắt | Nhấn Space và các phím tắt trong app; ghi rõ phím nào có tác dụng, phím nào chưa được xử lý (app hiện chưa gắn action) | Studio chưa có action. Trong IME spike: Ctrl+A chọn toàn bộ, Ctrl+V dán Unicode và Space commit composition đã xác nhận; chưa thử toàn bộ phím tắt |
+| 1 | Cửa sổ mở, resize | Kéo cạnh dọc/ngang, maximize/restore | Mở cửa sổ và maximize/restore pass; dialog spike: mép phải đổi viewport 900×500 → 719×500 ở scale 1; ảnh người dùng cho thấy 831×637 và 1243×757; người dùng xác nhận resize dọc ổn. Chưa thử đủ bốn cạnh/góc trên Studio |
+| 2 | DPI/scale | Đổi scale Windows, mở lại app, kiểm tra chữ/layout | Người dùng xác nhận scale 125% (1.25) hoạt động ổn; 150% chưa xác nhận riêng |
+| 3 | File picker / drag-drop | Open fixture, Save As bản sao, kéo file từ Explorer | Người dùng xác nhận các thao tác Open/Save As và kéo file trong dialog spike hoạt động; ảnh cho thấy nội dung tiếng Việt đã đọc được. Chưa thay thế runtime Open/Save trên nhiều fixture của Studio |
+| 4 | IME tiếng Việt | Gõ bằng Telex: `Xin chào`, `Tạm biệt`, `Điệp khúc`; paste; sửa/xóa composition | Người dùng xác nhận gõ các chuỗi bằng Windows Vietnamese Telex; ảnh hiện tiếng Việt có dấu. Harness riêng đã xác nhận `as` → `á`, Space commit, Backspace trước/sau commit. Sửa/xóa trong lúc composition đang mở chưa có kết quả độc lập. Base layout label US không đủ để chẩn đoán TSF profile |
+| 5 | Phím Space / phím tắt | Thử playback/tap-sync và các phím tắt Studio | Studio đã có transport và tap-sync actions; trong IME spike Space commit composition và Ctrl+A/Ctrl+V pass. Chưa kiểm thử toàn bộ phím tắt Studio trên fixture |
 | 6 | Font Unicode / VNI / TCVN3 | Hiển thị chuỗi test ở §1; ghi font nào render đúng, font nào lỗi | Unicode tiếng Việt tĩnh: pass; VNI/TCVN3: chưa chạy |
 | 7 | Đường dẫn Unicode | Copy `crates/vietkara-domain/tests/fixtures/project-v2.json` vào thư mục tên `Bài hát tiếng Việt` (có dấu + khoảng trắng), mở/save round-trip, kiểm tra field lạ `future_python_field` còn nguyên và ID vẫn 32 hex | Helper round-trip trên filesystem Unicode: 2/2 tests pass; spike đã có open/save, chưa xác minh chọn đường dẫn và round-trip qua dialog (§8) |
 | 8 | Fake playback clock | **Chưa có trong app.** Quyết định tại chỗ: (a) thêm một thread tick clock giả 10 Hz ngoài UI thread trong spike để đo UI có block không, hay (b) hoãn sang `vietkara-media` ở bước 4. Ghi quyết định và lý do, đừng giả vờ đã test playback thật. | Hoãn tới vertical slice playback; fake clock hiện chỉ được test ở crate media, chưa nối UI |
@@ -120,31 +118,31 @@ cargo run -p vietkara-app
 
 ## 5. Ghi quyết định (điền sau khi chạy xong)
 
-- GPUI 0.2.2 trên Windows 11 Pro x64: **GO — tiếp tục W3** (2026-11-05).
-  Căn cứ: script tự động pass, các quan sát runtime đã ghi, ảnh người dùng
-  và phản hồi `ok r` cho câu hỏi gộp về Telex/lưu/kéo thả/DPI. Phản hồi
-  ngắn được hiểu là các phép thử đó ổn; không thay thế số đo DPI hay
-  chứng minh parity production. Các mục thiếu bằng chứng chi tiết vẫn
-  giữ trong checklist, không tự đổi toàn bộ thành pass.
+- GPUI 0.2.2 trên Windows 11 Pro x64: **GO — tiếp tục** (quyết định đầu
+  ngày 2026-11-05; xác nhận lại 2026-11-06). Script tự động pass; người dùng
+  xác nhận Telex, Open/Save As + kéo file trong dialog spike, resize dọc và
+  scale 125%. Những mục chưa xác nhận riêng vẫn giữ trong checklist; đây
+  không phải chứng nhận parity runtime đầy đủ.
 - Phiên bản đã khóa: Rust 1.99.1, GPUI 0.2.2; baseline `eb0df8d`, các
   thay đổi hiện nằm trên nhánh local `codex/rust-gpui-rewrite-local`.
-- Giới hạn đã ghi nhận: studio vẫn là mock; có `ime_spike` để thử input
-  và `dialog_spike` để thử open/save riêng, chưa nối vào studio. Telex cơ
-  bản, commit và Backspace đã được quan sát; các chuỗi đầy đủ, DPI,
-  kéo mép và round-trip qua dialog còn thiếu. Lỗi helper của lần chạy
-  studio trước không còn chặn capture IME spike; riêng dialog mất
-  accessibility/focus sau thao tác filename. Không coi lỗi helper là
-  bằng chứng GPUI không hỗ trợ chức năng.
-- Bước tiếp theo: W3 command/event undo/redo, typed settings và autosave.
-  W4 tiếp tục xác minh tương tác sau khi nối các thành phần vào studio.
-- Giới hạn còn theo dõi: VNI/TCVN3, responsiveness khi có job thật, số đo
-  DPI 1.25/1.5 và chi tiết round-trip UI chưa có ảnh/log độc lập. Nếu phát
+- Giới hạn đã ghi nhận: Studio hiện có action open/save, playback, tap-sync,
+  timeline và export; vẫn cần runtime QA tổng hợp với fixture. `ime_spike`
+  và `dialog_spike` là harness riêng để quan sát input/dialog, không thay thế
+  Studio. User đã xác nhận chuỗi Telex, Open/Save As + kéo file, resize dọc
+  và scale 125%; VNI/TCVN3, scale 150% và toàn bộ runtime Studio còn mở.
+  Lỗi accessibility/focus cũ của helper không phải bằng chứng GPUI không hỗ trợ.
+- Bước tiếp theo đã chuyển khỏi spike: tiếp tục QA runtime theo
+  `docs/windows-plan.md` (thiết bị audio, playback/tap/timeline, save/recovery,
+  batch/AI/export fixture) và đóng các khoảng parity còn lại.
+- Giới hạn còn theo dõi: VNI/TCVN3, responsiveness khi có job thật, scale
+  150% và chi tiết round-trip UI qua nhiều fixture chưa có log độc lập. Nếu phát
   hiện lỗi IME/dialog/render, đánh giá lại GO trước khi port tiếp editor.
 
 ## 6. Không thuộc spike này
 
 - Golden ASS/FFmpeg output (Giai đoạn 4, sau khi layout contract ổn định).
-- Playback audio thật, waveform thật, tap-sync thật (Giai đoạn 3).
+- Runtime QA playback audio, waveform và tap-sync của Studio (Giai đoạn 3;
+  code đã được nối, nhưng thiết bị/fixture Windows cần kiểm tra riêng).
 - Installer/portable, máy Windows sạch (Giai đoạn 6).
 
 ## 7. IME input spike riêng
