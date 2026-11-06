@@ -6329,11 +6329,13 @@ name = "vietkara-app"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "rust-embed",
  "serde_json",
  "tempfile",
  "unicode-segmentation",
  "vietkara-ai-bridge",
  "vietkara-domain",
+ "vietkara-jobs",
  "vietkara-media",
  "vietkara-render",
  "vietkara-storage",

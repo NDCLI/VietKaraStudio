@@ -42,6 +42,37 @@ def _required_text(mapping, key):
     return value
 
 
+def _resolve_ai_backend(options, backend):
+    """Select a verified CPU/CUDA backend; never infer CUDA from an installed GPU alone."""
+    preference = options.get("device", "auto")
+    if preference in ("auto", "cpu"):
+        from hardware import select_ai
+
+        selected = select_ai(preference=preference).get(backend)
+        device = selected.get("device") if isinstance(selected, dict) else None
+        is_cuda = isinstance(device, str) and device.startswith("cuda:") and device[5:].isdigit()
+        if not isinstance(selected, dict) or not (device in ("cpu", "cuda") or is_cuda):
+            raise ValueError("Không xác định được backend AI phù hợp.")
+        return selected
+    if preference == "cuda" or (
+        isinstance(preference, str) and preference.startswith("cuda:")
+    ):
+        try:
+            index = int(preference.split(":", 1)[1]) if ":" in preference else int(options.get("device_index", 0))
+        except (TypeError, ValueError) as error:
+            raise ValueError("Thiết bị CUDA không hợp lệ.") from error
+        if not 0 <= index <= 255:
+            raise ValueError("Chỉ số thiết bị CUDA không hợp lệ.")
+        return {
+            "device": f"cuda:{index}" if backend == "demucs" else "cuda",
+            "device_index": index,
+            "name": f"NVIDIA GPU {index}",
+            "compute_type": options.get("compute_type") or ("float16" if backend == "whisper" else "float32"),
+            "reason": "",
+        }
+    raise ValueError("Thiết bị AI chỉ được là auto, cpu hoặc cuda[:index].")
+
+
 def dispatch(request, report_progress):
     """Run one validated request and return its JSON-serializable result."""
     if not isinstance(request, dict):
@@ -107,6 +138,7 @@ def dispatch(request, report_progress):
         region = options.get("region")
         if kind == "align_region" and not isinstance(region, dict):
             raise ValueError("align_region cần options.region.")
+        selected_backend = _resolve_ai_backend(options, "whisper")
         cache_key = None
         cache_root_value = options.get("data_root") or options.get("cache_root")
         if cache_root_value:
@@ -116,9 +148,9 @@ def dispatch(request, report_progress):
             # file even when the request also carries its original reference.
             source = Path(vocals)
             cache_options = {
-                name: options[name]
-                for name in ("device", "device_index", "compute_type", "device_name")
-                if name in options
+                "device": selected_backend["device"],
+                "device_index": selected_backend.get("device_index", 0),
+                "compute_type": selected_backend.get("compute_type"),
             }
             cache_key = make_cache_key(
                 source,
@@ -138,12 +170,12 @@ def dispatch(request, report_progress):
             "model": model,
             "language": language,
             "lyrics": lyrics,
-            "device": options.get("device", "cpu"),
-            "device_index": options.get("device_index", 0),
-            "compute_type": options.get("compute_type"),
-            "models_root": options.get("models_root", str(Path(__file__).parent / "data")),
-            "name": options.get("device_name"),
-            "fallback_reason": options.get("fallback_reason"),
+            "device": selected_backend["device"],
+            "device_index": selected_backend.get("device_index", 0),
+            "compute_type": selected_backend.get("compute_type"),
+            "models_root": options.get("models_root", str(Path(cache_root_value) / "models") if cache_root_value else str(Path(__file__).parent / "data")),
+            "name": selected_backend.get("name"),
+            "fallback_reason": selected_backend.get("reason"),
         }
         if region is not None:
             request_for_worker["region"] = region
@@ -176,13 +208,15 @@ def dispatch(request, report_progress):
     # own the output path. Its progress bars/logs are redirected to stderr.
     reference = _required_text(inputs, "reference")
     destination = Path(_required_text(inputs, "output"))
-    device = options.get("device", "cpu")
+    selected_backend = _resolve_ai_backend(options, "demucs")
+    device = selected_backend["device"]
     model = options.get("model", "htdemucs")
     if not isinstance(device, str) or not isinstance(model, str):
         raise ValueError("options.device và options.model phải là chuỗi.")
+    report_progress(0.0, f"Đang chuẩn bị Demucs trên {selected_backend.get('name') or device}…")
     from demucs.separate import main
 
-    report_progress(0.0, "Đang tách vocal bằng Demucs…")
+    report_progress(1.0, f"Đang tách vocal bằng Demucs trên {selected_backend.get('name') or device}…")
     with tempfile.TemporaryDirectory(prefix="vietkara-demucs-") as directory:
         args = ["--two-stems", "vocals", "--float32", "--shifts", "1", "--jobs", "1",
                 "-o", directory, "-n", model, "-d", device, reference]
@@ -207,6 +241,12 @@ def main_stdio(stdin=None, stdout=None, stderr=None):
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
+    # The Rust bridge exchanges UTF-8 JSONL. Windows console defaults such as
+    # cp1252 cannot encode Vietnamese when a request ends in an error message.
+    for stream in (stdin, stdout, stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="strict")
     lines = [line for line in stdin if line.strip()]
     request_id = ""
     try:

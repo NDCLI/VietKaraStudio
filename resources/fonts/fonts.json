@@ -1,0 +1,2207 @@
+[
+  {
+    "family": "KaraTVT",
+    "style": "Bold",
+    "file": "FONT/KaraTVT.ttf",
+    "encoding": "unicode",
+    "vietnamese": true
+  },
+  {
+    "family": "UTM Alexander Icon Pro",
+    "style": "Regular",
+    "file": "FONT/UTM Alexander Icon Pro.ttf",
+    "encoding": "unicode",
+    "vietnamese": true
+  },
+  {
+    "family": "UTM Alexander",
+    "style": "Regular",
+    "file": "FONT/UTM Alexander.ttf",
+    "encoding": "unicode",
+    "vietnamese": true
+  },
+  {
+    "family": "UTM HelvetIns",
+    "style": "Regular",
+    "file": "FONT/UTM HelvetIns.ttf",
+    "encoding": "unicode",
+    "vietnamese": true
+  },
+  {
+    "family": "UVN Hong Ha Hep",
+    "style": "Bold",
+    "file": "FONT/UVN HongHaHep.TTF",
+    "encoding": "unicode",
+    "vietnamese": true
+  },
+  {
+    "family": "VNI-Vari",
+    "style": "Bold",
+    "file": "FONT/VAGRB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Allegie",
+    "style": "Normal",
+    "file": "FONT/VALLERGO.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Aptima",
+    "style": "Bold",
+    "file": "FONT/VAPTIMB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Aptima",
+    "style": "Bold-Italic",
+    "file": "FONT/VAPTIMBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Aptima",
+    "style": "Italic",
+    "file": "FONT/VAPTIMI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Aptima",
+    "style": "Normal",
+    "file": "FONT/VAPTIMN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Ariston",
+    "style": "Heavy",
+    "file": "FONT/VARISON.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Auchon",
+    "style": "Bold",
+    "file": "FONT/VAUCHON.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Avo",
+    "style": "Bold",
+    "file": "FONT/VAVOB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Avo",
+    "style": "Bold-Italic",
+    "file": "FONT/VAVOBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Avo",
+    "style": "Italic",
+    "file": "FONT/VAVOI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Avo",
+    "style": "Normal",
+    "file": "FONT/VAVON.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Awchon",
+    "style": "Bold",
+    "file": "FONT/VAWCHON.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Aztek",
+    "style": "Bold",
+    "file": "FONT/VAZTEK.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bandit",
+    "style": "Bold",
+    "file": "FONT/VBANDIT.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bodon",
+    "style": "Normal",
+    "file": "FONT/VBODON.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bodon",
+    "style": "Bold",
+    "file": "FONT/VBODONB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bodon",
+    "style": "Bold-Italic",
+    "file": "FONT/VBODONBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bodon",
+    "style": "Italic",
+    "file": "FONT/VBODONII.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Bodon-Poster",
+    "style": "Extra Bold",
+    "file": "FONT/VBODONP.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Book",
+    "style": "Bold",
+    "file": "FONT/VBOOKMB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Book",
+    "style": "Bold-Italic",
+    "file": "FONT/VBOOKMBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Book",
+    "style": "Italic",
+    "file": "FONT/VBOOKMI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Book",
+    "style": "Normal",
+    "file": "FONT/VBOOKMN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Broad",
+    "style": "Normal",
+    "file": "FONT/VBROADW.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Brush",
+    "style": "Italic",
+    "file": "FONT/VBRUSH.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Centur",
+    "style": "Bold",
+    "file": "FONT/VCENTB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Centur",
+    "style": "Bold-Italic",
+    "file": "FONT/VCENTBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Centur",
+    "style": "Italic",
+    "file": "FONT/VCENTI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Centur",
+    "style": "Normal",
+    "file": "FONT/VCENTN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Commerce",
+    "style": "Bold-Italic",
+    "file": "FONT/VCOMMERC.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Cooper",
+    "style": "Heavy",
+    "file": "FONT/VCOOPERB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Coronet",
+    "style": "Bold-Italic",
+    "file": "FONT/VCORONET.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Couri",
+    "style": "Normal",
+    "file": "FONT/VCOURI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Couri",
+    "style": "Bold",
+    "file": "FONT/VCOURIB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Couri",
+    "style": "Bold-Italic",
+    "file": "FONT/VCOURIBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Couri",
+    "style": "Italic",
+    "file": "FONT/VCOURII.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Dom",
+    "style": "Normal",
+    "file": "FONT/VDOMCAS.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Duff",
+    "style": "Normal",
+    "file": "FONT/VDUFFY.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Dur",
+    "style": "Bold",
+    "file": "FONT/VDURHAM.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Fato",
+    "style": "Bold",
+    "file": "FONT/VFATSO.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Franko",
+    "style": "Normal",
+    "file": "FONT/VFRANKO.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Free",
+    "style": "Normal",
+    "file": "FONT/VFREE.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Garam",
+    "style": "Bold",
+    "file": "FONT/VGARAMB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Garam",
+    "style": "Bold Italic",
+    "file": "FONT/VGARAMBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Garam",
+    "style": "Italic",
+    "file": "FONT/VGARAMI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Garam",
+    "style": "Normal",
+    "file": "FONT/VGARAMN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Goudy",
+    "style": "Bold",
+    "file": "FONT/VGOUDYB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Goudy",
+    "style": "Italic",
+    "file": "FONT/VGOUDYI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Goudy",
+    "style": "Normal",
+    "file": "FONT/VGOUDYN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBook-AntiquaH",
+    "style": "Regular",
+    "file": "FONT/VHANTIQ.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArabiaH",
+    "style": "Regular",
+    "file": "FONT/VHARABIA.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArialH",
+    "style": "Bold Italic",
+    "file": "FONT/VHARIABI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArialH",
+    "style": "Regular",
+    "file": "FONT/VHARIAL.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArialH",
+    "style": "Bold",
+    "file": "FONT/VHARIALB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArialH",
+    "style": "Italic",
+    "file": "FONT/VHARIALI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial NarrowH",
+    "style": "Regular",
+    "file": "FONT/VHARIALN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAristoteH",
+    "style": "Medium",
+    "file": "FONT/VHARIS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvantH",
+    "style": "Regular",
+    "file": "FONT/VHAVAN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvantH",
+    "style": "Bold",
+    "file": "FONT/VHAVANB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvantH",
+    "style": "Bold Italic",
+    "file": "FONT/VHAVANBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvantH",
+    "style": "Italic",
+    "file": "FONT/VHAVANI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBahamasBH",
+    "style": "Bold",
+    "file": "FONT/VHBAHAB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBlackH",
+    "style": "Regular",
+    "file": "FONT/VHBLACK.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBodoniH",
+    "style": "Regular",
+    "file": "FONT/VHBODO.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury SchoolbookH",
+    "style": "Bold",
+    "file": "FONT/VHCENTB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury SchoolbookH",
+    "style": "Bold Italic",
+    "file": "FONT/VHCENTBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury SchoolbookH",
+    "style": "Italic",
+    "file": "FONT/VHCENTI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury SchoolbookH",
+    "style": "Regular",
+    "file": "FONT/VHCENTN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnClarendonH",
+    "style": "Normal",
+    "file": "FONT/VHCLARE.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCommercial ScriptH",
+    "style": "Italic",
+    "file": "FONT/VHCOMSCI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCooperH",
+    "style": "Regular",
+    "file": "FONT/VHCOOP.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMonotype corsivaH",
+    "style": "Italic",
+    "file": "FONT/VHCORVI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier NewH",
+    "style": "Regular",
+    "file": "FONT/VHCOUR.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier NewH",
+    "style": "Bold",
+    "file": "FONT/VHCOURB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Bold",
+    "file": "FONT/VHELVCB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Bold-Italic",
+    "file": "FONT/VHELVCBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Italic",
+    "file": "FONT/VHELVCI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Normal",
+    "file": "FONT/VHELVCN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve",
+    "style": "Bold",
+    "file": "FONT/VHELVEB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve",
+    "style": "Bold-Italic",
+    "file": "FONT/VHELVEBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve",
+    "style": "Italic",
+    "file": "FONT/VHELVEI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve",
+    "style": "Normal",
+    "file": "FONT/VHELVEN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnExoticH",
+    "style": "Normal",
+    "file": "FONT/VHEXOTIC.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnFreeH",
+    "style": "Medium",
+    "file": "FONT/VHFREE.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnGothicH",
+    "style": "Normal",
+    "file": "FONT/VHGOTH.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnHelvetInsH",
+    "style": "Medium",
+    "file": "FONT/VHHELS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnKoalaH",
+    "style": "Regular",
+    "file": "FONT/VHKOALA.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnLincolnH",
+    "style": "Regular",
+    "file": "FONT/VHLINCOL.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnLinusH",
+    "style": "Regular",
+    "file": "FONT/VHLINUS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMemorandumH",
+    "style": "Regular",
+    "file": "FONT/VHMEMO.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMysticalH",
+    "style": "Regular",
+    "file": "FONT/VHMUSTI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Hobo",
+    "style": "Normal",
+    "file": "FONT/VHOBO.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnParkH",
+    "style": "Medium",
+    "file": "FONT/VHPARK.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnPresentH",
+    "style": "Medium",
+    "file": "FONT/VHPRES.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnRevueH",
+    "style": "Medium",
+    "file": "FONT/VHREVU.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnSouthernH",
+    "style": "Regular",
+    "file": "FONT/VHSOUTH.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTeknicalH",
+    "style": "Regular",
+    "file": "FONT/VHTEKN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTifani HeavyH",
+    "style": "Normal",
+    "file": "FONT/VHTIFH.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTimeH",
+    "style": "Regular",
+    "file": "FONT/VHTIME.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTimeH",
+    "style": "Bold",
+    "file": "FONT/VHTIMEB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTimeH",
+    "style": "Bold Italic",
+    "file": "FONT/VHTIMEBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTimeH",
+    "style": "Italic",
+    "file": "FONT/VHTIMEI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnUniverseH",
+    "style": "Normal",
+    "file": "FONT/VHUNIV.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnVogueH",
+    "style": "Medium",
+    "file": "FONT/VHVOGU.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "Vinhan",
+    "style": "Bold",
+    "file": "FONT/VINHAN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Jamai",
+    "style": "Bold",
+    "file": "FONT/VJAMAI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Juni",
+    "style": "Normal",
+    "file": "FONT/VJUNI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Korin",
+    "style": "Normal",
+    "file": "FONT/VKORIN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Korin",
+    "style": "Bold",
+    "file": "FONT/VKORINB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Korin",
+    "style": "Italic",
+    "file": "FONT/VKORINI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Kun",
+    "style": "Bold",
+    "file": "FONT/VKUNB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Kun",
+    "style": "Bold-Italic",
+    "file": "FONT/VKUNBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Kun",
+    "style": "Bold",
+    "file": "FONT/VKUNM.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Kun",
+    "style": "Normal",
+    "file": "FONT/VKUNN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Linus",
+    "style": "Regular",
+    "file": "FONT/VLINUSN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Lithos",
+    "style": "Bold",
+    "file": "FONT/VLITHOS.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Maria",
+    "style": "Normal",
+    "file": "FONT/VMARIAGE.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Meli",
+    "style": "Bold",
+    "file": "FONT/VMELIB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Meli",
+    "style": "Bold-Italic",
+    "file": "FONT/VMELIBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Meli",
+    "style": "Italic",
+    "file": "FONT/VMELII.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Meli",
+    "style": "Normal",
+    "file": "FONT/VMELIN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Murray",
+    "style": "Bold",
+    "file": "FONT/VMURRAYB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Murray",
+    "style": "Normal",
+    "file": "FONT/VMURRAYN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".Vn3DH",
+    "style": "Normal",
+    "file": "FONT/VN3D.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBook-Antiqua",
+    "style": "Regular",
+    "file": "FONT/VNANTIQ.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBook-Antiqua",
+    "style": "Bold",
+    "file": "FONT/VNANTIQB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArabia",
+    "style": "Regular",
+    "file": "FONT/VNARABIA.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial",
+    "style": "Bold Italic",
+    "file": "FONT/VNARIABI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial",
+    "style": "Regular",
+    "file": "FONT/VNARIAL.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial",
+    "style": "Bold",
+    "file": "FONT/VNARIALB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial",
+    "style": "Italic",
+    "file": "FONT/VNARIALI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial Narrow",
+    "style": "Regular",
+    "file": "FONT/VNARIALN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial Narrow",
+    "style": "Bold",
+    "file": "FONT/VNARIANB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnArial Narrow",
+    "style": "Italic",
+    "file": "FONT/VNARIANI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAristote",
+    "style": "Medium",
+    "file": "FONT/VNARIS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvant",
+    "style": "Regular",
+    "file": "FONT/VNAVAN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvant",
+    "style": "Bold",
+    "file": "FONT/VNAVANB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvant",
+    "style": "Bold Italic",
+    "file": "FONT/VNAVANBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnAvant",
+    "style": "Italic",
+    "file": "FONT/VNAVANI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBahamasB",
+    "style": "Bold",
+    "file": "FONT/VNBAHAB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBlack",
+    "style": "Regular",
+    "file": "FONT/VNBLACK.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnBodoni",
+    "style": "Regular",
+    "file": "FONT/VNBODO.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury Schoolbook",
+    "style": "Bold",
+    "file": "FONT/VNCENTB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury Schoolbook",
+    "style": "Bold Italic",
+    "file": "FONT/VNCENTBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury Schoolbook",
+    "style": "Italic",
+    "file": "FONT/VNCENTI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCentury Schoolbook",
+    "style": "Regular",
+    "file": "FONT/VNCENTN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnClarendon",
+    "style": "Normal",
+    "file": "FONT/VNCLARE.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCommercial Script",
+    "style": "Italic",
+    "file": "FONT/VNCOMSI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCooper",
+    "style": "Medium",
+    "file": "FONT/VNCOOP.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMonotype corsiva",
+    "style": "Italic",
+    "file": "FONT/VNCORSI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier New",
+    "style": "Regular",
+    "file": "FONT/VNCOUR.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier",
+    "style": "Normal",
+    "file": "FONT/VNCOUR2.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier New",
+    "style": "Bold",
+    "file": "FONT/VNCOURB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier New",
+    "style": "Bold Italic",
+    "file": "FONT/VNCOURBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnCourier New",
+    "style": "Italic",
+    "file": "FONT/VNCOURI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnExotic",
+    "style": "Normal",
+    "file": "FONT/VNEXOTIC.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnFree",
+    "style": "Medium",
+    "file": "FONT/VNFREE.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnGothic",
+    "style": "Normal",
+    "file": "FONT/VNGOTHIC.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Harrington",
+    "style": "Regular",
+    "file": "FONT/VNHARR.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnHelvetIns",
+    "style": "Medium",
+    "file": "FONT/VNHELVS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-HLThuphap",
+    "style": "Regular",
+    "file": "FONT/Vnhltfap.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 01 LinotypeZapfino one",
+    "style": "Regular",
+    "file": "FONT/Vni 01 LinotypeZapfino one.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 02 LinotypeZapfino two",
+    "style": "Regular",
+    "file": "FONT/Vni 02 LinotypeZapfino two.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 03 LinotypeZapfino Three",
+    "style": "Regular",
+    "file": "FONT/Vni 03 LinotypeZapfino Three.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 04 LinotypeZapfino four",
+    "style": "Regular",
+    "file": "FONT/Vni 04 LinotypeZapfino four.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 05 SpringtimeFlourish",
+    "style": "Regular",
+    "file": "FONT/Vni 05 SpringtimeFlourish.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 06 Springtime",
+    "style": "Bold",
+    "file": "FONT/VNI 06 Springtime.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 07 WaterBrushROB",
+    "style": "Normal",
+    "file": "FONT/Vni 07 WaterBrushROB.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 08 Springtime2",
+    "style": "BoldOblique",
+    "file": "FONT/VNI 08 Springtime2.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 09 Baroque ",
+    "style": "Regular",
+    "file": "FONT/VNI 09 Baroque.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 10 Swan Song",
+    "style": "Regular",
+    "file": "FONT/Vni 10 Swan Song.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 11 Springtime2",
+    "style": "BoldOblique",
+    "file": "FONT/Vni 11 Springtime2.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 12 Alex",
+    "style": "Regular",
+    "file": "FONT/Vni 12 Alex.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 13 Annabelle",
+    "style": "Regular",
+    "file": "FONT/Vni 13 Annabelle.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 14 AlexBrush",
+    "style": "Regular",
+    "file": "FONT/Vni 14 AlexBrush.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 15 Chops",
+    "style": "Normal",
+    "file": "FONT/VNI 15 Chops Normal.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 16 Machina",
+    "style": "Regular",
+    "file": "FONT/Vni 16 Machina.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 17 Sandy",
+    "style": "Normal",
+    "file": "FONT/VNI 17 Sandy.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 18 Mandalay",
+    "style": "Regular",
+    "file": "FONT/Vni 18 Mandalay.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 19 Walt Disney ",
+    "style": "Regular",
+    "file": "FONT/Vni 19 Walt Disney.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 20 University",
+    "style": "Normal",
+    "file": "FONT/Vni 20 University.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 21 Scrap Cursive",
+    "style": "Regular",
+    "file": "FONT/Vni 21 Scrap Cursive.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 22 JackieO",
+    "style": "Regular",
+    "file": "FONT/VNI 22 JackieO.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 23 Qwigley",
+    "style": "Regular",
+    "file": "FONT/Vni 23 Qwigley.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 24 Love",
+    "style": "Regular",
+    "file": "FONT/VNI 24 Love.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 25 Ambiance BT Swash",
+    "style": "Regular",
+    "file": "FONT/Vni 25 Ambiance BT Swash.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 26 Saliere",
+    "style": "Regular",
+    "file": "FONT/VNI 26 Saliere.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 27 Bendigo",
+    "style": "Plain",
+    "file": "FONT/VNI 27 Bendigo.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 28 Zirkon",
+    "style": "Regular",
+    "file": "FONT/VNI 28 Zirkon.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 29 BrushMe",
+    "style": "Regular",
+    "file": "FONT/Vni 29 BrushMe.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 30 Shishoni Brush",
+    "style": "Regular",
+    "file": "FONT/Vni 30 Shishoni Brush.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 12 Alex",
+    "style": "Regular",
+    "file": "FONT/VNI-Alex.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 14 AlexBrush",
+    "style": "Regular",
+    "file": "FONT/VNI-AlexBrush.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 25 Ambiance BT Swash",
+    "style": "Regular",
+    "file": "FONT/VNI-AmbianceBTSwash.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 13 Annabelle",
+    "style": "Regular",
+    "file": "FONT/VNI-Annabelle.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Baybuom",
+    "style": "Normal",
+    "file": "FONT/VNI-Baybuom.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 27 Bendigo",
+    "style": "Plain",
+    "file": "FONT/VNI-Bendigo.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Briquet",
+    "style": "Normal",
+    "file": "FONT/VNI-Briquet.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 29 BrushMe",
+    "style": "Regular",
+    "file": "FONT/VNI-BrushMe.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Butlong",
+    "style": "Regular",
+    "file": "FONT/VNI-Butlong.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 15 Chops",
+    "style": "Normal",
+    "file": "FONT/VNI-Chops Normal.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Disney",
+    "style": "Normal",
+    "file": "FONT/VNI-Disney.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Diudang",
+    "style": "Regular",
+    "file": "FONT/VNI-Diudang.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Franko-Icon",
+    "style": "Normal",
+    "file": "FONT/VNI-Franko-Icon.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Bold",
+    "file": "FONT/VNI-HelveB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Bold-Italic",
+    "file": "FONT/VNI-HelveBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Helve-Condense",
+    "style": "Italic",
+    "file": "FONT/VNI-HelveI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Hobo",
+    "style": "Normal",
+    "file": "FONT/VNI-Hobo.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 22 JackieO",
+    "style": "Regular",
+    "file": "FONT/VNI-JackieO.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Jamai",
+    "style": "Bold",
+    "file": "FONT/VNI-Jamai.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Korin",
+    "style": "Normal",
+    "file": "FONT/VNI-Korin.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Korin",
+    "style": "Bold",
+    "file": "FONT/VNI-KorinB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Linus",
+    "style": "Regular",
+    "file": "FONT/VNI-Linus.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Lithos",
+    "style": "Bold",
+    "file": "FONT/VNI-Lithos.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 24 Love",
+    "style": "Regular",
+    "file": "FONT/VNI-Love.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 16 Machina",
+    "style": "Regular",
+    "file": "FONT/VNI-Machina.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 18 Mandalay",
+    "style": "Regular",
+    "file": "FONT/VNI-Mandalay.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Maria",
+    "style": "Normal",
+    "file": "FONT/VNI-Maria.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Matisse",
+    "style": "Regular",
+    "file": "FONT/VNI-Matisse.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Meli-Icon",
+    "style": "Bold Italic",
+    "file": "FONT/VNI-Meli-Icon.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Netbut",
+    "style": "Regular",
+    "file": "FONT/VNI-Netbut.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Nhatban",
+    "style": "Regular",
+    "file": "FONT/VNI-Nhatban.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-OngDoHL",
+    "style": "Regular",
+    "file": "FONT/VNI-OngdoHL.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 23 Qwigley",
+    "style": "Regular",
+    "file": "FONT/VNI-Qwigley.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 26 Saliere",
+    "style": "Regular",
+    "file": "FONT/VNI-Saliere.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 17 Sandy",
+    "style": "Normal",
+    "file": "FONT/VNI-Sandy.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 21 Scrap Cursive",
+    "style": "Regular",
+    "file": "FONT/VNI-Scrap Cursive.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Script",
+    "style": "Italic",
+    "file": "FONT/VNI-Script.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 30 Shishoni Brush",
+    "style": "Regular",
+    "file": "FONT/VNI-ShishoniBrush.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Silver",
+    "style": "Normal",
+    "file": "FONT/VNI-Silver.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Slogan",
+    "style": "Normal",
+    "file": "FONT/VNI-Slogan.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Souvir",
+    "style": "Bold",
+    "file": "FONT/VNI-Souvir.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 11 Springtime2",
+    "style": "BoldOblique",
+    "file": "FONT/VNI-Springtime.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thanhcao",
+    "style": "Regular",
+    "file": "FONT/VNI-Thanhcao.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufapfan",
+    "style": "Normal",
+    "file": "FONT/VNI-Thufapfan.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-HLThuphap",
+    "style": "Regular",
+    "file": "FONT/VNI-Thuphap.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap1",
+    "style": "Regular",
+    "file": "FONT/VNI-Thuphap1.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap2",
+    "style": "Normal",
+    "file": "FONT/VNI-Thuphap2.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap3",
+    "style": "Regular",
+    "file": "FONT/VNI-Thuphap3.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Top",
+    "style": "Normal",
+    "file": "FONT/VNI-Top.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Truck",
+    "style": "Regular",
+    "file": "FONT/VNI-Truck.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Trung Kien",
+    "style": "Normal",
+    "file": "FONT/VNI-Trung Kien.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Tubes",
+    "style": "Normal",
+    "file": "FONT/VNI-Tubes.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Univer",
+    "style": "Normal",
+    "file": "FONT/VNI-Univer.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 20 University",
+    "style": "Normal",
+    "file": "FONT/VNI-University.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Viettay",
+    "style": "Normal",
+    "file": "FONT/VNI-Viettay.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Vivi",
+    "style": "Regular",
+    "file": "FONT/VNI-Vivi.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "Vni 19 Walt Disney ",
+    "style": "Regular",
+    "file": "FONT/VNI-Walt Disney.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Whimsy",
+    "style": "Regular",
+    "file": "FONT/VNI-Whimsy.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Yahoo",
+    "style": "Regular",
+    "file": "FONT/VNI-Yahoo.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Zap",
+    "style": "Normal",
+    "file": "FONT/VNI-Zap.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI 28 Zirkon",
+    "style": "Regular",
+    "file": "FONT/VNI-Zirkon.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI Cambodia",
+    "style": "Regular",
+    "file": "FONT/VNICAMBO.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-DOS Sample Font ",
+    "style": "Normal",
+    "file": "FONT/VNIDOS.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI Greece",
+    "style": "Regular",
+    "file": "FONT/VNIGREEC.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI Laos",
+    "style": "Regular",
+    "file": "FONT/VNILAOS_.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Internet Mail",
+    "style": "Normal",
+    "file": "FONT/VNINET.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI Russia",
+    "style": "Regular",
+    "file": "FONT/VNIRUSSI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-WIN Sample Font",
+    "style": "Normal",
+    "file": "FONT/VNIWIN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnKoala",
+    "style": "Regular",
+    "file": "FONT/VNKOALA.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnLincoln",
+    "style": "Regular",
+    "file": "FONT/VNLINCOL.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnLinus",
+    "style": "Regular",
+    "file": "FONT/VNLINUS.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnLucida sans",
+    "style": "Regular",
+    "file": "FONT/VNLUCIDA.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMemorandum",
+    "style": "Regular",
+    "file": "FONT/VNMEMO.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnMystical",
+    "style": "Regular",
+    "file": "FONT/VNMUSTI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnPark",
+    "style": "Medium",
+    "file": "FONT/VNPARK.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnPresent",
+    "style": "Medium",
+    "file": "FONT/VNPRES.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnRevue",
+    "style": "Medium",
+    "file": "FONT/VNREVU.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnShelley Allegro",
+    "style": "Regular",
+    "file": "FONT/VNSHELL.TTF",
+    "encoding": "other",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnSouthern",
+    "style": "Bold",
+    "file": "FONT/VNSOUTHB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnSouthern",
+    "style": "Bold Italic",
+    "file": "FONT/VNSOUTHD.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnSouthern",
+    "style": "Italic",
+    "file": "FONT/VNSOUTHI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnSouthern",
+    "style": "Regular",
+    "file": "FONT/VNSOUTHN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnStamp",
+    "style": "Normal",
+    "file": "FONT/VNSTAMP.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTeknical",
+    "style": "Regular",
+    "file": "FONT/VNTEKN.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap1",
+    "style": "Regular",
+    "file": "FONT/Vntfap01.ttf",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap2",
+    "style": "Normal",
+    "file": "FONT/Vnthfap2.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufap3",
+    "style": "Regular",
+    "file": "FONT/Vnthfap3.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Thufapfan",
+    "style": "Normal",
+    "file": "FONT/Vnthfapf.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTifani Heavy",
+    "style": "Normal",
+    "file": "FONT/VNTIFH.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTime",
+    "style": "Regular",
+    "file": "FONT/VNTIME.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTime",
+    "style": "Bold",
+    "file": "FONT/VNTIMEB.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTime",
+    "style": "Bold Italic",
+    "file": "FONT/VNTIMEBI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnTime",
+    "style": "Italic",
+    "file": "FONT/VNTIMEI.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnUniverse",
+    "style": "Normal",
+    "file": "FONT/VNUNIV.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": ".VnVogue",
+    "style": "Medium",
+    "file": "FONT/VNVOGU.TTF",
+    "encoding": "tcvn3",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Palatin",
+    "style": "Bold-Italic",
+    "file": "FONT/VPALABI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Palatin",
+    "style": "Italic",
+    "file": "FONT/VPALATI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Palatin",
+    "style": "Bold",
+    "file": "FONT/VPALATIB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Palatin",
+    "style": "Normal",
+    "file": "FONT/VPALATIN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Park",
+    "style": "Normal",
+    "file": "FONT/VPARK.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Present",
+    "style": "Normal",
+    "file": "FONT/VPRESENT.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Revue",
+    "style": "Bold",
+    "file": "FONT/VREVUE.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Script",
+    "style": "Italic",
+    "file": "FONT/VSCRIPT.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Souvir",
+    "style": "Bold",
+    "file": "FONT/VSOUVB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Souvir",
+    "style": "Bold-Italic",
+    "file": "FONT/VSOUVBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Swiss-Condense",
+    "style": "Bold",
+    "file": "FONT/VSWISC.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Swiss-Condense",
+    "style": "Normal",
+    "file": "FONT/VSWISEC.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Tekon",
+    "style": "Italic",
+    "file": "FONT/VTEKTI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Tekon",
+    "style": "Normal",
+    "file": "FONT/VTEKTN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Times",
+    "style": "Bold",
+    "file": "FONT/VTIMESB.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Times",
+    "style": "Bold-Italic",
+    "file": "FONT/VTIMESBI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Times",
+    "style": "Italic",
+    "file": "FONT/VTIMESI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Times",
+    "style": "Normal",
+    "file": "FONT/VTIMESN.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Top",
+    "style": "Normal",
+    "file": "FONT/VTOPHAT.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Tubes",
+    "style": "Normal",
+    "file": "FONT/VTUBE.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Univer",
+    "style": "Normal",
+    "file": "FONT/VUNIVER.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Vivi",
+    "style": "Regular",
+    "file": "FONT/VVIVI.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  },
+  {
+    "family": "VNI-Zap",
+    "style": "Normal",
+    "file": "FONT/VZAP.TTF",
+    "encoding": "vni",
+    "vietnamese": false
+  }
+]

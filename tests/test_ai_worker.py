@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -42,6 +44,155 @@ def test_dispatch_maps_recognition_to_existing_worker(tmp_path, monkeypatch):
     assert progress == [(25, "Đang nhận dạng")]
 
 
+def test_dispatch_auto_selects_verified_nvidia_backend(monkeypatch):
+    calls = []
+    hardware = ModuleType("hardware")
+    worker_module = ModuleType("worker")
+
+    def select_ai(preference):
+        calls.append(preference)
+        return {"whisper": {
+            "device": "cuda", "device_index": 2, "name": "RTX fixture",
+            "compute_type": "float16", "reason": "",
+        }}
+
+    def run(payload, device, report_progress):
+        calls.append((payload, device))
+        Path(payload["output"]).write_text(
+            json.dumps({"device": device, "index": payload["device_index"],
+                        "compute_type": payload["compute_type"]}),
+            encoding="utf-8",
+        )
+
+    hardware.select_ai = select_ai
+    worker_module.run = run
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    monkeypatch.setitem(sys.modules, "worker", worker_module)
+
+    result = ai_worker.dispatch(
+        request(options={"device": "auto", "data_root": "C:/VietKaraData"}),
+        lambda *_: None,
+    )
+
+    assert calls[0] == "auto"
+    assert calls[1][1] == "cuda"
+    assert result == {"device": "cuda", "index": 2, "compute_type": "float16"}
+
+
+def test_auto_backend_cache_key_uses_the_resolved_runtime(tmp_path, monkeypatch):
+    import analysis_cache
+
+    hardware = ModuleType("hardware")
+    hardware.select_ai = lambda preference: {
+        "whisper": {
+            "device": "cuda", "device_index": 1, "name": "GPU",
+            "compute_type": "float16", "reason": "",
+        }
+    }
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    selected = ai_worker._resolve_ai_backend({"device": "auto"}, "whisper")
+    vocals = tmp_path / "vocals.wav"
+    vocals.write_bytes(b"audio fixture")
+    cpu_key = analysis_cache.cache_key(
+        vocals, "small", "vi", "", "auto",
+        extra_options={"device": "cpu", "device_index": 0, "compute_type": "int8"},
+    )
+    gpu_key = analysis_cache.cache_key(
+        vocals, "small", "vi", "", "auto",
+        extra_options={
+            "device": selected["device"],
+            "device_index": selected["device_index"],
+            "compute_type": selected["compute_type"],
+        },
+    )
+    assert cpu_key != gpu_key
+
+
+def test_separation_auto_selects_verified_demucs_device(tmp_path, monkeypatch):
+    hardware = ModuleType("hardware")
+    demucs = ModuleType("demucs")
+    demucs.__path__ = []
+    separate = ModuleType("demucs.separate")
+    calls = []
+
+    def select_ai(preference):
+        assert preference == "auto"
+        return {"demucs": {
+            "device": "cuda:1", "device_index": 1, "name": "RTX fixture",
+            "compute_type": "float32", "reason": "",
+        }}
+
+    def main(args):
+        calls.extend(args)
+        output_root = Path(args[args.index("-o") + 1])
+        model = args[args.index("-n") + 1]
+        vocals = output_root / model / "reference" / "vocals.wav"
+        vocals.parent.mkdir(parents=True)
+        vocals.write_bytes(b"vocal fixture")
+
+    hardware.select_ai = select_ai
+    separate.main = main
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    monkeypatch.setitem(sys.modules, "demucs", demucs)
+    monkeypatch.setitem(sys.modules, "demucs.separate", separate)
+    destination = tmp_path / "cache" / "vocals.wav"
+    result = ai_worker.dispatch(
+        request("separate", input={
+            "reference": str(tmp_path / "reference.wav"),
+            "output": str(destination),
+        }, options={"device": "auto"}),
+        lambda *_: None,
+    )
+    assert calls[calls.index("-d") + 1] == "cuda:1"
+    assert destination.read_bytes() == b"vocal fixture"
+    assert result["vocals"] == str(destination)
+
+
+def test_ai_device_rejects_unsupported_values():
+    with pytest.raises(ValueError, match="Thiết bị AI"):
+        ai_worker._resolve_ai_backend({"device": "mps"}, "whisper")
+
+
+def test_dispatch_maps_region_alignment_with_lyrics_and_audio_bounds(monkeypatch):
+    calls = []
+    module = ModuleType("worker")
+
+    def run(payload, device, report_progress):
+        calls.append((payload, device))
+        report_progress(68, "Đang căn câu đã chọn")
+        Path(payload["output"]).write_text(
+            json.dumps({"text": "Xin chào", "words": [
+                {"text": "Xin", "start": 2.1, "end": 2.4, "line": 0},
+                {"text": "chào", "start": 2.4, "end": 2.8, "line": 0},
+            ]}),
+            encoding="utf-8",
+        )
+
+    module.run = run
+    monkeypatch.setitem(sys.modules, "worker", module)
+    progress = []
+    payload = request(
+        "align_region",
+        input={"vocals": "cache/vocals.wav"},
+        options={
+            "device": "cpu",
+            "language": "vi",
+            "lyrics": "Xin chào",
+            "region": {"start": 1.0, "end": 4.0},
+        },
+    )
+
+    result = ai_worker.dispatch(payload, lambda *event: progress.append(event))
+
+    worker_payload, device = calls[0]
+    assert device == "cpu"
+    assert worker_payload["vocals"] == "cache/vocals.wav"
+    assert worker_payload["lyrics"] == "Xin chào"
+    assert worker_payload["region"] == {"start": 1.0, "end": 4.0}
+    assert result["words"][0]["start"] == 2.1
+    assert progress == [(68, "Đang căn câu đã chọn")]
+
+
 def test_dispatch_maps_sync_suggestion_to_python_analysis(tmp_path, monkeypatch):
     calls = []
     module = ModuleType("audio_sync")
@@ -70,6 +221,42 @@ def test_dispatch_maps_sync_suggestion_to_python_analysis(tmp_path, monkeypatch)
     assert result == {"anchors": [{"ref": 0.0, "beat": 2.0}],
                       "requires_confirmation": True}
     assert progress == [(42, "Đang kiểm tra đoạn")]
+
+
+def test_dispatch_maps_role_suggestion_without_mutating_project_state(monkeypatch):
+    calls = []
+    module = ModuleType("duet_roles")
+
+    def analyze(vocal, segments, report_progress):
+        calls.append((vocal, segments))
+        report_progress(72, "Đang phân tích hai lane")
+        return {
+            "roles": ["male", "female", None],
+            "two_registers": True,
+            "male": 1,
+            "female": 1,
+            "shared": 0,
+            "uncertain": 1,
+        }
+
+    module.analyze = analyze
+    monkeypatch.setitem(sys.modules, "duet_roles", module)
+    vocal = Path("cache") / "vocal.wav"
+    segments = [
+        {"line": 4, "start": 0.0, "end": 1.5},
+        {"line": 9, "start": 2.0, "end": 3.5},
+        {"line": 12, "start": 4.0, "end": 5.0},
+    ]
+    progress = []
+    result = ai_worker.dispatch(
+        request("role_suggest", input={"vocal": str(vocal), "segments": segments}),
+        lambda *event: progress.append(event),
+    )
+
+    assert calls == [(str(vocal), segments)]
+    assert result["roles"] == ["male", "female", None]
+    assert result["two_registers"] is True
+    assert progress == [(72, "Đang phân tích hai lane")]
 
 
 def test_sync_suggestion_cache_keys_both_tracks_and_reuses_only_matching_result(
@@ -173,7 +360,9 @@ def test_dispatch_uses_cache_on_match_and_stores_cache_miss(tmp_path, monkeypatc
 
     def cache_key(source, model, language, lyrics, preference, region, extra_options=None):
         assert source == Path("vocals.wav")
-        assert extra_options == {"device": "cpu"}
+        assert extra_options == {
+            "device": "cpu", "device_index": 0, "compute_type": "int8"
+        }
         return "f" * 64
 
     def load_cache(data_root, key):
@@ -246,3 +435,23 @@ def test_jsonl_stdio_reports_errors_as_terminal_message():
     assert message["type"] == "error"
     assert message["request_id"] == "a" * 32
     assert "kind" in message["error"]
+
+
+def test_jsonl_worker_forces_utf8_protocol_even_with_legacy_windows_encoding():
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "cp1252"
+    source = json.dumps({
+        "protocol_version": 99,
+        "request_id": "utf8-smoke",
+        "kind": "recognize",
+        "input": {},
+        "options": {},
+    }, ensure_ascii=False) + "\n"
+    result = subprocess.run(
+        [sys.executable, str(Path(ai_worker.__file__).resolve())],
+        input=source.encode("utf-8"), capture_output=True, env=environment, timeout=15,
+    )
+    assert result.returncode == 1
+    message = json.loads(result.stdout.decode("utf-8"))
+    assert message["type"] == "error"
+    assert "không được hỗ trợ" in message["error"]

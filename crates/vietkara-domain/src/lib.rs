@@ -113,7 +113,7 @@ pub struct Word {
     /// `#RRGGBB`, stored lowercase. Validated, not silently coerced.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_color: Option<String>,
-    /// Lyric track 0..=5 in Python (`range(6)`).
+    /// Duet lane 0 (Nam) or 1 (Nữ). Legacy tracks are folded during migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row: Option<u8>,
     #[serde(flatten)]
@@ -148,7 +148,7 @@ pub enum ProjectError {
     UnknownRole(String),
     #[error("Màu nhãn của từ {0} phải có dạng #RRGGBB")]
     InvalidLabelColor(usize),
-    #[error("Track lời của từ {0} phải nằm trong khoảng 0 đến 5")]
+    #[error("Lane lời của từ {0} phải là Nam (0) hoặc Nữ (1)")]
     InvalidRow(usize),
     #[error("Tên section của từ {0} vượt quá giới hạn 40 ký tự")]
     SectionNameTooLong(usize),
@@ -266,7 +266,7 @@ impl Project {
                 return Err(ProjectError::InvalidLabelColor(n));
             }
             if let Some(row) = word.row
-                && row > 5
+                && row > 1
             {
                 return Err(ProjectError::InvalidRow(n));
             }
@@ -402,10 +402,13 @@ fn migrate_words(words: Vec<Word>) -> Result<Vec<Word>, ProjectError> {
             }
             word.label_color = Some(color.to_ascii_lowercase());
         }
-        if let Some(row) = word.row
-            && row > 5
-        {
-            return Err(ProjectError::InvalidRow(n));
+        if let Some(row) = word.row {
+            if row > 5 {
+                return Err(ProjectError::InvalidRow(n));
+            }
+            // Previous versions allowed six lyric tracks. Keep older projects
+            // loadable while folding their tracks into the two supported lanes.
+            word.row = Some(row % 2);
         }
         out.push(word);
     }
@@ -517,7 +520,7 @@ mod tests {
         assert_eq!(project.words[0].start, 0.2);
         assert_eq!(project.words[0].end, 0.6);
         assert_eq!(project.words[3].label_color.as_deref(), Some("#ff0000"));
-        assert_eq!(project.words[3].row, Some(2));
+        assert_eq!(project.words[3].row, Some(0));
         assert_eq!(project.words[3].section_name.as_deref(), Some("Điệp khúc"));
         assert_eq!(project.words[2].locked, Some(true));
         assert_eq!(project.words[4].manual, Some(true));
@@ -593,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_label_color_and_row_on_migrate() {
+    fn folds_legacy_lyric_tracks_into_two_lanes_and_rejects_invalid_rows() {
         let mut project = Project::new("Fixture");
         project.words.push(Word {
             id: new_id(),
@@ -617,6 +620,11 @@ mod tests {
             Err(ProjectError::InvalidLabelColor(1))
         ));
         project.words[0].label_color = None;
+        project.words[0].row = Some(5);
+        project.migrate().unwrap();
+        assert_eq!(project.words[0].row, Some(1));
+
+        project.words[0].row = Some(9);
         assert!(matches!(
             project.migrate(),
             Err(ProjectError::InvalidRow(1))

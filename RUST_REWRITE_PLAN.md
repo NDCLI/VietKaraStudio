@@ -4,6 +4,51 @@
 >
 > **Nguyên tắc:** không “đập đi viết lại” một lần. Ứng dụng Python hiện tại vẫn là production baseline cho đến khi từng lát chức năng Rust đạt parity, có fixture kiểm chứng và có đường rollback.
 >
+> **Tiến độ W7 — preset mẫu trong Studio:**
+> - Nhúng 16 preset VCL hiện có, hiển thị catalog trong Studio; chọn mẫu chỉ
+>   mở bước xem lại, áp dụng bằng một `SetSettings` undo step. Preset cá nhân
+>   được lưu trong app data, nạp lại sau restart và xóa có xác nhận. Import
+>   VCL/JSON và export an toàn cũng đã có.
+> - Nhúng thư viện 192 họ font baseline (315 TTF, Unicode/VNI/TCVN3), có tìm
+>   kiếm/chọn font; GPUI dùng font trong preview, FFmpeg nhận đúng biến thể
+>   font đang dùng trong `fonts/` tạm. Còn smoke test ảnh/render Windows.
+> - Thêm chẩn đoán cục bộ Python/module AI/worker/FFmpeg/fonts/app-data có
+>   timeout, không đọc media/project hay gửi mạng; báo cáo nằm trong app data.
+> - Inspector cho gỡ ảnh nền scene riêng với artwork trang trí. Thao tác tạo
+>   version snapshot, giữ metadata và decoration nếu còn, dọn record khi scene
+>   không còn artwork; test transaction đã thêm, chờ lượt kiểm thử tổng.
+> - Workspace check/clippy, Python syntax và Windows release build pass.
+> - Thêm `packaging/build_rust_portable.py`: dựng stage portable từ app release,
+>   Python runtime + AI dependencies và FFmpeg do người build chỉ định; tạo
+>   launcher cấu hình worker/media/data, manifest SHA-256 và license. Script
+>   chặn output đè thư mục có sẵn; không chép project/model riêng của máy build.
+>   Đã dựng stage Windows local 5,3 GiB từ Python 3.12 + runtime AI Torch/CUDA
+>   và FFmpeg; import AI trong runtime đã copy, hai binary media chạy được.
+>   Smoke JSONL phát hiện lỗi Windows cp1252 làm worker không ghi được tiếng
+>   Việt; đã ép UTF-8 ở stdin/stdout/stderr và thêm regression test. Smoke
+>   lỗi protocol sau sửa pass với `PYTHONIOENCODING=cp1252`; chưa chạy trên máy
+>   sạch. `packaging/archive_rust_portable.py` đã xác minh hash từng file trong
+>   manifest, tạo ZIP 3,61 GB và SHA256SUMS; đọc lại ZIP/CRC/checksum đều pass
+>   (16.541 entries, không có `data/`). Installer/updater và rollout còn mở.
+> - Inno Setup per-user installer đã build ở `releases/`, AppId/thư mục cài
+>   riêng để cài song song baseline; launcher cấp runtime paths và lưu data
+>   tại `%LOCALAPPDATA%/VietKaraStudio-Rust`, bên ngoài thư mục uninstall.
+>   Setup 2,98 GB và SHA-256 pass; silent install/uninstall trên thư mục thử
+>   pass, sentinel app-data còn nguyên sau gỡ và đã được dọn. Shortcut/post-
+>   install launch và Windows sạch chưa xác minh.
+> - Thêm updater helper C# vào installer; nút “Cập nhật” trong Studio chỉ mở
+>   helper khi project sạch. Helper chọn đúng stable Rust release (bỏ qua tag
+>   baseline Python), tải các part GitHub, xác minh HTTPS/host, size/hash từng
+>   part và hash installer ghép rồi mới mở Setup. `split_rust_release.py` tạo
+>   asset parts/manifest; C# compile và cargo check pass. Chưa có Rust release
+>   trên GitHub nên download/update end-to-end chưa chạy. Build3 local Setup/ZIP
+>   đã được dựng lại sau khi thêm updater; SHA-256 và chi tiết smoke nằm trong
+>   `docs/windows-plan.md`. Đây là snapshot kiểm thử, chưa phải GitHub release.
+> - Lượt test gom đã chạy: Rust workspace, Clippy `-D warnings`, fmt check,
+>   Python **188/188**, Node **17/17**, cùng smoke ghép part bằng PowerShell 5.1.
+>   Build3 Setup cài/gỡ silent pass và payload được xác minh. Còn QA máy sạch,
+>   launch/shortcut trên máy đích, IME/DPI đầy đủ và updater E2E với release thật.
+>
 > **Tiến độ 2026-11-06 — artwork vai hát và hai lane:**
 > - Đóng gói đủ chín role icon PNG của baseline vào `vietkara-render`; lượng tử
 >   xuống 32 màu và cache hình học scanline. Preview GPUI và ASS xuất dùng chung
@@ -11,9 +56,54 @@
 > - Inspector cho đổi biến thể màu của icon Nam, Nữ và Cùng hát. Legacy
 >   `voice_c`/`voice_e` map trực tiếp Nam (lane 0), `voice_d`/`voice_f` map Nữ
 >   (lane 1); test-only preview oracle cũng bỏ mô hình sáu slot.
+> - Giới hạn dữ liệu lane trong editor ở Nam/Nữ: khi migrate project cũ, `row`
+>   0–5 được gộp chẵn → lane 0, lẻ → lane 1; giá trị ngoài phạm vi cũ vẫn bị
+>   từ chối. Validation project đã chuẩn hóa chỉ nhận 0/1.
 > - `cargo fmt`, `cargo check --workspace` và `git diff --check` pass. Thêm
 >   regression tests nhưng chưa chạy theo yêu cầu gom test cuối; cần kiểm tra
 >   ảnh preview/export trên Windows. Commit `1dc84aa` đã push lên nhánh rewrite.
+>
+> **Tiến độ W6 — gợi ý phân vai hai lane:**
+> - Nối app với worker JSONL `separate`/`role_suggest`; vocal được cache ngoài
+>   project theo SHA-256 nguồn. Progress/cancel chạy nền; kết quả cũ bị loại nếu
+>   project, lời hoặc audio đổi trong lúc phân tích.
+> - Gợi ý chỉ áp dụng sau khi người dùng xác nhận; một Batch command đổi vai,
+>   giữ nguyên từ khóa/câu đã gán vai thủ công, bật duet và tạo một bước undo.
+>   Thêm test command/locked words và cache no-clobber. Workspace `cargo check`
+>   pass; test và runtime model thật
+>   chưa chạy theo yêu cầu gom cuối.
+>
+> **Tiến độ W6 — nhận dạng/căn lời trong Studio:**
+> - Nút AI chọn `recognize` khi chưa có lời hoặc `align` khi đã có lời; cùng
+>   dùng vocal cache theo fingerprint, progress/cancel và kiểm tra file nguồn.
+> - Inspector có `align_region` cho câu được chọn; vùng âm thanh lấy thêm
+>   1,2 giây ngữ cảnh, chỉ thay dòng đó và giữ nguyên các câu khác (kể cả câu
+>   đang khóa). Kết quả căn toàn bài và căn một câu đều cần xác nhận.
+> - Kết quả được chuẩn hóa ID/line UID, kiểm tra project trước khi hiển thị
+>   xem trước; người dùng phải xác nhận mới đổi lời/mốc bằng một `SetLyrics`
+>   undo step. Vai/track/các thuộc tính dòng hiện có được giữ theo line.
+> - Test helper cho dữ liệu lời AI đã thêm; `cargo check --workspace --tests`
+>   pass, chưa chạy suite theo yêu cầu gom test cuối.
+>
+> **Tiến độ W6 — batch render trong Studio:**
+> - Toolbar cho chọn nhiều project JSON và tạo hàng đợi bền vững bằng
+>   `vietkara-jobs::BatchRecord`; mỗi item đóng băng JSON cùng toàn bộ media
+>   thuộc allowlist vào data root, render tuần tự ra file mới cạnh project,
+>   không ghi đè file xuất có sẵn.
+> - Tiến độ từng mục, hủy batch, lỗi theo từng project và resume batch sau
+>   restart đã nối vào UI. Khi resume, project snapshot và từng media được
+>   đối chiếu SHA-256; mục còn `running` sau crash được phục hồi về `queued`.
+> - `cargo fmt --all` và `cargo check -p vietkara-app --tests` pass. Test
+>   chưa chạy theo yêu cầu gom cuối; smoke test batch thực tế trên Windows
+>   vẫn còn trước khi gọi batch production-ready.
+>
+> **Tiến độ W6 — cấu hình thiết bị/model AI:**
+> - Preferences local cho chế độ tự động/CPU và model Whisper small/medium/
+>   large-v3-turbo; worker tự chọn backend CUDA đã qua hardware probe, cache
+>   recognition phân biệt CPU/CUDA và model root nằm trong app data.
+> - Demucs chạy một job song song; model/cache không nằm trong project hay
+>   payload đóng gói. Rust check/clippy và Python syntax check pass; kiểm tra
+>   RAM/VRAM, tải model thật và fallback hết bộ nhớ còn chờ smoke test.
 >
 > **Tiến độ 2026-11-05 — Giai đoạn 0 + đầu Giai đoạn 2 (xong, kiểm chứng trên Linux):**
 > - `docs/compatibility-matrix.md` mới: ma trận P0/P1/P2, hợp đồng tương thích
@@ -374,16 +464,22 @@ Workspace hiện có bảy crate:
 - `crates/vietkara-storage`: atomic save, manifest SHA-256, version snapshot,
   restore an toàn, bundle ZIP staging/validation.
 - `crates/vietkara-jobs`: job lifecycle, cancel, persistence/recovery và
-  batch queue state machine; chưa nối vào app UI.
+  batch queue state machine; batch render đã nối vào Studio, còn QA resume/
+  cancel trên project/media thực tế cần hoàn tất.
 - `crates/vietkara-media`: FFprobe/fallback, WAV reader, waveform/metrics,
-  playback trait và fake clock (`NullPlayer`); chưa phát qua thiết bị thật.
-- `crates/vietkara-render`: ASS helpers, render profile, FFmpeg argv và
-  output verification; chưa có `build_ass`/`display_plan` đầy đủ.
-- `crates/vietkara-ai-bridge`: JSON Lines v1 process bridge với timeout,
-  cancel và crash handling; worker Python JSONL entry point chưa có.
-- `crates/vietkara-app`: GPUI 0.2.2 mock editor; `cargo check` và chạy cửa
-  sổ pass trên Windows, nhưng chưa có action thật cho mở file, playback,
-  timeline, import, save hay export.
+  playback transport và output device; kiểm chứng thiết bị/audio runtime trên
+  các cấu hình Windows mục tiêu vẫn còn.
+- `crates/vietkara-render`: shared display plan, ASS lyrics/title/scene,
+  background/overlay/audio graph, render profile, FFmpeg argv và output
+  verification; golden parity/raster và QA full render Windows còn mở.
+- `crates/vietkara-ai-bridge`: JSON Lines process bridge với timeout, cancel
+  và crash handling; `ai_worker.py` adapter đã nối recognition/alignment,
+  separation, role suggestion và sync; model thật, phần cứng CPU/NVIDIA và
+  cancellation runtime vẫn cần nghiệm thu.
+- `crates/vietkara-app`: GPUI 0.2.2 Studio có project lifecycle, undo/redo,
+  autosave/recovery, audio/tap/timeline, lyrics/AI, preview/export, batch,
+  presets/fonts/scenes và diagnostics. W7 packaging/updater code đã có;
+  release artifacts cần rebuild, test tổng và QA Windows sạch còn mở.
 
 Kiểm chứng headless: `cargo test` 6 crate **62/62 pass** trên Linux và
 Windows; `cargo fmt --check`/`cargo clippy` sạch. Trên Windows,
@@ -413,8 +509,9 @@ Các năng lực cần coi là hợp đồng tương thích hiện đang nằm t
 
 - Project JSON schema hiện là v2; fixture schema 1/2 xác minh migration,
   ID 32 hex, typed word fields và unknown fields trong các đường round-trip
-  đã có. `settings`, `reference`, `beat`, `alignment`, `scenes` vẫn còn
-  những field dạng JSON linh hoạt; settings chưa được typed đầy đủ.
+  đã có. Settings core đã typed, còn các field ít dùng/đặc thù Python trong
+  `settings.extra`; `reference`, `beat`, `alignment`, `scenes` giữ JSON linh
+  hoạt để không làm mất field chưa hiểu.
 - `vietkara-storage` đã có atomic save, manifest media, SHA-256, giới hạn
   ZIP 3 GiB/2.000 entry, project JSON 20 MiB, allowlist tên media và restore
   an toàn theo verify → stage → swap/rollback. Các crate storage tests
@@ -423,12 +520,12 @@ Các năng lực cần coi là hợp đồng tương thích hiện đang nằm t
 - Giữ khác biệt an toàn với Python: `restore_version` stage và xác minh
   fingerprint trước khi swap; bundle import kiểm tra trong staging trước
   khi đưa media vào project.
-- `vietkara-jobs` đã port lifecycle/recovery và batch queue model, nhưng
-  chưa chạy render jobs từ UI; batch render production flow còn thiếu.
-- Playback hiện chỉ có abstraction/fake clock, chưa có audio device thật;
-  app UI chưa có action playback, timeline, open/save, import/export.
-- Full ASS/layout, worker JSONL entry point thật, autosave/recovery gắn UI,
-  undo/redo, preset/scene, updater và đóng gói vẫn còn trong các giai đoạn sau.
+- Settings core đã typed; các field ít dùng/đặc thù Python tiếp tục nằm trong
+  `extra` cho round-trip. `reference`, `beat`, `alignment` và dữ liệu scene vẫn
+  giữ JSON linh hoạt để bảo toàn field chưa hiểu.
+- Luồng UI W3–W7 đã được nối thành phần lớn thao tác người dùng; các rủi ro
+  còn lại tập trung ở test tổng, runtime/hardware Windows, golden parity,
+  clean-machine packaging, updater E2E và rollout có rollback.
 - Beat gốc là nguồn audio xuất video; vocal tách riêng chỉ phục vụ nhận dạng/căn lời theo README.
 - Môi trường mục tiêu là Windows 10/11 x64, có đường dẫn Unicode, CPU-only và NVIDIA.
 

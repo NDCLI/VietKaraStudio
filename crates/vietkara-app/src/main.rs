@@ -1,3 +1,6 @@
+mod diagnostics;
+mod fonts;
+mod presets;
 mod preview;
 mod text_input;
 mod theme;
@@ -15,6 +18,7 @@ use vietkara_domain::{
     Anchor, Project, Word,
     edit::{Command, Editor},
 };
+use vietkara_jobs::{BatchItem, BatchRecord, BatchStatus, ItemStatus};
 
 use std::path::PathBuf;
 use vietkara_storage::audio_import::AudioSlot;
@@ -31,6 +35,9 @@ actions!(
         NewProject,
         ImportSrt,
         ImportLyrics,
+        ImportPreset,
+        ExportPreset,
+        SavePreset,
         TogglePlayback,
         StopPlayback,
         SeekBack,
@@ -39,7 +46,8 @@ actions!(
         ImportBeat,
         ImportReference,
         ExportVideo,
-        CancelExport
+        CancelExport,
+        BatchRender
     ]
 );
 
@@ -60,10 +68,43 @@ struct PendingSyncSuggestion {
     result: Value,
 }
 
+struct PendingRoleSuggestion {
+    project_id: String,
+    reference_path: PathBuf,
+    reference_sha256: String,
+    base_words: Vec<Word>,
+    lines: Vec<u32>,
+    result: Value,
+}
+
+struct PendingLyricsAi {
+    project_id: String,
+    reference_path: PathBuf,
+    reference_sha256: String,
+    base_text: String,
+    base_words: Vec<Word>,
+    text: String,
+    words: Vec<Word>,
+    changed_words: usize,
+    operation: &'static str,
+}
+
 enum SyncEvent {
     Started(std::sync::Arc<std::sync::atomic::AtomicBool>),
     Progress(f32, String),
     Finished(Result<Value, String>),
+}
+
+enum RoleSuggestionEvent {
+    Started(std::sync::Arc<std::sync::atomic::AtomicBool>),
+    Progress(f32, String),
+    Finished(Result<(Value, String), String>),
+}
+
+enum LyricsAiEvent {
+    Started(std::sync::Arc<std::sync::atomic::AtomicBool>),
+    Progress(f32, String),
+    Finished(Result<(Vec<Word>, String, String), String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +118,7 @@ struct Studio {
     word_input: Entity<text_input::TextInput>,
     title_credit_input: Entity<text_input::TextInput>,
     section_name_input: Entity<text_input::TextInput>,
+    font_query_input: Entity<text_input::TextInput>,
     focus_handle: FocusHandle,
     edit_status: String,
     playing: bool,
@@ -105,6 +147,20 @@ struct Studio {
     rendering: bool,
     render_progress: f64,
     render_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    active_batch: bool,
+    pending_batch_projects: Vec<PathBuf>,
+    batch_record: Option<BatchRecord>,
+    pending_preset: Option<presets::Preset>,
+    bundled_presets: Vec<presets::Preset>,
+    custom_presets: Vec<presets::StoredPreset>,
+    show_preset_catalog: bool,
+    pending_preset_delete: Option<String>,
+    font_catalog: &'static [fonts::FontFamily],
+    show_font_catalog: bool,
+    diagnostics_running: bool,
+    diagnostics_report: Option<String>,
+    ai_device_preference: String,
+    ai_model: String,
     dirty: bool,
     confirm_open: bool,
     confirm_new: bool,
@@ -120,6 +176,12 @@ struct Studio {
     sync_progress: f32,
     sync_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pending_sync: Option<PendingSyncSuggestion>,
+    role_suggest_running: bool,
+    role_suggest_cancel_request: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pending_role_suggestion: Option<PendingRoleSuggestion>,
+    lyrics_ai_running: bool,
+    lyrics_ai_cancel_request: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pending_lyrics_ai: Option<PendingLyricsAi>,
     _autosave_task: Task<()>,
     left_tab_media: bool,
     inspector_design: bool,
@@ -132,6 +194,23 @@ struct WorkspaceSize {
     left: f32,
     preview: f32,
     right: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceMode {
+    Compact,
+    Standard,
+    Wide,
+}
+
+fn workspace_mode(viewport_width: f32) -> WorkspaceMode {
+    if viewport_width < 960.0 {
+        WorkspaceMode::Compact
+    } else if viewport_width < 1280.0 {
+        WorkspaceMode::Standard
+    } else {
+        WorkspaceMode::Wide
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,13 +265,13 @@ fn fit_workspace(mut layout: WorkspaceSize, viewport_width: f32) -> WorkspaceSiz
 }
 
 fn workspace_size(viewport_width: f32) -> WorkspaceSize {
-    if viewport_width < 960. {
+    if workspace_mode(viewport_width) == WorkspaceMode::Compact {
         WorkspaceSize {
             left: 176.,
             preview: 320.,
             right: 204.,
         }
-    } else if viewport_width < 1280. {
+    } else if workspace_mode(viewport_width) == WorkspaceMode::Standard {
         WorkspaceSize {
             left: 210.,
             preview: 410.,
@@ -289,6 +368,23 @@ fn render_project(
         }
         std::fs::create_dir(temporary_directory.join("fonts"))
             .map_err(|error| format!("Không tạo được thư mục font tạm: {error}"))?;
+        fonts::write_family(&project.settings.font, &temporary_directory.join("fonts")).map_err(
+            |error| {
+                format!(
+                    "Không chuẩn bị được font {}: {error}",
+                    project.settings.font
+                )
+            },
+        )?;
+        if let Some(title_font) = project
+            .settings
+            .extra
+            .get("title_font")
+            .and_then(Value::as_str)
+        {
+            fonts::write_family(title_font, &temporary_directory.join("fonts"))
+                .map_err(|error| format!("Không chuẩn bị được font title {title_font}: {error}"))?;
+        }
         let mut inputs = vietkara_render::RenderInputs::new(beat, duration);
         inputs.ffmpeg = ffmpeg.clone();
         inputs.encoder = select_video_encoder(&project, &ffmpeg);
@@ -628,7 +724,681 @@ enum ExportEvent {
     Finished(Result<(PathBuf, bool), String>),
 }
 
+struct PreparedBatchRender {
+    index: usize,
+    project: Project,
+    project_path: PathBuf,
+    target: PathBuf,
+    plan: vietkara_render::layout::DisplayPlan,
+}
+
+enum BatchRenderEvent {
+    ItemStarted(usize, String),
+    Progress(usize, f64),
+    Fallback(usize),
+    ItemFinished(usize, Result<(PathBuf, bool), String>),
+    Finished(BatchRecord, bool),
+}
+
 impl Studio {
+    fn run_updater(&mut self, cx: &mut Context<Self>) {
+        if self.dirty || self.saving || self.autosaving || self.rendering || self.active_batch {
+            self.edit_status = "Lưu project và dừng xuất/batch trước khi cập nhật".into();
+            cx.notify();
+            return;
+        }
+        #[cfg(windows)]
+        {
+            let helper = std::env::current_exe().ok().and_then(|path| {
+                path.parent()
+                    .map(|parent| parent.join("VietKaraUpdater.exe"))
+            });
+            let Some(helper) = helper.filter(|path| path.is_file()) else {
+                self.edit_status = "Tự cập nhật chỉ có trong bản Setup đã cài trên Windows".into();
+                cx.notify();
+                return;
+            };
+            match std::process::Command::new(helper).spawn() {
+                Ok(_) => self.edit_status = "Đã mở trình kiểm tra cập nhật".into(),
+                Err(error) => self.edit_status = format!("Không mở được trình cập nhật: {error}"),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            self.edit_status = "Tự cập nhật chỉ hỗ trợ bản Setup trên Windows".into();
+        }
+        cx.notify();
+    }
+
+    fn run_diagnostics(&mut self, cx: &mut Context<Self>) {
+        if self.diagnostics_running {
+            return;
+        }
+        self.diagnostics_running = true;
+        self.diagnostics_report = None;
+        self.edit_status = "Đang kiểm tra thành phần cục bộ…".into();
+        cx.notify();
+        let task = cx
+            .background_executor()
+            .spawn(async { diagnostics::collect() });
+        cx.spawn(async move |this, cx| {
+            let report = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.diagnostics_running = false;
+                this.edit_status = "Đã hoàn tất chẩn đoán cục bộ".into();
+                this.diagnostics_report = Some(report);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn hide_diagnostics(&mut self, cx: &mut Context<Self>) {
+        self.diagnostics_report = None;
+        cx.notify();
+    }
+
+    fn toggle_font_catalog(&mut self, cx: &mut Context<Self>) {
+        self.show_font_catalog = !self.show_font_catalog;
+        if self.show_font_catalog {
+            self.font_query_input.update(cx, |input, cx| {
+                input.set_value("");
+                cx.notify();
+            });
+        }
+        cx.notify();
+    }
+
+    fn select_font(&mut self, family: String, cx: &mut Context<Self>) {
+        let mut settings = self.editor.project().settings.clone();
+        if settings.font.eq_ignore_ascii_case(&family) {
+            self.show_font_catalog = false;
+            cx.notify();
+            return;
+        }
+        settings.font = family.clone();
+        self.edit_status = match self.editor.execute(Command::SetSettings(settings)) {
+            Ok(_) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                self.show_font_catalog = false;
+                format!("Đã chọn font {family} · chưa lưu")
+            }
+            Err(error) => error.to_string(),
+        };
+        cx.notify();
+    }
+
+    fn toggle_preset_catalog(&mut self, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        self.show_preset_catalog = !self.show_preset_catalog;
+        if !self.show_preset_catalog {
+            self.pending_preset_delete = None;
+        }
+        cx.notify();
+    }
+
+    fn preview_preset(&mut self, preset: presets::Preset, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        self.show_preset_catalog = false;
+        self.pending_preset_delete = None;
+        self.edit_status = format!("Đã chọn preset mẫu {} · xác nhận để áp dụng", preset.name);
+        self.pending_preset = Some(preset);
+        cx.notify();
+    }
+
+    fn choose_preset(&mut self, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        self.show_preset_catalog = false;
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Chọn preset VietKara Studio hoặc VCL JSON".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let result = selection.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(Ok(Some(paths))) => {
+                        if let Some(path) = paths.into_iter().next() {
+                            match presets::Preset::read_from(&path) {
+                                Ok(preset) => {
+                                    this.edit_status = format!(
+                                        "Đã đọc preset {} ({}) · kiểm tra rồi xác nhận để áp dụng",
+                                        preset.name, preset.source
+                                    );
+                                    this.pending_preset = Some(preset);
+                                }
+                                Err(error) => {
+                                    this.edit_status = format!("Không đọc được preset: {error}")
+                                }
+                            }
+                        }
+                    }
+                    Ok(Ok(None)) => this.edit_status = "Đã hủy nhập preset".into(),
+                    Ok(Err(error)) => this.edit_status = error.to_string(),
+                    Err(error) => this.edit_status = error.to_string(),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn save_custom_preset(&mut self, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        let result = serde_json::to_value(&self.editor.project().settings)
+            .map_err(|error| error.to_string())
+            .and_then(|settings| {
+                presets::Preset::from_project(&self.editor.project().name, settings)
+            })
+            .and_then(|preset| presets::save_custom(&batch_data_root(), &preset));
+        match result {
+            Ok(stored) => {
+                self.edit_status =
+                    format!("Đã lưu preset {} vào thư viện cá nhân", stored.preset.name);
+                self.custom_presets.push(stored);
+                self.show_preset_catalog = true;
+                self.pending_preset_delete = None;
+            }
+            Err(error) => self.edit_status = format!("Không lưu được preset: {error}"),
+        }
+        cx.notify();
+    }
+
+    fn request_delete_preset(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        self.pending_preset_delete = Some(id);
+        cx.notify();
+    }
+
+    fn cancel_delete_preset(&mut self, cx: &mut Context<Self>) {
+        self.pending_preset_delete = None;
+        cx.notify();
+    }
+
+    fn delete_custom_preset(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.pending_preset_delete.take() else {
+            return;
+        };
+        match presets::delete_custom(&batch_data_root(), &id) {
+            Ok(()) => {
+                self.custom_presets.retain(|stored| stored.id != id);
+                self.edit_status = "Đã xóa preset cá nhân".into();
+            }
+            Err(error) => self.edit_status = format!("Không xóa được preset: {error}"),
+        }
+        cx.notify();
+    }
+
+    fn export_preset(&mut self, cx: &mut Context<Self>) {
+        if self.rendering || self.saving || self.pending_preset.is_some() {
+            return;
+        }
+        self.show_preset_catalog = false;
+        let project = self.editor.project();
+        let settings = match serde_json::to_value(&project.settings) {
+            Ok(settings) => settings,
+            Err(error) => {
+                self.edit_status = format!("Không tạo được preset: {error}");
+                cx.notify();
+                return;
+            }
+        };
+        let preset = match presets::Preset::from_project(&project.name, settings) {
+            Ok(preset) => preset,
+            Err(error) => {
+                self.edit_status =
+                    format!("Thiết lập hiện tại không thể xuất thành preset: {error}");
+                cx.notify();
+                return;
+            }
+        };
+        let directory = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .map(PathBuf::from)
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_default();
+        let suggested_name = format!("{}.preset.json", presets::filename_stem(&preset.name));
+        let selection = cx.prompt_for_new_path(&directory, Some(&suggested_name));
+        cx.spawn(async move |this, cx| {
+            let result = match selection.await {
+                Ok(Ok(Some(path))) => preset.write_to(&path).map(|()| path),
+                Ok(Ok(None)) => Err("Đã hủy xuất preset".into()),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.edit_status = match result {
+                    Ok(path) => format!("Đã xuất preset: {}", path.display()),
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn apply_preset(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.rendering {
+            return;
+        }
+        let Some(preset) = self.pending_preset.take() else {
+            return;
+        };
+        let result = (|| -> Result<(), String> {
+            let mut settings = serde_json::to_value(&self.editor.project().settings)
+                .map_err(|error| error.to_string())?;
+            let object = settings
+                .as_object_mut()
+                .ok_or("Thiết lập project không hợp lệ")?;
+            for (key, value) in preset.settings.clone() {
+                object.insert(key, value);
+            }
+            let settings = vietkara_domain::settings::Settings::from_value(settings)?;
+            self.editor
+                .execute(Command::SetSettings(settings))
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })();
+        self.edit_status = match result {
+            Ok(()) => {
+                self.dirty = true;
+                self.autosave_pending = true;
+                format!("Đã áp dụng preset {} · một bước hoàn tác", preset.name)
+            }
+            Err(error) => {
+                self.pending_preset = Some(preset);
+                format!("Không áp dụng được preset: {error}")
+            }
+        };
+        cx.notify();
+    }
+
+    fn dismiss_preset(&mut self, cx: &mut Context<Self>) {
+        self.pending_preset = None;
+        self.edit_status = "Đã bỏ preset; project không thay đổi".into();
+        cx.notify();
+    }
+
+    fn toggle_ai_device(&mut self, cx: &mut Context<Self>) {
+        let preferences = ui_preferences::AiPreferences {
+            device: if self.ai_device_preference == "auto" {
+                "cpu".into()
+            } else {
+                "auto".into()
+            },
+            model: self.ai_model.clone(),
+        };
+        match ui_preferences::save_ai_preferences(&preferences) {
+            Ok(()) => {
+                self.ai_device_preference = preferences.device.clone();
+                self.edit_status = if preferences.device == "auto" {
+                    "AI sẽ tự chọn GPU NVIDIA khả dụng, nếu không có sẽ dùng CPU".into()
+                } else {
+                    "AI được đặt chạy bằng CPU".into()
+                };
+            }
+            Err(error) => self.edit_status = format!("Không lưu được cấu hình AI: {error}"),
+        }
+        cx.notify();
+    }
+
+    fn cycle_ai_model(&mut self, cx: &mut Context<Self>) {
+        let models = ["small", "medium", "large-v3-turbo"];
+        let next = models
+            .iter()
+            .position(|model| *model == self.ai_model)
+            .map(|index| (index + 1) % models.len())
+            .unwrap_or(0);
+        let preferences = ui_preferences::AiPreferences {
+            device: self.ai_device_preference.clone(),
+            model: models[next].into(),
+        };
+        match ui_preferences::save_ai_preferences(&preferences) {
+            Ok(()) => {
+                self.ai_model = preferences.model;
+                self.edit_status = format!("Model nhận dạng/căn lời: {}", self.ai_model);
+            }
+            Err(error) => self.edit_status = format!("Không lưu được cấu hình AI: {error}"),
+        }
+        cx.notify();
+    }
+
+    fn choose_batch_projects(&mut self, cx: &mut Context<Self>) {
+        if self.rendering
+            || self.saving
+            || self
+                .batch_record
+                .as_ref()
+                .is_some_and(|record| record.status != BatchStatus::Done || record.failed > 0)
+        {
+            return;
+        }
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: true,
+            prompt: Some("Chọn các file project JSON cần render".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            let result = selection.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(Ok(Some(paths))) => {
+                        let mut unique = Vec::new();
+                        for path in paths {
+                            if path.is_file() && !unique.contains(&path) {
+                                unique.push(path);
+                            }
+                        }
+                        this.pending_batch_projects = unique;
+                        this.edit_status = format!(
+                            "Đã chọn {} project; nhấn Bắt đầu batch để kiểm tra và tạo hàng đợi",
+                            this.pending_batch_projects.len()
+                        );
+                    }
+                    Ok(Ok(None)) => this.edit_status = "Đã hủy chọn project batch".into(),
+                    Ok(Err(error)) => this.edit_status = error.to_string(),
+                    Err(error) => this.edit_status = error.to_string(),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn start_pending_batch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.rendering || self.pending_batch_projects.is_empty() {
+            return;
+        }
+        let mut paths = self.pending_batch_projects.clone();
+        paths.sort();
+        let mut seen = std::collections::HashSet::new();
+        paths.retain(|path| {
+            std::fs::canonicalize(path)
+                .map(|canonical| seen.insert(canonical))
+                .unwrap_or(false)
+        });
+        let data_root = batch_data_root();
+        let mut record = match BatchRecord::new(
+            "VietKaraStudio",
+            "batch",
+            &["current".into()],
+            &["beat".into()],
+        ) {
+            Ok(record) => record,
+            Err(error) => {
+                self.edit_status = format!("Không tạo được hàng đợi: {error}");
+                cx.notify();
+                return;
+            }
+        };
+        let mut prepared = Vec::new();
+        for path in paths {
+            match prepare_batch_item(
+                path,
+                &mut record,
+                &mut self.preview_layout,
+                window.text_system(),
+            ) {
+                Ok(item) => prepared.push(item),
+                Err(error) => {
+                    let _ = std::fs::remove_dir_all(
+                        batch_data_root().join("batch-renders").join(&record.id),
+                    );
+                    self.edit_status = format!("Không thể đưa project vào batch: {error}");
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+        if prepared.is_empty() {
+            self.edit_status = "Không có project hợp lệ để render".into();
+            cx.notify();
+            return;
+        }
+        if let Err(error) = record.save(&data_root) {
+            let _ = std::fs::remove_dir_all(data_root.join("batch-renders").join(&record.id));
+            self.edit_status = format!("Không lưu được hàng đợi batch: {error}");
+            cx.notify();
+            return;
+        }
+        self.pending_batch_projects.clear();
+        self.batch_record = Some(record.clone());
+        self.run_batch(record, prepared, data_root, cx);
+    }
+
+    fn resume_batch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.rendering {
+            return;
+        }
+        let Some(mut record) = self.batch_record.clone() else {
+            self.edit_status = "Không có hàng đợi batch để tiếp tục".into();
+            cx.notify();
+            return;
+        };
+        if record.status == BatchStatus::Done && record.failed == 0 {
+            self.edit_status = "Batch gần nhất đã hoàn tất; hãy tạo batch mới".into();
+            cx.notify();
+            return;
+        }
+        let data_root = batch_data_root();
+        let mut prepared = Vec::new();
+        for index in record.first_pending()..record.items.len() {
+            if record.items[index].status == ItemStatus::Done {
+                continue;
+            }
+            let item = &record.items[index];
+            let project_path = item
+                .variant
+                .get("source_project_path")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let result = project_path
+                .ok_or_else(|| "Thiếu đường dẫn project trong hàng đợi".to_owned())
+                .and_then(|path| {
+                    prepare_resumed_batch_item(
+                        index,
+                        item,
+                        path,
+                        &mut self.preview_layout,
+                        window.text_system(),
+                    )
+                });
+            match result {
+                Ok(item) => prepared.push(item),
+                Err(error) => {
+                    record.mark_item_running(index);
+                    record.mark_item_error(index, error);
+                }
+            }
+        }
+        record.status = BatchStatus::Queued;
+        if let Err(error) = record.save(&data_root) {
+            self.edit_status = format!("Không cập nhật được hàng đợi: {error}");
+            cx.notify();
+            return;
+        }
+        self.batch_record = Some(record.clone());
+        if prepared.is_empty() {
+            record.status = BatchStatus::Done;
+            let _ = record.save(&data_root);
+            self.batch_record = Some(record);
+            self.edit_status =
+                "Batch đã xử lý xong; kiểm tra các mục lỗi trong trạng thái hàng đợi".into();
+            cx.notify();
+            return;
+        }
+        self.run_batch(record, prepared, data_root, cx);
+    }
+
+    fn run_batch(
+        &mut self,
+        mut record: BatchRecord,
+        prepared: Vec<PreparedBatchRender>,
+        data_root: PathBuf,
+        cx: &mut Context<Self>,
+    ) {
+        self.rendering = true;
+        self.active_batch = true;
+        self.render_progress = 0.0;
+        self.edit_status = format!("Đang render batch ({} mục)…", prepared.len());
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.render_cancel = Some(cancel.clone());
+        self.batch_record = Some(record.clone());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let worker_cancel = cancel.clone();
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread = std::thread::Builder::new().name("vietkara-batch-render".into()).spawn(move || {
+                record.status = BatchStatus::Running;
+                let _ = record.save(&data_root);
+                let mut cancelled = false;
+                for job in prepared {
+                    if worker_cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        cancelled = true;
+                        break;
+                    }
+                    let index = job.index;
+                    let name = record.items.get(index).map(|item| item.name.clone()).unwrap_or_default();
+                    record.mark_item_running(index);
+                    record.status = BatchStatus::Running;
+                    let _ = record.save(&data_root);
+                    let _ = sender.send(BatchRenderEvent::ItemStarted(index, name));
+                    let worker_target = job.target.clone();
+                    let result = render_project(
+                        job.project,
+                        job.plan,
+                        &job.project_path,
+                        &job.target,
+                        &worker_cancel,
+                        |progress| { let _ = sender.send(BatchRenderEvent::Progress(index, progress)); },
+                        || { let _ = sender.send(BatchRenderEvent::Fallback(index)); },
+                    ).map(|fallback| (worker_target, fallback));
+                    match &result {
+                        Ok((path, fallback)) => {
+                            record.mark_item_done(index, serde_json::json!({"output_path": path, "cpu_fallback": fallback}));
+                        }
+                        Err(_error) if worker_cancel.load(std::sync::atomic::Ordering::Relaxed) => {
+                            if let Some(item) = record.items.get_mut(index) { item.status = ItemStatus::Queued; item.error = None; }
+                            cancelled = true;
+                        }
+                        Err(error) => record.mark_item_error(index, error.clone()),
+                    }
+                    let _ = record.save(&data_root);
+                    let _ = sender.send(BatchRenderEvent::ItemFinished(index, result));
+                    if cancelled { break; }
+                    let _ = sender.send(BatchRenderEvent::Progress(index, 1.0));
+                }
+                record.status = if cancelled { BatchStatus::Cancelled } else { BatchStatus::Done };
+                let _ = record.save(&data_root);
+                let _ = sender.send(BatchRenderEvent::Finished(record, cancelled));
+            });
+            if let Err(error) = thread {
+                let _ = this.update(cx, |this, cx| {
+                    this.rendering = false;
+                    this.active_batch = false;
+                    this.render_cancel = None;
+                    this.edit_status = format!("Không khởi chạy được batch render: {error}");
+                    cx.notify();
+                });
+                return;
+            }
+            loop {
+                Timer::after(std::time::Duration::from_millis(150)).await;
+                let mut completed = false;
+                loop {
+                    match receiver.try_recv() {
+                        Ok(BatchRenderEvent::ItemStarted(index, name)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.render_progress = 0.0;
+                                this.edit_status = format!("Batch · mục {}: {name}", index + 1);
+                                cx.notify();
+                            });
+                        }
+                        Ok(BatchRenderEvent::Progress(index, progress)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.render_progress = progress;
+                                this.edit_status = format!("Batch · mục {} · {:.0}%", index + 1, progress * 100.0);
+                                cx.notify();
+                            });
+                        }
+                        Ok(BatchRenderEvent::Fallback(index)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.edit_status = format!("Batch · mục {}: NVENC lỗi, đang thử CPU…", index + 1);
+                                cx.notify();
+                            });
+                        }
+                        Ok(BatchRenderEvent::ItemFinished(index, result)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.edit_status = match result {
+                                    Ok((path, fallback)) => format!("Batch · mục {} xong{}: {}", index + 1, if fallback { " (CPU)" } else { "" }, path.display()),
+                                    Err(error) => format!("Batch · mục {} lỗi: {error}", index + 1),
+                                };
+                                cx.notify();
+                            });
+                        }
+                        Ok(BatchRenderEvent::Finished(record, cancelled)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                let completed_count = record.completed;
+                                let failed_count = record.failed;
+                                let error_summary = record.items.iter()
+                                    .filter(|item| item.status == ItemStatus::Error)
+                                    .map(|item| format!("{}: {}", item.name, item.error.as_deref().unwrap_or("Lỗi không rõ")))
+                                    .collect::<Vec<_>>().join(" · ");
+                                this.batch_record = Some(record);
+                                this.rendering = false;
+                                this.active_batch = false;
+                                this.render_cancel = None;
+                                this.render_progress = 0.0;
+                                this.edit_status = if cancelled {
+                                    format!("Batch đã dừng; hoàn tất {completed_count}, lỗi {failed_count}. Có thể tiếp tục sau.")
+                                } else {
+                                    let mut summary = format!("Batch hoàn tất; thành công {completed_count}, lỗi {failed_count}.");
+                                    if !error_summary.is_empty() {
+                                        summary.push_str(" Chi tiết: ");
+                                        summary.push_str(&error_summary);
+                                    }
+                                    summary
+                                };
+                                cx.notify();
+                            });
+                            completed = true;
+                            break;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.rendering = false;
+                                this.active_batch = false;
+                                this.render_cancel = None;
+                                this.edit_status = "Batch worker dừng bất thường; hàng đợi đã lưu và có thể tiếp tục".into();
+                                cx.notify();
+                            });
+                            completed = true;
+                            break;
+                        }
+                    }
+                }
+                if completed { break; }
+            }
+        }).detach();
+    }
+
     fn start_workspace_resize(
         &mut self,
         edge: WorkspaceEdge,
@@ -991,12 +1761,15 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.pending_audio.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
         {
             return;
         }
@@ -1041,6 +1814,8 @@ impl Studio {
             || self.pending_audio.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
         {
             return;
         }
@@ -1534,6 +2309,60 @@ impl Studio {
         })
         .detach();
     }
+    fn remove_scene_image(&mut self, cx: &mut Context<Self>) {
+        if self.saving || self.autosaving || self.recovery.is_some() {
+            return;
+        }
+        let (Some(main), Some(section)) = (
+            self.path.clone(),
+            self.selected_word
+                .as_deref()
+                .and_then(|id| {
+                    self.editor
+                        .project()
+                        .words
+                        .iter()
+                        .find(|word| word.id == id)
+                })
+                .and_then(|word| word.section_name.clone()),
+        ) else {
+            return;
+        };
+        let project = self.editor.project().clone();
+        self.saving = true;
+        self.edit_status = "Đang bỏ ảnh nền scene và tạo phiên bản phục hồi…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    vietkara_storage::background_import::remove_scene_image(
+                        &project, &main, &section,
+                    )
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                this.edit_status = match result {
+                    Ok(imported) => match Editor::new(imported.project) {
+                        Ok(editor) => {
+                            this.editor = editor;
+                            this.dirty = false;
+                            this.autosave_pending = false;
+                            format!(
+                                "Đã bỏ ảnh nền scene • phiên bản trước: {}",
+                                imported.version_id
+                            )
+                        }
+                        Err(error) => error.to_string(),
+                    },
+                    Err(error) => error,
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     fn remove_scene_decoration(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.autosaving || self.recovery.is_some() {
             return;
@@ -1809,6 +2638,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.sync_running
+            || self.role_suggest_running
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -2472,6 +3302,24 @@ impl Studio {
 
     fn suggest_audio_sync(&mut self, cx: &mut Context<Self>) {
         if self.sync_running {
+            if self.role_suggest_running || self.lyrics_ai_running {
+                if let Some(cancel) = &self.sync_cancel {
+                    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                if let Some(requested) = &self.role_suggest_cancel_request {
+                    requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                if let Some(requested) = &self.lyrics_ai_cancel_request {
+                    requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                self.edit_status = if self.role_suggest_running {
+                    "Đang hủy gợi ý phân vai…".into()
+                } else {
+                    "Đang hủy nhận dạng/căn lời…".into()
+                };
+                cx.notify();
+                return;
+            }
             if let Some(cancel) = &self.sync_cancel {
                 cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                 self.edit_status = "Đang hủy phân tích đồng bộ…".into();
@@ -2486,6 +3334,8 @@ impl Studio {
             || self.pending_audio.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.confirm_close
@@ -2552,6 +3402,7 @@ impl Studio {
         self.sync_progress = 0.0;
         self.sync_cancel = None;
         self.pending_sync = None;
+        self.pending_role_suggestion = None;
         self.edit_status = "Đang phân tích tương quan bản hát và beat…".into();
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -2713,14 +3564,828 @@ impl Studio {
         }
     }
 
+    fn suggest_roles(&mut self, cx: &mut Context<Self>) {
+        if self.role_suggest_running {
+            if let Some(requested) = &self.role_suggest_cancel_request {
+                requested.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if let Some(cancel) = &self.sync_cancel {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                self.edit_status = "Đang hủy gợi ý phân vai…".into();
+                cx.notify();
+            }
+            return;
+        }
+        if self.sync_running {
+            self.edit_status = "Hãy chờ phân tích hiện tại hoàn tất trước".into();
+            cx.notify();
+            return;
+        }
+        if self.saving
+            || self.autosaving
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.confirm_close
+            || self.confirm_open
+            || self.confirm_new
+        {
+            return;
+        }
+        let Some(project_path) = self.path.as_deref() else {
+            self.edit_status = "Hãy lưu project trước khi gợi ý phân vai".into();
+            cx.notify();
+            return;
+        };
+        if self.editor.project().words.is_empty() {
+            self.edit_status = "Hãy nhập lời và mốc thời gian trước khi gợi ý phân vai".into();
+            cx.notify();
+            return;
+        }
+        let Some(reference_path) = project_audio_file(
+            self.editor.project(),
+            Some(project_path),
+            AudioSlot::Reference,
+        ) else {
+            self.edit_status = "Project chưa có bản hát hợp lệ để phân tích vai".into();
+            cx.notify();
+            return;
+        };
+        let worker_script = match ai_worker_script() {
+            Ok(path) => path,
+            Err(error) => {
+                self.edit_status = error;
+                cx.notify();
+                return;
+            }
+        };
+        let python = std::env::var("VIETKARA_PYTHON").unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "python".into()
+            } else {
+                "python3".into()
+            }
+        });
+        let data_root = ai_data_root(&worker_script);
+        let project_id = self.editor.project().id.clone();
+        let base_words = self.editor.project().words.clone();
+        let mut line_segments: Vec<(u32, f64, f64)> = Vec::new();
+        let mut line_indexes = std::collections::HashMap::new();
+        for word in &base_words {
+            if let Some(index) = line_indexes.get(&word.line).copied() {
+                let segment: &mut (u32, f64, f64) = &mut line_segments[index];
+                segment.1 = segment.1.min(word.start);
+                segment.2 = segment.2.max(word.end);
+            } else {
+                line_indexes.insert(word.line, line_segments.len());
+                line_segments.push((word.line, word.start, word.end));
+            }
+        }
+        let lines = line_segments
+            .iter()
+            .map(|(line, _, _)| *line)
+            .collect::<Vec<_>>();
+        let segments = line_segments
+            .iter()
+            .map(|(line, start, end)| serde_json::json!({"line":line,"start":start,"end":end}))
+            .collect::<Vec<_>>();
+        let config = WorkerConfig::new(python)
+            .arg(worker_script.to_string_lossy().into_owned())
+            .env("OBS_DATA_DIR", data_root.to_string_lossy().into_owned())
+            .timeout(std::time::Duration::from_secs(30 * 60));
+        let device_preference = self.ai_device_preference.clone();
+        let reference_path = reference_path.to_path_buf();
+        self.sync_running = true;
+        self.role_suggest_running = true;
+        self.sync_progress = 0.0;
+        self.sync_cancel = None;
+        let cancel_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.role_suggest_cancel_request = Some(cancel_requested.clone());
+        self.pending_role_suggestion = None;
+        self.edit_status = "Đang chuẩn bị vocal để gợi ý hai lane Nam/Nữ…".into();
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread_cancel_requested = cancel_requested.clone();
+            let worker_project_id = project_id.clone();
+            let worker_reference_path = reference_path.clone();
+            let worker_thread = std::thread::Builder::new()
+                .name("vietkara-role-suggest".into())
+                .spawn(move || {
+                    let cancel_requested = thread_cancel_requested;
+                    let result = (|| -> Result<(Value, String), String> {
+                        let (vocal_path, fingerprint) = ensure_cached_vocal(
+                            VocalCacheRequest {
+                                config: &config,
+                                project_id: &worker_project_id,
+                                reference_path: &worker_reference_path,
+                                data_root: &data_root,
+                                device: &device_preference,
+                            },
+                            &cancel_requested,
+                            |cancel| {
+                                let _ = sender.send(RoleSuggestionEvent::Started(cancel));
+                            },
+                            |progress, message| {
+                                let _ = sender.send(RoleSuggestionEvent::Progress(
+                                    progress,
+                                    message.to_owned(),
+                                ));
+                            },
+                        )?;
+                        let role_request = AiRequest::new(
+                            AiKind::RoleSuggest,
+                            worker_project_id.clone(),
+                            serde_json::json!({
+                                "vocal": vocal_path,
+                                "segments": segments,
+                            }),
+                            serde_json::json!({}),
+                        );
+                        let mut worker = Worker::spawn(config, role_request)
+                            .map_err(|error| error.to_string())?;
+                        let cancel = worker.cancel_flag();
+                        let _ = sender.send(RoleSuggestionEvent::Started(cancel.clone()));
+                        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        let result = worker
+                            .run(|progress, message| {
+                                let _ = sender.send(RoleSuggestionEvent::Progress(
+                                    40.0 + progress.clamp(0.0, 100.0) * 0.6,
+                                    message.to_owned(),
+                                ));
+                            })
+                            .map_err(|error| error.to_string())?;
+                        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err("Đã hủy gợi ý phân vai".into());
+                        }
+                        let fingerprint_after = vietkara_storage::sha256_file(&worker_reference_path)
+                            .map_err(|error| format!("Không kiểm tra lại được bản hát: {error}"))?;
+                        if fingerprint_after != fingerprint {
+                            return Err("File bản hát đã đổi trong lúc phân tích; hãy chạy lại".into());
+                        }
+                        Ok((result, fingerprint))
+                    })();
+                    let _ = sender.send(RoleSuggestionEvent::Finished(result));
+                });
+            if let Err(error) = worker_thread {
+                let _ = this.update(cx, |this, cx| {
+                    this.sync_running = false;
+                    this.role_suggest_running = false;
+                    this.role_suggest_cancel_request = None;
+                    this.sync_cancel = None;
+                    this.edit_status = format!("Không khởi chạy được gợi ý phân vai: {error}");
+                    cx.notify();
+                });
+                return;
+            }
+            let mut finished = false;
+            while !finished {
+                Timer::after(std::time::Duration::from_millis(100)).await;
+                loop {
+                    match receiver.try_recv() {
+                        Ok(RoleSuggestionEvent::Started(cancel)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                if this
+                                    .role_suggest_cancel_request
+                                    .as_ref()
+                                    .is_some_and(|requested| {
+                                        requested.load(std::sync::atomic::Ordering::SeqCst)
+                                    })
+                                {
+                                    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                this.sync_cancel = Some(cancel);
+                                cx.notify();
+                            });
+                        }
+                        Ok(RoleSuggestionEvent::Progress(progress, message)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_progress = progress.clamp(0.0, 100.0);
+                                this.edit_status = format!("{message} · {:.0}%", progress);
+                                cx.notify();
+                            });
+                        }
+                        Ok(RoleSuggestionEvent::Finished(result)) => {
+                            finished = true;
+                            let result = if cancel_requested
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                            {
+                                Err("Đã hủy gợi ý phân vai".into())
+                            } else {
+                                result
+                            };
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.role_suggest_running = false;
+                                this.role_suggest_cancel_request = None;
+                                this.sync_cancel = None;
+                                match result {
+                                    Ok((result, reference_sha256))
+                                        if this.editor.project().id == project_id
+                                            && words_match_snapshot(
+                                                &this.editor.project().words,
+                                                &base_words,
+                                            )
+                                            && this.path.as_deref().is_some_and(|path| {
+                                                project_audio_file(
+                                                    this.editor.project(),
+                                                    Some(path),
+                                                    AudioSlot::Reference,
+                                                ) == Some(reference_path.clone())
+                                            }) =>
+                                    {
+                                        match role_suggestion_command(&base_words, &lines, &result) {
+                                            Ok((Some(_), changed_words)) => {
+                                                this.pending_role_suggestion = Some(PendingRoleSuggestion {
+                                                    project_id: project_id.clone(),
+                                                    reference_path: reference_path.clone(),
+                                                    reference_sha256,
+                                                    base_words: base_words.clone(),
+                                                    lines: lines.clone(),
+                                                    result,
+                                                });
+                                                this.edit_status = format!("Có gợi ý phân vai Nam/Nữ cho {changed_words} từ; project chưa thay đổi");
+                                            }
+                                            Ok((None, _)) => this.edit_status = "Gợi ý không tạo thay đổi cho các từ hiện tại".into(),
+                                            Err(error) => this.edit_status = error,
+                                        }
+                                    }
+                                    Ok(_) => this.edit_status = "Project, lời hoặc file bản hát đã đổi; bỏ gợi ý cũ".into(),
+                                    Err(error) => this.edit_status = error,
+                                }
+                                cx.notify();
+                            });
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            finished = true;
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.role_suggest_running = false;
+                                this.role_suggest_cancel_request = None;
+                                this.sync_cancel = None;
+                                this.edit_status = "Worker phân vai dừng đột ngột, không trả kết quả".into();
+                                cx.notify();
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn accept_role_suggestion(&mut self, cx: &mut Context<Self>) {
+        let Some(suggestion) = self.pending_role_suggestion.take() else {
+            return;
+        };
+        let source_matches = self.editor.project().id == suggestion.project_id
+            && words_match_snapshot(&self.editor.project().words, &suggestion.base_words)
+            && self.path.as_deref().is_some_and(|path| {
+                project_audio_file(self.editor.project(), Some(path), AudioSlot::Reference)
+                    == Some(suggestion.reference_path.clone())
+            });
+        if !source_matches {
+            self.edit_status =
+                "Project, lời hoặc bản hát đã đổi; hãy phân tích lại trước khi áp dụng".into();
+            cx.notify();
+            return;
+        }
+        let reference_path = suggestion.reference_path.clone();
+        let expected_sha256 = suggestion.reference_sha256.clone();
+        self.saving = true;
+        self.edit_status = "Đang kiểm tra bản hát trước khi áp dụng gợi ý…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let actual_sha256 = cx
+                .background_executor()
+                .spawn(async move {
+                    vietkara_storage::sha256_file(&reference_path)
+                        .map_err(|error| error.to_string())
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                match actual_sha256 {
+                    Ok(actual_sha256) if actual_sha256 == expected_sha256 => {
+                        let still_matches = this.editor.project().id == suggestion.project_id
+                            && words_match_snapshot(
+                                &this.editor.project().words,
+                                &suggestion.base_words,
+                            )
+                            && this.path.as_deref().is_some_and(|path| {
+                                project_audio_file(
+                                    this.editor.project(),
+                                    Some(path),
+                                    AudioSlot::Reference,
+                                ) == Some(suggestion.reference_path.clone())
+                            });
+                        if !still_matches {
+                            this.edit_status = "Project, lời hoặc file đã đổi; hãy gợi ý lại trước khi áp dụng".into();
+                            cx.notify();
+                            return;
+                        }
+                        let (command, changed_words) = match role_application_command(
+                            this.editor.project(),
+                            &suggestion.lines,
+                            &suggestion.result,
+                        ) {
+                            Ok((Some(command), changed_words)) => (command, changed_words),
+                            Ok((None, _)) => {
+                                this.edit_status = "Không có từ nào cần đổi vai".into();
+                                cx.notify();
+                                return;
+                            }
+                            Err(error) => {
+                                this.edit_status = error;
+                                cx.notify();
+                                return;
+                            }
+                        };
+                        this.edit_status = match this.editor.execute(command) {
+                            Ok(_) => {
+                                this.dirty = true;
+                                this.autosave_pending = true;
+                                format!("Đã áp dụng gợi ý phân vai cho {changed_words} từ • một bước hoàn tác")
+                            }
+                            Err(error) => error.to_string(),
+                        };
+                    }
+                    Ok(_) => {
+                        this.edit_status = "File bản hát đã đổi; hãy chạy lại gợi ý phân vai".into();
+                    }
+                    Err(error) => this.edit_status = format!("Không xác minh được file bản hát: {error}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn dismiss_role_suggestion(&mut self, cx: &mut Context<Self>) {
+        if self.pending_role_suggestion.take().is_some() {
+            self.edit_status = "Đã bỏ gợi ý phân vai; project không thay đổi".into();
+            cx.notify();
+        }
+    }
+
+    fn run_lyrics_ai(&mut self, selected_line: Option<u32>, cx: &mut Context<Self>) {
+        if self.lyrics_ai_running {
+            if let Some(requested) = &self.lyrics_ai_cancel_request {
+                requested.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if let Some(cancel) = &self.sync_cancel {
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            self.edit_status = "Đang hủy nhận dạng/căn lời…".into();
+            cx.notify();
+            return;
+        }
+        if self.sync_running {
+            self.edit_status = "Hãy chờ hoặc hủy tác vụ AI hiện tại trước".into();
+            cx.notify();
+            return;
+        }
+        if self.saving
+            || self.autosaving
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_audio.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.confirm_close
+            || self.confirm_open
+            || self.confirm_new
+        {
+            return;
+        }
+        let Some(project_path) = self.path.as_deref() else {
+            self.edit_status = "Hãy lưu project trước khi nhận dạng hoặc căn lời".into();
+            cx.notify();
+            return;
+        };
+        let project = self.editor.project();
+        if let Some(line) = selected_line {
+            let selected_words = project
+                .words
+                .iter()
+                .filter(|word| word.line == line)
+                .collect::<Vec<_>>();
+            if selected_words.is_empty() {
+                self.edit_status = "Không tìm thấy câu đang chọn để căn lại".into();
+                cx.notify();
+                return;
+            }
+            if selected_words.iter().any(|word| word.locked == Some(true)) {
+                self.edit_status = "Câu này đang khóa. Mở khóa trước khi căn lại".into();
+                cx.notify();
+                return;
+            }
+            if selected_words.len() > 500 {
+                self.edit_status = "Câu đang chọn quá dài để căn lại cùng lúc".into();
+                cx.notify();
+                return;
+            }
+        } else if project.words.iter().any(|word| word.locked == Some(true)) {
+            self.edit_status =
+                "Mở khóa các câu đã khóa trước khi nhận lời và căn lại toàn bài".into();
+            cx.notify();
+            return;
+        }
+        let Some(reference_path) = project_audio_file(
+            self.editor.project(),
+            Some(project_path),
+            AudioSlot::Reference,
+        ) else {
+            self.edit_status = "Project chưa có bản hát hợp lệ để nhận dạng".into();
+            cx.notify();
+            return;
+        };
+        let worker_script = match ai_worker_script() {
+            Ok(path) => path,
+            Err(error) => {
+                self.edit_status = error;
+                cx.notify();
+                return;
+            }
+        };
+        let python = std::env::var("VIETKARA_PYTHON").unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "python".into()
+            } else {
+                "python3".into()
+            }
+        });
+        let data_root = ai_data_root(&worker_script);
+        let project_id = self.editor.project().id.clone();
+        let base_project = self.editor.project().clone();
+        let base_text = base_project.text.clone();
+        let base_words = base_project.words.clone();
+        let region = selected_line.map(|line| {
+            let start = base_words
+                .iter()
+                .filter(|word| word.line == line)
+                .map(|word| word.start)
+                .fold(f64::INFINITY, f64::min);
+            let mut end = base_words
+                .iter()
+                .filter(|word| word.line == line)
+                .map(|word| word.end)
+                .fold(0.0_f64, f64::max);
+            let start = (start - 1.2).max(0.0);
+            end += 1.2;
+            if let Some(duration) = base_project
+                .reference
+                .as_ref()
+                .and_then(|reference| reference.get("duration"))
+                .and_then(Value::as_f64)
+                .filter(|duration| *duration > 0.0)
+            {
+                end = end.min(duration);
+            }
+            serde_json::json!({"start":start,"end":end})
+        });
+        if region.as_ref().is_some_and(|region| {
+            let start = region.get("start").and_then(Value::as_f64).unwrap_or(0.0);
+            let end = region.get("end").and_then(Value::as_f64).unwrap_or(0.0);
+            end - start < 1.0 || end - start > 120.0
+        }) {
+            self.edit_status = "Không đủ âm thanh quanh câu hoặc đoạn căn dài hơn 2 phút".into();
+            cx.notify();
+            return;
+        }
+        let region_lines = selected_line.map(|line| vec![line]);
+        let supplied_lyrics = if let Some(line) = selected_line {
+            base_words
+                .iter()
+                .filter(|word| word.line == line)
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        } else if base_text.trim().is_empty() && !base_words.is_empty() {
+            vietkara_domain::lyrics::text_from_words(&base_words)
+        } else {
+            base_text.clone()
+        };
+        let align = !supplied_lyrics.trim().is_empty();
+        let operation = if selected_line.is_some() {
+            "căn lại câu"
+        } else if align {
+            "căn lời"
+        } else {
+            "nhận lời"
+        };
+        let kind = if selected_line.is_some() {
+            AiKind::AlignRegion
+        } else if align {
+            AiKind::Align
+        } else {
+            AiKind::Recognize
+        };
+        let config = WorkerConfig::new(python)
+            .arg(worker_script.to_string_lossy().into_owned())
+            .env("OBS_DATA_DIR", data_root.to_string_lossy().into_owned())
+            .timeout(std::time::Duration::from_secs(30 * 60));
+        let device_preference = self.ai_device_preference.clone();
+        let whisper_model = self.ai_model.clone();
+        let reference_path = reference_path.to_path_buf();
+        self.sync_running = true;
+        self.lyrics_ai_running = true;
+        self.sync_progress = 0.0;
+        self.sync_cancel = None;
+        let cancel_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.lyrics_ai_cancel_request = Some(cancel_requested.clone());
+        self.pending_lyrics_ai = None;
+        self.edit_status = format!("Đang chuẩn bị vocal để {operation}…");
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let thread_cancel_requested = cancel_requested.clone();
+            let worker_project_id = project_id.clone();
+            let worker_reference_path = reference_path.clone();
+            let worker_base_project = base_project.clone();
+            let worker_region_lines = region_lines.clone();
+            let worker_thread = std::thread::Builder::new()
+                .name("vietkara-lyrics-ai".into())
+                .spawn(move || {
+                    let cancel_requested = thread_cancel_requested;
+                    let result = (|| -> Result<(Vec<Word>, String, String), String> {
+                        let (vocal_path, fingerprint) = ensure_cached_vocal(
+                            VocalCacheRequest {
+                                config: &config,
+                                project_id: &worker_project_id,
+                                reference_path: &worker_reference_path,
+                                data_root: &data_root,
+                                device: &device_preference,
+                            },
+                            &cancel_requested,
+                            |cancel| { let _ = sender.send(LyricsAiEvent::Started(cancel)); },
+                            |progress, message| {
+                                let _ = sender.send(LyricsAiEvent::Progress(progress, message.to_owned()));
+                            },
+                        )?;
+                        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err("Đã hủy nhận dạng/căn lời".into());
+                        }
+                        let mut options = serde_json::json!({
+                            "model": whisper_model.clone(),
+                            "language": std::env::var("VIETKARA_AI_LANGUAGE").unwrap_or_else(|_| "vi".into()),
+                            "device": device_preference,
+                            "data_root": data_root,
+                        });
+                        if align { options["lyrics"] = Value::String(supplied_lyrics); }
+                        if let Some(region) = region { options["region"] = region; }
+                        let request = AiRequest::new(
+                            kind,
+                            worker_project_id.clone(),
+                            serde_json::json!({"vocals": vocal_path}),
+                            options,
+                        );
+                        let mut worker = Worker::spawn(config, request)
+                            .map_err(|error| error.to_string())?;
+                        let cancel = worker.cancel_flag();
+                        let _ = sender.send(LyricsAiEvent::Started(cancel.clone()));
+                        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        let result = worker.run(|progress, message| {
+                            let _ = sender.send(LyricsAiEvent::Progress(
+                                40.0 + progress.clamp(0.0, 100.0) * 0.6,
+                                message.to_owned(),
+                            ));
+                        }).map_err(|error| error.to_string())?;
+                        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                            return Err("Đã hủy nhận dạng/căn lời".into());
+                        }
+                        let fingerprint_after = vietkara_storage::sha256_file(&worker_reference_path)
+                            .map_err(|error| format!("Không kiểm tra lại được bản hát: {error}"))?;
+                        if fingerprint_after != fingerprint {
+                            return Err("File bản hát đã đổi trong lúc phân tích; hãy chạy lại".into());
+                        }
+                        let (words, text) = build_ai_lyrics_candidate(
+                            &result,
+                            &worker_base_project,
+                            worker_region_lines.as_deref(),
+                        )?;
+                        Ok((words, text, fingerprint))
+                    })();
+                    let _ = sender.send(LyricsAiEvent::Finished(result));
+                });
+            if let Err(error) = worker_thread {
+                let _ = this.update(cx, |this, cx| {
+                    this.sync_running = false;
+                    this.lyrics_ai_running = false;
+                    this.lyrics_ai_cancel_request = None;
+                    this.sync_cancel = None;
+                    this.edit_status = format!("Không khởi chạy được AI nhận dạng/căn lời: {error}");
+                    cx.notify();
+                });
+                return;
+            }
+            let mut finished = false;
+            while !finished {
+                Timer::after(std::time::Duration::from_millis(100)).await;
+                loop {
+                    match receiver.try_recv() {
+                        Ok(LyricsAiEvent::Started(cancel)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                if this.lyrics_ai_cancel_request.as_ref().is_some_and(|requested| {
+                                    requested.load(std::sync::atomic::Ordering::SeqCst)
+                                }) {
+                                    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                this.sync_cancel = Some(cancel);
+                                cx.notify();
+                            });
+                        }
+                        Ok(LyricsAiEvent::Progress(progress, message)) => {
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_progress = progress.clamp(0.0, 100.0);
+                                this.edit_status = format!("{message} · {:.0}%", progress);
+                                cx.notify();
+                            });
+                        }
+                        Ok(LyricsAiEvent::Finished(result)) => {
+                            finished = true;
+                            let result = if cancel_requested
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                            {
+                                Err("Đã hủy nhận dạng/căn lời".into())
+                            } else {
+                                result
+                            };
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.lyrics_ai_running = false;
+                                this.lyrics_ai_cancel_request = None;
+                                this.sync_cancel = None;
+                                match result {
+                                    Ok((words, text, reference_sha256))
+                                        if this.editor.project().id == project_id
+                                            && this.editor.project().text == base_text
+                                            && words_match_snapshot(&this.editor.project().words, &base_words)
+                                            && this.path.as_deref().is_some_and(|path| {
+                                                project_audio_file(this.editor.project(), Some(path), AudioSlot::Reference)
+                                                    == Some(reference_path.clone())
+                                            }) =>
+                                    {
+                                        let changed_words = region_lines.as_ref().map_or(words.len(), |lines| {
+                                            words.iter().filter(|word| lines.contains(&word.line)).count()
+                                        });
+                                        this.pending_lyrics_ai = Some(PendingLyricsAi {
+                                            project_id: project_id.clone(),
+                                            reference_path: reference_path.clone(),
+                                            reference_sha256,
+                                            base_text: base_text.clone(),
+                                            base_words: base_words.clone(),
+                                            text,
+                                            words,
+                                            changed_words,
+                                            operation,
+                                        });
+                                        this.edit_status = format!("Đã {operation} {changed_words} từ; xem trước rồi xác nhận để thay project");
+                                    }
+                                    Ok(_) => this.edit_status = "Project, lời hoặc file bản hát đã đổi; bỏ kết quả AI cũ".into(),
+                                    Err(error) => this.edit_status = error,
+                                }
+                                cx.notify();
+                            });
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            finished = true;
+                            let _ = this.update(cx, |this, cx| {
+                                this.sync_running = false;
+                                this.lyrics_ai_running = false;
+                                this.lyrics_ai_cancel_request = None;
+                                this.sync_cancel = None;
+                                this.edit_status = "Worker nhận dạng/căn lời dừng đột ngột, không trả kết quả".into();
+                                cx.notify();
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn accept_lyrics_ai(&mut self, cx: &mut Context<Self>) {
+        let Some(candidate) = self.pending_lyrics_ai.take() else {
+            return;
+        };
+        let source_matches = self.editor.project().id == candidate.project_id
+            && self.editor.project().text == candidate.base_text
+            && words_match_snapshot(&self.editor.project().words, &candidate.base_words)
+            && self.path.as_deref().is_some_and(|path| {
+                project_audio_file(self.editor.project(), Some(path), AudioSlot::Reference)
+                    == Some(candidate.reference_path.clone())
+            });
+        if !source_matches {
+            self.edit_status =
+                "Project, lời hoặc bản hát đã đổi; hãy chạy AI lại trước khi áp dụng".into();
+            cx.notify();
+            return;
+        }
+        let reference_path = candidate.reference_path.clone();
+        let expected_sha256 = candidate.reference_sha256.clone();
+        self.saving = true;
+        self.edit_status = "Đang xác minh bản hát trước khi áp dụng kết quả AI…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let actual_sha256 = cx
+                .background_executor()
+                .spawn(async move {
+                    vietkara_storage::sha256_file(&reference_path)
+                        .map_err(|error| error.to_string())
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                match actual_sha256 {
+                    Ok(actual_sha256) if actual_sha256 == expected_sha256 => {
+                        let still_matches = this.editor.project().id == candidate.project_id
+                            && this.editor.project().text == candidate.base_text
+                            && words_match_snapshot(
+                                &this.editor.project().words,
+                                &candidate.base_words,
+                            )
+                            && this.path.as_deref().is_some_and(|path| {
+                                project_audio_file(
+                                    this.editor.project(),
+                                    Some(path),
+                                    AudioSlot::Reference,
+                                ) == Some(candidate.reference_path.clone())
+                            });
+                        if !still_matches {
+                            this.edit_status =
+                                "Project đã đổi trong lúc kiểm tra; hãy chạy AI lại".into();
+                            cx.notify();
+                            return;
+                        }
+                        let operation = candidate.operation;
+                        let changed_words = candidate.changed_words;
+                        this.edit_status = match this.editor.execute(Command::SetLyrics {
+                            words: candidate.words,
+                            text: candidate.text,
+                        }) {
+                            Ok(_) => {
+                                this.dirty = true;
+                                this.autosave_pending = true;
+                                this.selected_word = None;
+                                format!("Đã áp dụng {operation} cho {changed_words} từ · một bước hoàn tác")
+                            }
+                            Err(error) => error.to_string(),
+                        };
+                    }
+                    Ok(_) => {
+                        this.edit_status =
+                            "File bản hát đã đổi; hãy chạy lại nhận dạng/căn lời".into()
+                    }
+                    Err(error) => {
+                        this.edit_status = format!("Không xác minh được bản hát: {error}")
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn dismiss_lyrics_ai(&mut self, cx: &mut Context<Self>) {
+        if self.pending_lyrics_ai.take().is_some() {
+            self.edit_status = "Đã bỏ kết quả AI; project không thay đổi".into();
+            cx.notify();
+        }
+    }
+
     fn import_lyrics_file(&mut self, is_srt: bool, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.pending_sync.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -2905,9 +4570,12 @@ impl Studio {
             || self.autosaving
             || self.rendering
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.confirm_close
@@ -2930,9 +4598,12 @@ impl Studio {
             || self.autosaving
             || self.rendering
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.confirm_close
@@ -2953,9 +4624,12 @@ impl Studio {
             || self.autosaving
             || self.rendering
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
             || self.confirm_close
@@ -2983,6 +4657,8 @@ impl Studio {
                 self.pending_lyrics = None;
                 self.pending_audio = None;
                 self.pending_sync = None;
+                self.pending_role_suggestion = None;
+                self.pending_lyrics_ai = None;
                 self.background_video_frame = None;
                 self.background_frame_requested_at = -1.0;
                 self.background_frame_pending = false;
@@ -3045,6 +4721,7 @@ impl Studio {
         if self.saving
             || self.autosaving
             || self.sync_running
+            || self.role_suggest_running
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
@@ -3095,6 +4772,8 @@ impl Studio {
                         this.path = Some(path);
                         this.editor = editor;
                         this.pending_sync = None;
+                        this.pending_role_suggestion = None;
+                        this.pending_lyrics_ai = None;
                         this.selected_anchor = None;
                         this.recovery = recovery;
                         this.autosave_pending = false;
@@ -3137,6 +4816,8 @@ impl Studio {
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -3154,6 +4835,8 @@ impl Studio {
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -3215,6 +4898,8 @@ impl Studio {
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -3390,7 +5075,11 @@ impl Studio {
     fn cancel_export(&mut self, cx: &mut Context<Self>) {
         if let Some(cancel) = &self.render_cancel {
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-            self.edit_status = "Đang dừng render…".into();
+            self.edit_status = if self.active_batch {
+                "Đang dừng batch sau mục hiện tại…".into()
+            } else {
+                "Đang dừng render…".into()
+            };
             cx.notify();
         }
     }
@@ -3400,6 +5089,8 @@ impl Studio {
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
+            || self.pending_role_suggestion.is_some()
+            || self.pending_lyrics_ai.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
         {
@@ -3429,6 +5120,8 @@ impl Studio {
                     Ok(()) => {
                         this.path = Some(saved_path);
                         this.pending_sync = None;
+                        this.pending_role_suggestion = None;
+                        this.pending_lyrics_ai = None;
                         this.dirty = false;
                         this.confirm_open = false;
                         this.confirm_new = false;
@@ -3540,6 +5233,275 @@ impl Studio {
     }
 }
 
+fn batch_data_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("OBS_DATA_DIR") {
+        PathBuf::from(path)
+    } else if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        PathBuf::from(local_app_data).join("VietKaraStudio")
+    } else {
+        std::env::current_dir().unwrap_or_default().join("data")
+    }
+}
+
+fn load_latest_batch_record(data_root: &std::path::Path) -> Option<BatchRecord> {
+    let root = data_root.join("batch-renders");
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut records = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| BatchRecord::load(data_root, &entry.file_name().to_string_lossy()).ok())
+        .collect::<Vec<_>>();
+    records.sort_by(|left, right| right.updated_at.total_cmp(&left.updated_at));
+    let mut latest = records
+        .into_iter()
+        .find(|record| record.status != BatchStatus::Done || record.failed > 0)?;
+    if latest.status == BatchStatus::Running {
+        for item in &mut latest.items {
+            if item.status == ItemStatus::Running {
+                item.status = ItemStatus::Queued;
+            }
+        }
+        latest.status = BatchStatus::Cancelled;
+        let _ = latest.save(data_root);
+    }
+    Some(latest)
+}
+
+fn batch_beat_path(project: &Project, project_path: &std::path::Path) -> Result<PathBuf, String> {
+    let name = project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("filename"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .filter(|name| name.file_name().and_then(|value| value.to_str()) == name.to_str())
+        .ok_or_else(|| "Không xác định được file beat trong project".to_owned())?;
+    let parent = project_path
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục project".to_owned())?;
+    let path = parent.join(name);
+    if !path.is_file() {
+        return Err(format!("Không tìm thấy beat: {}", path.display()));
+    }
+    Ok(path)
+}
+
+fn unique_batch_target(directory: &std::path::Path, output_name: &str) -> PathBuf {
+    let original = PathBuf::from(output_name);
+    let stem = original
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("vietkara");
+    let extension = original
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("mp4");
+    let initial = directory.join(output_name);
+    if !initial.exists() {
+        return initial;
+    }
+    for suffix in 2..100_000 {
+        let candidate = directory.join(format!("{stem} ({suffix}).{extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    directory.join(format!("{stem} {}.{extension}", vietkara_domain::new_id()))
+}
+
+fn unique_batch_target_for_record(
+    directory: &std::path::Path,
+    output_name: &str,
+    items: &[BatchItem],
+) -> PathBuf {
+    let reserved = |candidate: &std::path::Path| {
+        let candidate = candidate.to_string_lossy().to_lowercase();
+        items.iter().any(|item| {
+            item.variant
+                .get("output_path")
+                .and_then(Value::as_str)
+                .is_some_and(|path| path.to_lowercase() == candidate)
+        })
+    };
+    let first = unique_batch_target(directory, output_name);
+    if !reserved(&first) {
+        return first;
+    }
+    let output = PathBuf::from(output_name);
+    let stem = output
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("vietkara");
+    let extension = output
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("mp4");
+    for suffix in 2..100_000 {
+        let candidate = directory.join(format!("{stem} ({suffix}).{extension}"));
+        if !candidate.exists() && !reserved(&candidate) {
+            return candidate;
+        }
+    }
+    directory.join(format!("{stem} {}.{extension}", vietkara_domain::new_id()))
+}
+
+fn prepare_batch_item(
+    project_path: PathBuf,
+    record: &mut BatchRecord,
+    cache: &mut preview::PreviewLayoutCache,
+    text_system: &gpui::WindowTextSystem,
+) -> Result<PreparedBatchRender, String> {
+    let project_path = std::fs::canonicalize(&project_path).map_err(|error| error.to_string())?;
+    let project =
+        vietkara_storage::load_project(&project_path).map_err(|error| error.to_string())?;
+    let _duration = project
+        .beat
+        .as_ref()
+        .and_then(|beat| beat.get("duration"))
+        .and_then(Value::as_f64)
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .ok_or_else(|| "Project chưa có beat hợp lệ để xuất video".to_owned())?;
+    let beat_path = batch_beat_path(&project, &project_path)?;
+    let project_hash =
+        vietkara_storage::sha256_file(&project_path).map_err(|error| error.to_string())?;
+    let directory = project_path
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục project".to_owned())?;
+    let target = unique_batch_target_for_record(
+        directory,
+        &vietkara_render::RenderProfile::from_project(&project).output_name(),
+        &record.items,
+    );
+    let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
+    let index = record.items.len();
+    let render_id = vietkara_domain::new_id();
+    let snapshot_directory = batch_data_root()
+        .join("batch-renders")
+        .join(&record.id)
+        .join("items")
+        .join(&render_id);
+    std::fs::create_dir_all(&snapshot_directory).map_err(|error| error.to_string())?;
+    let snapshot_path = snapshot_directory.join("project.json");
+    if let Err(error) =
+        vietkara_storage::copy::save_project_copy(&project, Some(&project_path), &snapshot_path)
+    {
+        let _ = std::fs::remove_dir_all(&snapshot_directory);
+        return Err(error.to_string());
+    }
+    let snapshot_project_hash =
+        vietkara_storage::sha256_file(&snapshot_path).map_err(|error| error.to_string())?;
+    let snapshot_media_paths = vietkara_storage::managed_media(&snapshot_directory);
+    let mut snapshot_media = serde_json::Map::new();
+    for path in &snapshot_media_paths {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "Tên file media snapshot không hợp lệ".to_owned())?;
+        let hash = vietkara_storage::sha256_file(path).map_err(|error| error.to_string())?;
+        snapshot_media.insert(name.to_owned(), Value::String(hash));
+    }
+    let beat_name = beat_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if !snapshot_media.contains_key(beat_name) {
+        return Err("Không tạo được snapshot beat cho hàng đợi".into());
+    }
+    record.items.push(BatchItem {
+        project_id: project.id.clone(),
+        render_id,
+        name: project.name.clone(),
+        variant: serde_json::json!({
+            "source_project_path": project_path,
+            "source_project_sha256": project_hash,
+            "snapshot_project_path": snapshot_path,
+            "snapshot_project_sha256": snapshot_project_hash,
+            "snapshot_media": snapshot_media,
+            "output_path": target,
+        }),
+        directory: directory.to_string_lossy().into_owned(),
+        assets: snapshot_media_paths
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect(),
+        status: ItemStatus::Queued,
+        result: None,
+        error: None,
+    });
+    Ok(PreparedBatchRender {
+        index,
+        project,
+        project_path,
+        target,
+        plan,
+    })
+}
+
+fn prepare_resumed_batch_item(
+    index: usize,
+    item: &BatchItem,
+    project_path: PathBuf,
+    cache: &mut preview::PreviewLayoutCache,
+    text_system: &gpui::WindowTextSystem,
+) -> Result<PreparedBatchRender, String> {
+    let _source_project_path = project_path;
+    let project_path = item
+        .variant
+        .get("snapshot_project_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| "Thiếu project snapshot trong hàng đợi".to_owned())?;
+    let project_path = std::fs::canonicalize(&project_path).map_err(|error| error.to_string())?;
+    let expected_project_hash = item
+        .variant
+        .get("snapshot_project_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Thiếu fingerprint project snapshot".to_owned())?;
+    let actual_project_hash =
+        vietkara_storage::sha256_file(&project_path).map_err(|error| error.to_string())?;
+    if actual_project_hash != expected_project_hash {
+        return Err("Project snapshot của batch bị thay đổi".into());
+    }
+    let snapshot_directory = project_path
+        .parent()
+        .ok_or_else(|| "Không xác định được thư mục snapshot".to_owned())?;
+    let media_fingerprints = item
+        .variant
+        .get("snapshot_media")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Thiếu fingerprint media snapshot".to_owned())?;
+    for (name, expected_hash) in media_fingerprints {
+        if PathBuf::from(name)
+            .file_name()
+            .and_then(|value| value.to_str())
+            != Some(name.as_str())
+        {
+            return Err("Tên media snapshot không hợp lệ".into());
+        }
+        let media_path = snapshot_directory.join(name);
+        let actual_hash =
+            vietkara_storage::sha256_file(&media_path).map_err(|error| error.to_string())?;
+        if actual_hash != expected_hash.as_str().unwrap_or_default() {
+            return Err(format!("Media snapshot bị thay đổi: {name}"));
+        }
+    }
+    let project =
+        vietkara_storage::load_project(&project_path).map_err(|error| error.to_string())?;
+    let target = item
+        .variant
+        .get("output_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| "Thiếu đường dẫn đầu ra trong hàng đợi".to_owned())?;
+    let plan = preview::cached_display_plan(cache, &project, &project.words, text_system).clone();
+    Ok(PreparedBatchRender {
+        index,
+        project,
+        project_path,
+        target,
+        plan,
+    })
+}
+
 impl Render for Studio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let credit_input_value = self
@@ -3557,7 +5519,9 @@ impl Render for Studio {
                 cx.notify();
             });
         }
+        let font_query = self.font_query_input.read(cx).value().to_lowercase();
         let viewport_width = f32::from(window.viewport_size().width);
+        let layout_mode = workspace_mode(viewport_width);
         let workspace = self
             .workspace_layout
             .unwrap_or_else(|| workspace_size(viewport_width));
@@ -3627,6 +5591,25 @@ impl Render for Studio {
         let selected_scene_exists = self.editor.project().scenes.iter().any(|scene| {
             scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())
         });
+        let selected_scene_image_exists = self
+            .path
+            .as_ref()
+            .and_then(|path| path.parent())
+            .and_then(|directory| {
+                self.editor
+                    .project()
+                    .scenes
+                    .iter()
+                    .find(|scene| {
+                        scene.get("section_name").and_then(Value::as_str)
+                            == Some(selected_section.as_str())
+                    })
+                    .and_then(|scene| scene.get("id"))
+                    .and_then(Value::as_str)
+                    .filter(|id| vietkara_domain::is_hex32(id))
+                    .map(|id| directory.join(format!("scene_{id}.png")))
+            })
+            .is_some_and(|path| path.is_file());
         let selected_scene_contrast = self
             .editor
             .project()
@@ -4505,9 +6488,13 @@ impl Render for Studio {
             .on_action(cx.listener(|this, _: &NewProject, _, cx| this.new_project(cx)))
             .on_action(cx.listener(|this, _: &ExportVideo, window, cx| this.export_video(window, cx)))
             .on_action(cx.listener(|this, _: &CancelExport, _, cx| this.cancel_export(cx)))
+            .on_action(cx.listener(|this, _: &BatchRender, window, cx| this.start_pending_batch(window, cx)))
             .on_action(cx.listener(|this, _: &Open, _, cx| this.open(cx)))
             .on_action(cx.listener(|this, _: &ImportSrt, _, cx| this.import_srt(cx)))
             .on_action(cx.listener(|this, _: &ImportLyrics, _, cx| this.import_plain_lyrics(cx)))
+            .on_action(cx.listener(|this, _: &ImportPreset, _, cx| this.choose_preset(cx)))
+            .on_action(cx.listener(|this, _: &ExportPreset, _, cx| this.export_preset(cx)))
+            .on_action(cx.listener(|this, _: &SavePreset, _, cx| this.save_custom_preset(cx)))
             .on_action(cx.listener(|this, _: &TogglePlayback, _, cx| this.transport(0,cx)))
             .on_action(cx.listener(|this, _: &StopPlayback, _, cx| this.transport(1,cx)))
             .on_action(cx.listener(|this, _: &SeekBack, _, cx| this.transport(2,cx)))
@@ -4539,13 +6526,38 @@ impl Render for Studio {
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.import_srt(cx))))
                     .child(div().cursor_pointer().px_3().child("Mở project")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.open(cx))))
+                    .child(div().cursor_pointer().px_3().child("Nhập preset")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.choose_preset(cx))))
+                    .child(div().cursor_pointer().px_3().child("Xuất preset")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.export_preset(cx))))
+                    .child(div().cursor_pointer().px_3().child("Lưu preset")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.save_custom_preset(cx))))
+                    .child(div().cursor_pointer().px_3().child(format!("Preset ({})", self.bundled_presets.len() + self.custom_presets.len()))
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_preset_catalog(cx))))
+                    .child(div().cursor_pointer().px_3().child(if self.diagnostics_running {"Đang chẩn đoán…"} else {"Chẩn đoán"})
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.run_diagnostics(cx))))
+                    .child(div().cursor_pointer().px_3().child("Cập nhật")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.run_updater(cx))))
                     .child(div().cursor_pointer().px_3().child(if self.rendering {
-                        format!("Hủy xuất ({:.0}%)", self.render_progress * 100.0)
+                        format!("Hủy {} ({:.0}%)", if self.active_batch { "batch" } else { "xuất" }, self.render_progress * 100.0)
                     } else { "Xuất video".into() })
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| {
                             if this.rendering { this.cancel_export(cx); }
                             else { this.export_video(window,cx); }
                         })))
+                    .child(div().cursor_pointer().px_3().child(if self.pending_batch_projects.is_empty() {
+                        "Chọn project batch".to_owned()
+                    } else {
+                        format!("Chọn lại ({} project)", self.pending_batch_projects.len())
+                    }).on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| this.choose_batch_projects(cx))))
+                    .when(!self.pending_batch_projects.is_empty() && !self.rendering, |bar| bar.child(
+                        div().cursor_pointer().px_3().child("Bắt đầu batch")
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| this.start_pending_batch(window, cx)))
+                    ))
+                    .when(!self.rendering && self.batch_record.as_ref().is_some_and(|record| record.status != BatchStatus::Done || record.failed > 0), |bar| bar.child(
+                        div().cursor_pointer().px_3().child("Tiếp tục batch")
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| this.resume_batch(window, cx)))
+                    ))
                     .child(
                         div()
                             .cursor_pointer()
@@ -4556,6 +6568,89 @@ impl Render for Studio {
                             )
                             .child("Lưu project"),
                     ),
+            )
+            .when(self.show_preset_catalog, |root| root.child(
+                div().id("preset-catalog").h(px(260.)).overflow_y_scroll().flex().flex_col().gap_1().p_2()
+                    .bg(rgb(theme::SURFACE)).border_b_1().border_color(rgb(theme::BORDER))
+                    .child(div().px_2().py_1().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("THƯ VIỆN CỦA TÔI · lưu trong dữ liệu ứng dụng"))
+                    .children(self.custom_presets.iter().map(|stored| {
+                        let id = stored.id.clone();
+                        let name = stored.preset.name.clone();
+                        let description = stored.preset.description.clone();
+                        let preset = stored.preset.clone();
+                        let confirm_delete = self.pending_preset_delete.as_deref() == Some(id.as_str());
+                        div().flex().items_center().gap_2().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_2()
+                            .child(div().flex_1().child(div().text_size(px(13.)).child(name))
+                                .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(description)))
+                            .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).px_2().py_1().child("Dùng")
+                                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.preview_preset(preset.clone(), cx))))
+                            .when(confirm_delete, |row| row
+                                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::DANGER)).px_2().py_1().child("Xác nhận xóa")
+                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.delete_custom_preset(cx))))
+                                .child(div().cursor_pointer().px_2().py_1().child("Hủy")
+                                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.cancel_delete_preset(cx)))))
+                            .when(!confirm_delete, |row| row
+                                .child(div().cursor_pointer().rounded_sm().px_2().py_1().child("Xóa")
+                                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.request_delete_preset(id.clone(), cx)))))
+                    }))
+                    .child(div().px_2().py_1().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("PRESET MẪU"))
+                    .children(self.bundled_presets.iter().map(|preset| {
+                        let preset = preset.clone();
+                        let name = preset.name.clone();
+                        let description = preset.description.clone();
+                        div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER)))
+                            .px_3().py_2()
+                            .child(div().text_size(px(13.)).child(name))
+                            .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child(description))
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.preview_preset(preset.clone(), cx)))
+                    }))
+            ))
+            .when(self.diagnostics_report.is_some(), |root| root.child(
+                div().flex().flex_col().gap_1().p_3().bg(rgb(theme::SURFACE)).border_b_1().border_color(rgb(theme::BORDER))
+                    .child(div().flex().justify_between().items_center()
+                        .child("Chẩn đoán cục bộ · báo cáo không gửi ra mạng")
+                        .child(div().cursor_pointer().px_2().py_1().child("Ẩn")
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.hide_diagnostics(cx)))))
+                    .child(div().id("diagnostics-report").h(px(190.)).overflow_y_scroll().flex().flex_col().gap_1()
+                        .children(self.diagnostics_report.as_deref().unwrap_or_default().lines().map(|line|
+                            div().text_size(px(12.)).child(line.to_owned())
+                        )))
+            ))
+            .when(
+                self.batch_record
+                    .as_ref()
+                    .is_some_and(|record| record.status != BatchStatus::Done || record.failed > 0),
+                |bar| {
+                    let record = self.batch_record.as_ref().expect("batch record checked");
+                    let errors = record
+                        .items
+                        .iter()
+                        .filter(|item| item.status == ItemStatus::Error)
+                        .take(3)
+                        .map(|item| {
+                            format!(
+                                "{}: {}",
+                                item.name,
+                                item.error.as_deref().unwrap_or("Lỗi không rõ")
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    bar.child(
+                        div()
+                            .px_5()
+                            .py_1()
+                            .text_sm()
+                            .child(format!(
+                                "Batch: {}/{} hoàn tất, {} lỗi{}{}",
+                                record.completed,
+                                record.items.len(),
+                                record.failed,
+                                if errors.is_empty() { "" } else { " — " },
+                                errors
+                            )),
+                    )
+                },
             )
             .child(div().flex().gap_3().px_5().py_2()
                 .child(div().cursor_pointer().child("Bắt đầu căn nhịp (Ctrl+T)")
@@ -4568,11 +6663,31 @@ impl Render for Studio {
                     .child(format!("Từ {} / {}",self.tapping.as_ref().map(|s|s.clock.index+1).unwrap_or(0),self.editor.project().words.len()))))
             .child(div().flex().items_center().gap_3().px_5().py_2()
                 .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
-                    .child(if self.sync_running { "Hủy phân tích đồng bộ" } else { "Gợi ý đồng bộ bản hát/beat" })
+                    .child(if self.sync_running && !self.role_suggest_running && !self.lyrics_ai_running { "Hủy phân tích đồng bộ" } else { "Gợi ý đồng bộ bản hát/beat" })
                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.suggest_audio_sync(cx))))
-                .when(self.sync_running,|bar|bar
+                .when(self.sync_running && !self.role_suggest_running && !self.lyrics_ai_running,|bar|bar
                     .child(format!("{:.0}%",self.sync_progress))
-                    .child(self.edit_status.clone())))
+                    .child(self.edit_status.clone()))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
+                    .child(if self.role_suggest_running { "Hủy gợi ý vai hát" } else { "Gợi ý vai Nam/Nữ" })
+                    .opacity(if self.sync_running && !self.role_suggest_running {0.55} else {1.0})
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.suggest_roles(cx))))
+                .when(self.role_suggest_running,|bar|bar
+                    .child(format!("{:.0}%",self.sync_progress))
+                    .child(self.edit_status.clone()))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
+                    .child(if self.lyrics_ai_running { "Hủy nhận dạng / căn lời" } else { "AI nhận dạng / căn lời" })
+                    .opacity(if self.sync_running && !self.lyrics_ai_running {0.55} else {1.0})
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.run_lyrics_ai(None,cx))))
+                .when(self.lyrics_ai_running,|bar|bar
+                    .child(format!("{:.0}%",self.sync_progress))
+                    .child(self.edit_status.clone()))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
+                    .child(format!("AI: {}", if self.ai_device_preference == "auto" { "Tự động · NVIDIA/CPU" } else { "CPU" }))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.toggle_ai_device(cx))))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SURFACE)).hover(|style|style.bg(rgb(theme::SURFACE_HOVER))).px_3().py_1()
+                    .child(format!("Whisper: {}", self.ai_model))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.cycle_ai_model(cx)))))
             .when(!missing_audio.is_empty(), |root| root.child(
                 div().flex().items_center().gap_3().px_4().py_2().bg(rgb(theme::ACCENT_SURFACE))
                     .child("Thiếu file audio trong thư mục project:")
@@ -4618,6 +6733,30 @@ impl Render for Studio {
                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.accept_sync_suggestion(cx))))
                 .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1().child("Bỏ gợi ý")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.dismiss_sync_suggestion(cx))))))
+            .when(self.pending_role_suggestion.is_some(), |root| root.child(div().flex().items_center().gap_3().p_3().bg(rgb(theme::ACCENT_SURFACE))
+                .child(format!("Gợi ý phân vai · Nam {} · Nữ {} · Cùng hát {} · chưa rõ {} · {}",
+                    self.pending_role_suggestion.as_ref().and_then(|item|item.result.get("male")).and_then(Value::as_u64).unwrap_or(0),
+                    self.pending_role_suggestion.as_ref().and_then(|item|item.result.get("female")).and_then(Value::as_u64).unwrap_or(0),
+                    self.pending_role_suggestion.as_ref().and_then(|item|item.result.get("shared")).and_then(Value::as_u64).unwrap_or(0),
+                    self.pending_role_suggestion.as_ref().and_then(|item|item.result.get("uncertain")).and_then(Value::as_u64).unwrap_or(0),
+                    self.pending_role_suggestion.as_ref().and_then(|item|item.result.get("method")).and_then(Value::as_str).unwrap_or("cao độ vocal")))
+                .child("Chỉ áp dụng sau khi xác nhận; từ đã khóa được giữ nguyên.")
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SUCCESS_ACTIVE)).px_3().py_1().child("Áp dụng vai · một bước hoàn tác")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.accept_role_suggestion(cx))))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1().child("Bỏ gợi ý")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.dismiss_role_suggestion(cx))))))
+            .when(self.pending_lyrics_ai.is_some(), |root| root.child(div().flex().items_center().gap_3().p_3().bg(rgb(theme::ACCENT_SURFACE))
+                .child(format!("Xem trước {} · {} từ sẽ thay · {} từ cần rà trong project · {} câu",
+                    self.pending_lyrics_ai.as_ref().map(|item|item.operation).unwrap_or("AI"),
+                    self.pending_lyrics_ai.as_ref().map(|item|item.changed_words).unwrap_or(0),
+                    self.pending_lyrics_ai.as_ref().map(|item|item.words.iter().filter(|word|word.estimated).count()).unwrap_or(0),
+                    self.pending_lyrics_ai.as_ref().map(|item|item.words.iter().map(|word|word.line).collect::<std::collections::HashSet<_>>().len()).unwrap_or(0)))
+                .child(self.pending_lyrics_ai.as_ref().map(|item|item.text.chars().take(240).collect::<String>()).unwrap_or_default())
+                .child("Project chưa bị thay; xác nhận mới ghi lời và mốc.")
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SUCCESS_ACTIVE)).px_3().py_1().child(format!("Áp dụng {} · một bước hoàn tác",self.pending_lyrics_ai.as_ref().map(|item|item.operation).unwrap_or("AI")))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.accept_lyrics_ai(cx))))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1().child("Bỏ kết quả")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.dismiss_lyrics_ai(cx))))))
             .when(self.confirm_close, |root| root.child(div().flex().gap_3().p_3()
                 .child("Project chưa lưu. Lưu trước khi đóng hoặc chọn đóng không lưu.")
                 .child(div().cursor_pointer().px_3().child("Lưu và đóng")
@@ -4887,7 +7026,11 @@ impl Render for Studio {
                             )
                             .child(
                                 div()
-                                    .h(px(390.))
+                                    .h(px(match layout_mode {
+                                        WorkspaceMode::Compact => 260.,
+                                        WorkspaceMode::Standard => 320.,
+                                        WorkspaceMode::Wide => 390.,
+                                    }))
                                     .bg(rgb(theme::SURFACE))
                                     .rounded_md()
                                     .p_3()
@@ -4944,6 +7087,13 @@ impl Render for Studio {
                                     })))
                             .when(!self.inspector_design,|panel|panel
                             .child("TỪ ĐANG CHỌN")
+                            .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::ACCENT_SURFACE)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                .child("AI căn lại câu này · giữ các câu khác")
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                                    let line=this.selected_word.as_ref().and_then(|id|this.editor.project().words.iter().find(|word|&word.id==id)).map(|word|word.line);
+                                    if let Some(line)=line { this.run_lyrics_ai(Some(line),cx); }
+                                    else { this.edit_status="Chọn một từ trong câu cần căn lại trước".into();cx.notify(); }
+                                })))
                             .child(div().mt_3().child("Lời bài hát"))
                             .child(
                                 div()
@@ -4967,8 +7117,11 @@ impl Render for Studio {
                                 .child("Chọn loại section scene tiếp theo")
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.set_selected_scene_section(cx))))
                             .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::SUCCESS)).px_2().py_2()
-                                .child(if selected_scene_exists {"Thay ảnh scene cho section"} else {"＋  Nạp ảnh scene cho section"})
+                                .child(if selected_scene_image_exists {"Thay ảnh scene cho section"} else {"＋  Nạp ảnh scene cho section"})
                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.choose_scene_image(cx))))
+                            .when(selected_scene_image_exists, |panel| panel.child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                .child("Bỏ ảnh nền scene (giữ trang trí)")
+                                .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.remove_scene_image(cx)))))
                             .when(selected_scene_exists, |panel| panel
                                 .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                     .child(if self.editor.project().scenes.iter().find(|scene| scene.get("section_name").and_then(Value::as_str) == Some(selected_section.as_str())).and_then(|scene| scene.get("transition")).and_then(Value::as_str) == Some("cut") {"Chuyển cảnh: cắt thẳng"} else {"Chuyển cảnh: mờ 0,6 giây"})
@@ -5074,6 +7227,26 @@ impl Render for Studio {
                                         this.edit_status=match this.editor.execute(Command::SetSettings(settings)){Ok(_)=>{this.dirty=true;this.autosave_pending=true;"Đã đổi khung hình • chưa lưu".into()},Err(error)=>error.to_string()};cx.notify();
                                     })))
                                 .child(div().mt_3().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("PHÔNG CHỮ"))
+                                .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
+                                    .child(if self.show_font_catalog {"Ẩn thư viện font".to_owned()} else {format!("Chọn font · {} mẫu", self.font_catalog.len())})
+                                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.toggle_font_catalog(cx))))
+                                .when(self.show_font_catalog, |panel| panel
+                                    .child(self.font_query_input.clone())
+                                    .child(div().id("font-family-list").h(px(230.)).overflow_y_scroll().flex().flex_col().gap_1().mt_1()
+                                        .children(self.font_catalog.iter().enumerate()
+                                            .filter(|(_, family)| font_query.is_empty() || family.family.to_lowercase().contains(&font_query))
+                                            .map(|(index, family)| {
+                                                let name = family.family.clone();
+                                                let encoding = if family.encoding == "unicode" {"Unicode"} else {"VNI/TCVN3"};
+                                                let selected = settings.font.eq_ignore_ascii_case(&name);
+                                                div().id(("font-family", index)).cursor_pointer().rounded_sm()
+                                                    .bg(rgb(if selected {theme::ACCENT_SURFACE} else {theme::CANVAS}))
+                                                    .hover(|style| style.bg(rgb(theme::SURFACE_HOVER)))
+                                                    .px_2().py_2()
+                                                    .child(div().font_family(name.clone()).text_size(px(14.)).child(name.clone()))
+                                                    .child(div().text_size(px(10.)).text_color(rgb(theme::TEXT_MUTED)).child(encoding))
+                                                    .on_mouse_down(MouseButton::Left,cx.listener(move |this,_,_,cx|this.select_font(name.clone(),cx)))
+                                            }))))
                                 .child(div().mt_2().flex().justify_between().items_center().rounded_sm().bg(rgb(theme::CANVAS)).px_2().py_2()
                                     .child(settings.font.clone())
                                     .child(div().flex().gap_3()
@@ -5154,6 +7327,16 @@ impl Render for Studio {
                                         let enabled=this.editor.project().settings.extra.get("role_icons").and_then(Value::as_bool).unwrap_or(true);
                                         this.update_setting("role_icons",Value::Bool(!enabled),cx);
                                     }))))
+            .when(self.pending_preset.is_some(), |root| root.child(div().flex().items_center().gap_3().p_3().bg(rgb(theme::ACCENT_SURFACE))
+                .child(format!("Preset {} · {} · {} trường thiết lập",
+                    self.pending_preset.as_ref().map(|preset|preset.name.as_str()).unwrap_or(""),
+                    self.pending_preset.as_ref().map(|preset|preset.source.as_str()).unwrap_or(""),
+                    self.pending_preset.as_ref().map(|preset|preset.settings.len()).unwrap_or(0)))
+                .child(self.pending_preset.as_ref().map(|preset|preset.description.clone()).unwrap_or_default())
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::SUCCESS_ACTIVE)).px_3().py_1().child("Áp dụng preset · một bước hoàn tác")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.apply_preset(cx))))
+                .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).px_3().py_1().child("Hủy")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.dismiss_preset(cx))))))
                                 .when(singing_mode == "duet" && role_icons, |panel| panel
                                     .child(div().mt_2().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_2()
                                         .child(format!("Icon Nam: {}", if role_a_icon.contains("green") {"Xanh lá"} else {"Xanh dương"}))
@@ -5404,6 +7587,166 @@ fn ai_data_root(worker_script: &std::path::Path) -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("data"))
 }
 
+fn publish_cache_file(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    if destination.is_file() {
+        return Ok(());
+    }
+    match std::fs::hard_link(source, destination) {
+        Ok(()) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(_) => {}
+    }
+    let mut input = std::fs::File::open(source)?;
+    let parent = destination
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut staged_path = None;
+    let mut output = None;
+    for attempt in 0..8u8 {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let candidate = parent.join(format!(
+            ".vietkara-cache-{}-{nonce}-{attempt}.tmp",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                staged_path = Some(candidate);
+                output = Some(file);
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    let staged_path = staged_path.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "could not reserve a unique cache staging file",
+        )
+    })?;
+    let mut output = output.expect("staging path is set with its open file");
+    if let Err(error) = std::io::copy(&mut input, &mut output) {
+        let _ = std::fs::remove_file(&staged_path);
+        return Err(error);
+    }
+    if let Err(error) = output.sync_all() {
+        let _ = std::fs::remove_file(&staged_path);
+        return Err(error);
+    }
+    drop(output);
+    let publish_result = std::fs::hard_link(&staged_path, destination);
+    let _ = std::fs::remove_file(&staged_path);
+    match publish_result {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+struct VocalCacheRequest<'a> {
+    config: &'a WorkerConfig,
+    project_id: &'a str,
+    reference_path: &'a std::path::Path,
+    data_root: &'a std::path::Path,
+    device: &'a str,
+}
+
+fn ensure_cached_vocal(
+    cache_request: VocalCacheRequest<'_>,
+    cancel_requested: &std::sync::atomic::AtomicBool,
+    mut started: impl FnMut(std::sync::Arc<std::sync::atomic::AtomicBool>),
+    mut progress: impl FnMut(f32, &str),
+) -> Result<(PathBuf, String), String> {
+    let fingerprint = vietkara_storage::sha256_file(cache_request.reference_path)
+        .map_err(|error| format!("Không đọc được fingerprint bản hát: {error}"))?;
+    let cache_directory = cache_request.data_root.join("role-vocals");
+    std::fs::create_dir_all(&cache_directory)
+        .map_err(|error| format!("Không tạo được cache vocal: {error}"))?;
+    let vocal_path = cache_directory.join(format!("{fingerprint}.wav"));
+    if !vocal_path.is_file() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temporary_vocal =
+            std::env::temp_dir().join(format!("vietkara-role-{}-{unique}.wav", std::process::id()));
+        let separate_request = AiRequest::new(
+            AiKind::Separate,
+            cache_request.project_id,
+            serde_json::json!({
+                "reference": cache_request.reference_path,
+                "output": temporary_vocal,
+            }),
+            serde_json::json!({"device": cache_request.device}),
+        );
+        let mut worker = Worker::spawn(cache_request.config.clone(), separate_request)
+            .map_err(|error| error.to_string())?;
+        let cancel = worker.cancel_flag();
+        started(cancel.clone());
+        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        let separated = worker
+            .run(|percent, message| progress(percent.clamp(0.0, 100.0) * 0.4, message))
+            .map_err(|error| error.to_string());
+        let output_path = match separated {
+            Ok(value) => value
+                .get("vocals")
+                .and_then(Value::as_str)
+                .map(PathBuf::from)
+                .filter(|path| path.is_file())
+                .ok_or_else(|| "Tách vocal không tạo được file đầu ra".to_owned()),
+            Err(error) => Err(error),
+        };
+        let output_path = match output_path {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = std::fs::remove_file(&temporary_vocal);
+                return Err(error);
+            }
+        };
+        if output_path != temporary_vocal {
+            let _ = std::fs::remove_file(&temporary_vocal);
+            return Err("Worker trả đường dẫn vocal khác với file tạm được yêu cầu".into());
+        }
+        if cancel_requested.load(std::sync::atomic::Ordering::SeqCst) {
+            let _ = std::fs::remove_file(&temporary_vocal);
+            return Err("Đã hủy tách vocal".into());
+        }
+        let fingerprint_after_separation =
+            match vietkara_storage::sha256_file(cache_request.reference_path) {
+                Ok(fingerprint) => fingerprint,
+                Err(error) => {
+                    let _ = std::fs::remove_file(&temporary_vocal);
+                    return Err(format!(
+                        "Không kiểm tra lại được bản hát sau khi tách vocal: {error}"
+                    ));
+                }
+            };
+        if fingerprint_after_separation != fingerprint {
+            let _ = std::fs::remove_file(&temporary_vocal);
+            return Err("File bản hát đã đổi trong lúc tách vocal; hãy chạy lại".into());
+        }
+        if let Err(error) = publish_cache_file(&output_path, &vocal_path) {
+            let _ = std::fs::remove_file(&temporary_vocal);
+            return Err(format!("Không lưu được vocal đã tách vào cache: {error}"));
+        }
+        let _ = std::fs::remove_file(&temporary_vocal);
+    }
+    Ok((vocal_path, fingerprint))
+}
+
 fn validate_sync_suggestion(project: &Project, result: &Value) -> Result<Vec<Anchor>, String> {
     if result.get("requires_confirmation").and_then(Value::as_bool) != Some(true) {
         return Err("Worker không đánh dấu gợi ý cần xác nhận".into());
@@ -5421,6 +7764,241 @@ fn validate_sync_suggestion(project: &Project, result: &Value) -> Result<Vec<Anc
         .validate()
         .map_err(|error| format!("Danh sách mốc từ worker không hợp lệ: {error}"))?;
     Ok(anchors)
+}
+
+fn role_suggestion_command(
+    words: &[Word],
+    lines: &[u32],
+    result: &Value,
+) -> Result<(Option<Command>, usize), String> {
+    if result.get("two_registers").and_then(Value::as_bool) != Some(true) {
+        let message = match result.get("reason").and_then(Value::as_str) {
+            Some("insufficient_voiced_audio") => "Vocal chưa có đủ đoạn giọng rõ để gợi ý phân vai",
+            Some("overlapping_registers") => {
+                "Cao độ hai vai chưa tách đủ rõ; giữ nguyên phân vai hiện tại"
+            }
+            _ => "Worker không tìm thấy hai nhóm giọng đủ rõ để gợi ý",
+        };
+        return Err(message.into());
+    }
+    let suggested = result
+        .get("roles")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Kết quả phân vai thiếu danh sách vai".to_owned())?;
+    if suggested.len() != lines.len() {
+        return Err("Kết quả phân vai không khớp số dòng lời hiện tại".into());
+    }
+    let mut by_line = std::collections::HashMap::with_capacity(lines.len());
+    for (&line, role) in lines.iter().zip(suggested) {
+        let role = if role.is_null() {
+            None
+        } else {
+            let role = role
+                .as_str()
+                .ok_or_else(|| "Kết quả có vai hát sai định dạng".to_owned())?;
+            if !matches!(role, "male" | "female" | "all") {
+                return Err(format!("Worker trả về vai không hỗ trợ: {role}"));
+            }
+            Some(role.to_owned())
+        };
+        by_line.insert(line, role);
+    }
+
+    let mut suggestible_lines = std::collections::HashMap::new();
+    for word in words {
+        suggestible_lines
+            .entry(word.line)
+            .or_insert(matches!(word.role.as_str(), "all" | "unknown"));
+    }
+    let mut commands = Vec::new();
+    let mut changed_words = 0;
+    for word in words {
+        if word.locked == Some(true) {
+            continue;
+        }
+        if !suggestible_lines.get(&word.line).copied().unwrap_or(false) {
+            continue;
+        }
+        let Some(Some(role)) = by_line.get(&word.line) else {
+            continue;
+        };
+        if word.role == *role {
+            continue;
+        }
+        let mut candidate = word.clone();
+        candidate.role = role.clone();
+        commands.push(Command::ReplaceWord {
+            id: word.id.clone(),
+            word: Box::new(candidate),
+        });
+        changed_words += 1;
+    }
+    Ok((
+        (!commands.is_empty()).then_some(Command::Batch(commands)),
+        changed_words,
+    ))
+}
+
+fn role_application_command(
+    project: &Project,
+    lines: &[u32],
+    result: &Value,
+) -> Result<(Option<Command>, usize), String> {
+    let (Some(Command::Batch(mut commands)), changed_words) =
+        role_suggestion_command(&project.words, lines, result)?
+    else {
+        return Ok((None, 0));
+    };
+    let mut settings = project.settings.clone();
+    settings
+        .extra
+        .insert("singing_mode".into(), Value::String("duet".into()));
+    commands.insert(0, Command::SetSettings(settings));
+    Ok((Some(Command::Batch(commands)), changed_words))
+}
+
+fn words_match_snapshot(current: &[Word], snapshot: &[Word]) -> bool {
+    match (
+        serde_json::to_value(current),
+        serde_json::to_value(snapshot),
+    ) {
+        (Ok(current), Ok(snapshot)) => current == snapshot,
+        _ => false,
+    }
+}
+
+fn build_ai_lyrics_candidate(
+    result: &Value,
+    base_project: &Project,
+    target_lines: Option<&[u32]>,
+) -> Result<(Vec<Word>, String), String> {
+    let base_words = &base_project.words;
+    let raw_words = result
+        .get("words")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Kết quả AI thiếu danh sách từ".to_owned())?;
+    if raw_words.is_empty() {
+        return Err("AI không nhận được từ nào để đưa vào project".into());
+    }
+    if raw_words.len() > vietkara_domain::MAX_WORDS {
+        return Err("Kết quả AI vượt quá giới hạn số từ của project".into());
+    }
+    let base_lines =
+        base_words
+            .iter()
+            .map(|word| word.line)
+            .fold(Vec::<u32>::new(), |mut lines, line| {
+                if !lines.contains(&line) {
+                    lines.push(line);
+                }
+                lines
+            });
+    let result_lines = raw_words
+        .iter()
+        .map(|word| {
+            word.get("line")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| "Kết quả AI thiếu số dòng hợp lệ".to_owned())
+        })
+        .collect::<Result<std::collections::HashSet<_>, _>>()?;
+    let line_targets = target_lines.map(|lines| lines.to_vec()).unwrap_or_else(|| {
+        if base_lines.is_empty() {
+            Vec::new()
+        } else {
+            base_lines.clone()
+        }
+    });
+    if let Some(target_lines) = target_lines {
+        let unique = target_lines
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        if unique.len() != target_lines.len()
+            || target_lines.iter().any(|line| !base_lines.contains(line))
+        {
+            return Err("Danh sách câu cần căn lại không hợp lệ".into());
+        }
+    }
+    if !result_lines.is_empty() {
+        for index in 0..result_lines.len() as u64 {
+            if !result_lines.contains(&index) {
+                return Err("Kết quả AI có số dòng không liên tục".into());
+            }
+        }
+        if !line_targets.is_empty() && result_lines.len() != line_targets.len() {
+            return Err("Kết quả AI không căn đủ số dòng lời hiện tại".into());
+        }
+    }
+    let base_line_first = base_lines
+        .iter()
+        .map(|line| (*line, base_words.iter().find(|word| word.line == *line)))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut generated_line_ids = std::collections::HashMap::<u32, String>::new();
+    let mut words = Vec::with_capacity(raw_words.len());
+    for raw in raw_words {
+        let mut word: Word = serde_json::from_value(raw.clone())
+            .map_err(|error| format!("Từ AI sai định dạng: {error}"))?;
+        if word.text.trim().is_empty()
+            || !word.start.is_finite()
+            || !word.end.is_finite()
+            || word.start < 0.0
+            || word.end <= word.start
+        {
+            return Err("Kết quả AI có từ hoặc mốc thời gian không hợp lệ".into());
+        }
+        let line_index = word.line;
+        if let Some(old_line) = line_targets.get(line_index as usize)
+            && let Some(Some(source)) = base_line_first.get(old_line)
+        {
+            word.line = *old_line;
+            word.role = source.role.clone();
+            word.row = source.row;
+            word.line_uid = source.line_uid.clone();
+            word.section = source.section;
+            word.section_name = source.section_name.clone();
+            word.label_color = source.label_color.clone();
+        }
+        if word.line_uid.is_empty() {
+            let line_uid = generated_line_ids
+                .entry(word.line)
+                .or_insert_with(vietkara_domain::new_id);
+            word.line_uid = line_uid.clone();
+        }
+        word.id = vietkara_domain::new_id();
+        word.locked = None;
+        word.manual = None;
+        words.push(word);
+    }
+    let (words, text) = if let Some(target_lines) = target_lines {
+        let mut combined = Vec::with_capacity(base_words.len() + words.len());
+        for line in &base_lines {
+            if target_lines.contains(line) {
+                combined.extend(words.iter().filter(|word| word.line == *line).cloned());
+            } else {
+                combined.extend(base_words.iter().filter(|word| word.line == *line).cloned());
+            }
+        }
+        let text = vietkara_domain::lyrics::text_from_words(&combined);
+        (combined, text)
+    } else {
+        let text = result
+            .get("text")
+            .and_then(Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| vietkara_domain::lyrics::text_from_words(&words));
+        (words, text)
+    };
+    if text.len() > 300_000 {
+        return Err("Lời nhận dạng vượt quá giới hạn 300.000 byte".into());
+    }
+    let mut candidate = base_project.clone();
+    candidate.words = words.clone();
+    candidate.text = text.clone();
+    candidate
+        .validate()
+        .map_err(|error| format!("Kết quả AI không hợp lệ cho project: {error}"))?;
+    Ok((words, text))
 }
 
 fn audio_slot_missing(
@@ -5979,7 +8557,7 @@ fn main() {
             return;
         }
     };
-    let (recovery, initial_status) = match path
+    let (recovery, mut initial_status) = match path
         .as_ref()
         .map(|path| recovery_candidate(path))
         .transpose()
@@ -5987,7 +8565,23 @@ fn main() {
         Ok(candidate) => (candidate.flatten(), "Sẵn sàng".to_owned()),
         Err(error) => (None, format!("Không đọc được recovery: {error}")),
     };
+    let batch_record = load_latest_batch_record(&batch_data_root());
+    let ai_preferences = ui_preferences::load_ai_preferences();
+    if let Some(record) = &batch_record
+        && record.status != BatchStatus::Done
+    {
+        initial_status = format!(
+            "Có batch cần tiếp tục: {} mục, hoàn tất {}, lỗi {}",
+            record.items.len(),
+            record.completed,
+            record.failed
+        );
+    }
     Application::new().run(move |cx: &mut App| {
+        if let Err(error) = fonts::add_embedded_fonts(cx) {
+            eprintln!("Không nạp được font nhúng: {error}");
+            initial_status = format!("Không nạp được thư viện font: {error}");
+        }
         cx.bind_keys(text_input::key_bindings());
         cx.bind_keys([
             KeyBinding::new("ctrl-b", ImportBeat, Some("Studio")),
@@ -6018,16 +8612,39 @@ fn main() {
                 let word_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 let title_credit_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
                 let section_name_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
+                let font_query_input = cx.new(|cx| text_input::TextInput::new(cx, ""));
+                font_query_input.update(cx, |input, _| input.set_placeholder("Tìm font theo tên"));
                 cx.new(|cx: &mut Context<Studio>| {
                     let weak = cx.entity().downgrade();
                     window.on_window_should_close(cx, move |_, cx| {
                         weak.update(cx, |studio: &mut Studio, cx| {
+                            if studio.rendering {
+                                studio.cancel_export(cx);
+                                studio.edit_status = if studio.active_batch {
+                                    "Đang dừng batch và lưu trạng thái trước khi đóng".into()
+                                } else {
+                                    "Đang dừng xuất video trước khi đóng".into()
+                                };
+                                cx.notify();
+                                return false;
+                            }
                             if studio.sync_running {
                                 if let Some(cancel) = &studio.sync_cancel {
                                     cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                 }
-                                studio.edit_status =
-                                    "Đang dừng phân tích đồng bộ trước khi đóng cửa sổ".into();
+                                if let Some(requested) = &studio.role_suggest_cancel_request {
+                                    requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                if let Some(requested) = &studio.lyrics_ai_cancel_request {
+                                    requested.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                studio.edit_status = if studio.role_suggest_running {
+                                    "Đang dừng gợi ý phân vai trước khi đóng cửa sổ".into()
+                                } else if studio.lyrics_ai_running {
+                                    "Đang dừng nhận dạng/căn lời trước khi đóng cửa sổ".into()
+                                } else {
+                                    "Đang dừng phân tích đồng bộ trước khi đóng cửa sổ".into()
+                                };
                                 cx.notify();
                                 return false;
                             }
@@ -6125,6 +8742,7 @@ fn main() {
                         word_input,
                         title_credit_input,
                         section_name_input,
+                        font_query_input,
                         editor: Editor::new(project).expect("Project mới phải hợp lệ"),
                         edit_status: initial_status,
                         path,
@@ -6133,6 +8751,21 @@ fn main() {
                         rendering: false,
                         render_progress: 0.0,
                         render_cancel: None,
+                        active_batch: false,
+                        pending_batch_projects: Vec::new(),
+                        batch_record: batch_record.clone(),
+                        pending_preset: None,
+                        bundled_presets: presets::bundled(),
+                        custom_presets: presets::load_custom(&batch_data_root())
+                            .unwrap_or_default(),
+                        show_preset_catalog: false,
+                        pending_preset_delete: None,
+                        font_catalog: fonts::families(),
+                        show_font_catalog: false,
+                        diagnostics_running: false,
+                        diagnostics_report: None,
+                        ai_device_preference: ai_preferences.device.clone(),
+                        ai_model: ai_preferences.model.clone(),
                         dirty: false,
                         confirm_open: false,
                         confirm_new: false,
@@ -6141,6 +8774,12 @@ fn main() {
                         sync_progress: 0.0,
                         sync_cancel: None,
                         pending_sync: None,
+                        role_suggest_running: false,
+                        role_suggest_cancel_request: None,
+                        pending_role_suggestion: None,
+                        lyrics_ai_running: false,
+                        lyrics_ai_cancel_request: None,
+                        pending_lyrics_ai: None,
                         close_after_save_window: None,
                         navigate_after_save: None,
                         pending_lyrics: None,
@@ -6189,6 +8828,65 @@ mod workspace_tests {
     use super::*;
 
     #[test]
+    fn batch_target_avoids_overwriting_existing_exports() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("song.mp4"), b"existing").unwrap();
+        assert_eq!(
+            unique_batch_target(dir.path(), "song.mp4"),
+            dir.path().join("song (2).mp4")
+        );
+    }
+
+    #[test]
+    fn batch_target_avoids_paths_already_reserved_by_the_same_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let reserved = BatchItem {
+            project_id: "project".into(),
+            render_id: "render".into(),
+            name: "Song".into(),
+            variant: serde_json::json!({ "output_path": dir.path().join("song.mp4") }),
+            directory: dir.path().to_string_lossy().into_owned(),
+            assets: Vec::new(),
+            status: ItemStatus::Queued,
+            result: None,
+            error: None,
+        };
+        assert_eq!(
+            unique_batch_target_for_record(dir.path(), "song.mp4", &[reserved]),
+            dir.path().join("song (2).mp4")
+        );
+    }
+
+    #[test]
+    fn startup_recovers_running_batch_item_as_queued() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut record = BatchRecord::new(
+            "VietKaraStudio",
+            "batch",
+            &["current".into()],
+            &["beat".into()],
+        )
+        .unwrap();
+        record.status = BatchStatus::Running;
+        record.items.push(BatchItem {
+            project_id: "project".into(),
+            render_id: "render".into(),
+            name: "Bài hát".into(),
+            variant: serde_json::json!({}),
+            directory: dir.path().to_string_lossy().into_owned(),
+            assets: Vec::new(),
+            status: ItemStatus::Running,
+            result: None,
+            error: None,
+        });
+        record.save(dir.path()).unwrap();
+
+        let recovered = load_latest_batch_record(dir.path()).unwrap();
+        assert_eq!(recovered.status, BatchStatus::Cancelled);
+        assert_eq!(recovered.items[0].status, ItemStatus::Queued);
+    }
+
+    #[test]
     fn sync_suggestion_is_advisory_and_validates_anchors_without_mutating_project() {
         let project = Project::new("sync");
         let suggestion = serde_json::json!({
@@ -6210,6 +8908,211 @@ mod workspace_tests {
             "anchors": [{"ref": 1.0, "beat": 3.0}, {"ref": 0.0, "beat": 4.0}],
         });
         assert!(validate_sync_suggestion(&project, &invalid).is_err());
+    }
+
+    #[test]
+    fn role_suggestions_are_two_lane_single_step_and_respect_locked_words() {
+        let words = vec![
+            serde_json::from_value::<Word>(serde_json::json!({
+                "id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","text":"Xin","line":7,
+                "start":0.0,"end":0.4,"role":"all"
+            }))
+            .unwrap(),
+            serde_json::from_value::<Word>(serde_json::json!({
+                "id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","text":"chào","line":7,
+                "start":0.4,"end":0.8,"role":"all","locked":true
+            }))
+            .unwrap(),
+            serde_json::from_value::<Word>(serde_json::json!({
+                "id":"cccccccccccccccccccccccccccccccc","text":"bạn","line":8,
+                "start":1.0,"end":1.4,"role":"female"
+            }))
+            .unwrap(),
+            serde_json::from_value::<Word>(serde_json::json!({
+                "id":"dddddddddddddddddddddddddddddddd","text":"đây","line":9,
+                "start":2.0,"end":2.4,"role":"all"
+            }))
+            .unwrap(),
+        ];
+        let result = serde_json::json!({
+            "two_registers":true,"roles":["male","female","female"],
+        });
+        let mut project = Project::new("roles");
+        project.words = words.clone();
+        let (command, changed) = role_application_command(&project, &[7, 8, 9], &result).unwrap();
+        assert_eq!(changed, 2);
+        let command_for_undo = command.clone().expect("role batch command");
+        let Some(Command::Batch(commands)) = command else {
+            panic!("role suggestions should be one batch command");
+        };
+        let Command::SetSettings(settings) = &commands[0] else {
+            panic!("enabling duet and applying suggestions must share one undo step");
+        };
+        assert_eq!(
+            settings.extra.get("singing_mode").and_then(Value::as_str),
+            Some("duet")
+        );
+        let updated = commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::ReplaceWord { id, word } => Some((id.clone(), word.role.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            updated,
+            [
+                ("a".repeat(32), "male".to_owned()),
+                ("d".repeat(32), "female".to_owned())
+            ]
+        );
+        assert_eq!(words[0].role, "all");
+        assert_eq!(words[1].role, "all");
+        assert_eq!(words[2].role, "female");
+
+        let mut editor = Editor::new(project).unwrap();
+        editor.execute(command_for_undo).unwrap();
+        assert_eq!(editor.project().words[0].role, "male");
+        assert_eq!(
+            editor
+                .project()
+                .settings
+                .extra
+                .get("singing_mode")
+                .and_then(Value::as_str),
+            Some("duet")
+        );
+        editor.undo().unwrap();
+        assert_eq!(editor.project().words[0].role, "all");
+        assert_ne!(
+            editor
+                .project()
+                .settings
+                .extra
+                .get("singing_mode")
+                .and_then(Value::as_str),
+            Some("duet")
+        );
+
+        let unsupported =
+            serde_json::json!({"two_registers":true,"roles":["voice_c","female","all"]});
+        assert!(role_suggestion_command(&words, &[7, 8, 9], &unsupported).is_err());
+    }
+
+    #[test]
+    fn role_vocal_cache_publish_never_overwrites_existing_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.wav");
+        let cache_directory = directory.path().join("cache");
+        let destination = cache_directory.join("cache.wav");
+        std::fs::write(&source, b"new vocal").unwrap();
+        publish_cache_file(&source, &destination).unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new vocal");
+        let cached_entries = std::fs::read_dir(&cache_directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(cached_entries, [std::ffi::OsString::from("cache.wav")]);
+        std::fs::write(&destination, b"prior cache").unwrap();
+        publish_cache_file(&source, &destination).unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), b"prior cache");
+    }
+
+    #[test]
+    fn vocal_cache_reuses_only_the_reference_fingerprint_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let reference = directory.path().join("reference.wav");
+        let data_root = directory.path().join("data");
+        std::fs::write(&reference, b"reference audio").unwrap();
+        let fingerprint = vietkara_storage::sha256_file(&reference).unwrap();
+        let cached = data_root
+            .join("role-vocals")
+            .join(format!("{fingerprint}.wav"));
+        std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
+        std::fs::write(&cached, b"cached vocal").unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let result = ensure_cached_vocal(
+            VocalCacheRequest {
+                config: &WorkerConfig::new("worker-that-must-not-run"),
+                project_id: "project-id",
+                reference_path: &reference,
+                data_root: &data_root,
+                device: "cpu",
+            },
+            &cancel,
+            |_| panic!("cache hit must not start a worker"),
+            |_, _| panic!("cache hit must not report worker progress"),
+        )
+        .unwrap();
+        assert_eq!(result.0, cached);
+        assert_eq!(result.1, fingerprint);
+    }
+
+    #[test]
+    fn ai_lyrics_candidate_validates_words_and_preserves_line_roles() {
+        let mut project = Project::new("AI lyrics");
+        project.words = vec![
+            serde_json::from_value(serde_json::json!({
+                "id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "line_uid":"11111111111111111111111111111111",
+                "text":"Xin","start":0.0,"end":0.4,"line":7,"role":"male","row":0
+            }))
+            .unwrap(),
+            serde_json::from_value(serde_json::json!({
+                "id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "line_uid":"22222222222222222222222222222222",
+                "text":"chào","start":1.0,"end":1.4,"line":12,"role":"female","row":1
+            }))
+            .unwrap(),
+        ];
+        let result = serde_json::json!({
+            "text":"Xin\nchào",
+            "words":[
+                {"text":"Xin","start":0.1,"end":0.5,"line":0,"role":"all","estimated":false},
+                {"text":"chào","start":1.1,"end":1.5,"line":1,"role":"all","estimated":true}
+            ]
+        });
+        let (words, text) = build_ai_lyrics_candidate(&result, &project, None).unwrap();
+        assert_eq!(text, "Xin\nchào");
+        assert_eq!(
+            words.iter().map(|word| word.line).collect::<Vec<_>>(),
+            [7, 12]
+        );
+        assert_eq!(
+            words
+                .iter()
+                .map(|word| word.role.as_str())
+                .collect::<Vec<_>>(),
+            ["male", "female"]
+        );
+        assert_eq!(
+            words.iter().map(|word| word.row).collect::<Vec<_>>(),
+            [Some(0), Some(1)]
+        );
+        assert_ne!(words[0].id, project.words[0].id);
+        assert!(words.iter().all(|word| vietkara_domain::is_hex32(&word.id)));
+
+        project.words[0].locked = Some(true);
+        let region_result = serde_json::json!({
+            "text":"chào lại",
+            "words":[
+                {"text":"chào","start":1.1,"end":1.3,"line":0,"estimated":false},
+                {"text":"lại","start":1.3,"end":1.5,"line":0,"estimated":true}
+            ]
+        });
+        let (region_words, region_text) =
+            build_ai_lyrics_candidate(&region_result, &project, Some(&[12])).unwrap();
+        assert_eq!(region_words.len(), 3);
+        assert_eq!(region_words[0].id, project.words[0].id);
+        assert_eq!(region_words[0].locked, Some(true));
+        assert_eq!(region_words[1].text, "chào");
+        assert_eq!(region_words[2].text, "lại");
+        assert_eq!(region_text, "Xin\nchào lại");
+
+        let malformed = serde_json::json!({
+            "words":[{"text":"Xin","start":0.5,"end":0.2,"line":0}]
+        });
+        assert!(build_ai_lyrics_candidate(&malformed, &Project::new("invalid"), None).is_err());
     }
 
     #[test]

@@ -14,3 +14,4 @@ pub const ACCENT_SURFACE: u32 = 0x34465b;
 pub const ACCENT: u32 = 0x5b9cff;
 pub const SUCCESS: u32 = 0x183226;
 pub const SUCCESS_ACTIVE: u32 = 0x255348;
+pub const DANGER: u32 = 0x7b3038;

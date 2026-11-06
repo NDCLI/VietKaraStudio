@@ -513,6 +513,78 @@ pub fn remove_scene_decoration(
     result.map_err(|error| error.to_string())
 }
 
+/// Remove the scene background image while preserving its settings and any
+/// decoration artwork. A scene with no remaining artwork is removed entirely.
+pub fn remove_scene_image(
+    project: &Project,
+    main: &Path,
+    section: &str,
+) -> Result<ImportedBackground, String> {
+    project.validate().map_err(|error| error.to_string())?;
+    let directory = main
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let index = project
+        .scenes
+        .iter()
+        .position(|scene| {
+            scene
+                .get("section_name")
+                .and_then(serde_json::Value::as_str)
+                == Some(section)
+        })
+        .ok_or_else(|| "Không tìm thấy scene của section".to_owned())?;
+    let id = project.scenes[index]
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| vietkara_domain::is_hex32(id))
+        .ok_or_else(|| "ID scene không hợp lệ".to_owned())?;
+    let path = directory.join(format!("scene_{id}.png"));
+    if !path.is_file() {
+        return Err("Section này chưa có ảnh scene".into());
+    }
+
+    let decoration = directory.join(format!("scene_decoration_{id}.png"));
+    let mut candidate = project.clone();
+    if !decoration.is_file() {
+        candidate.scenes.remove(index);
+    }
+    candidate.validate().map_err(|error| error.to_string())?;
+
+    let temporary = directory.join(format!(
+        ".scene-remove-{id}-{}.png",
+        vietkara_domain::new_id()
+    ));
+    let version = create_version(directory, project, "Trước bỏ ảnh scene")
+        .map_err(|error| error.to_string())?;
+    std::fs::rename(&path, &temporary).map_err(|error| error.to_string())?;
+    if let Err(error) = save_project(&candidate, main) {
+        return match std::fs::rename(&temporary, &path) {
+            Ok(()) => Err(error.to_string()),
+            Err(restore) => Err(format!(
+                "{error}; không khôi phục được ảnh scene: {restore}; bản sao lưu phiên bản {}",
+                version.id
+            )),
+        };
+    }
+    if let Err(error) = std::fs::remove_file(&temporary) {
+        let project_restore = save_project(project, main).err();
+        let image_restore = std::fs::rename(&temporary, &path).err();
+        if project_restore.is_some() || image_restore.is_some() {
+            return Err(format!(
+                "Không xóa được ảnh scene tạm: {error}; rollback project={project_restore:?}, ảnh={image_restore:?}; bản sao lưu phiên bản {}",
+                version.id
+            ));
+        }
+        return Err(error.to_string());
+    }
+    Ok(ImportedBackground {
+        project: candidate,
+        version_id: version.id,
+    })
+}
+
 fn supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -872,6 +944,35 @@ mod tests {
     }
 
     #[test]
+    fn removes_scene_record_and_keeps_image_in_version_snapshot() {
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("project.json");
+        let id = "0123456789abcdef0123456789abcdef";
+        let image = directory.path().join(format!("scene_{id}.png"));
+        let mut project = Project::new("fixture");
+        project.scenes = vec![serde_json::json!({
+            "id": id,
+            "section_name": "chorus",
+            "transition": "fade"
+        })];
+        project.save(&main).unwrap();
+        std::fs::write(&image, b"scene image fixture").unwrap();
+
+        let removed = remove_scene_image(&project, &main, "chorus").unwrap();
+
+        assert!(removed.project.scenes.is_empty());
+        assert!(Project::load(&main).unwrap().scenes.is_empty());
+        assert!(!image.exists());
+        let snapshot = directory
+            .path()
+            .join("versions")
+            .join(&removed.version_id)
+            .join("media")
+            .join(format!("scene_{id}.png"));
+        assert!(snapshot.is_file());
+    }
+
+    #[test]
     fn imports_video_proxy_frame_and_project_metadata() {
         let Ok(ffmpeg) = vietkara_media::find_binary("ffmpeg") else {
             return;
@@ -1140,7 +1241,23 @@ mod tests {
             decorated.project.scenes[0]["decoration_keyframes"][0]["x"],
             50
         );
-        let removed = remove_scene_decoration(&decorated.project, &main, "chorus").unwrap();
+        let removed_scene = remove_scene_image(&decorated.project, &main, "chorus").unwrap();
+        let scene_image = directory.path().join(format!("scene_{id}.png"));
+        assert!(!scene_image.exists());
+        assert!(decoration.is_file());
+        assert_eq!(removed_scene.project.scenes.len(), 1);
+        let scene_snapshot = directory
+            .path()
+            .join("versions")
+            .join(&removed_scene.version_id)
+            .join("media")
+            .join(format!("scene_{id}.png"));
+        assert!(
+            scene_snapshot.is_file(),
+            "pre-removal snapshot keeps scene artwork"
+        );
+
+        let removed = remove_scene_decoration(&removed_scene.project, &main, "chorus").unwrap();
         assert!(!decoration.exists());
         assert!(
             directory

@@ -60,7 +60,7 @@ pub struct RoleIcon {
 fn decode_icon(bytes: &[u8]) -> Option<RoleIcon> {
     let mut image = image::load_from_memory(bytes).ok()?.to_rgba8();
     let quantizer = color_quant::NeuQuant::new(1, 32, image.as_raw());
-    for pixel in image.as_mut().chunks_exact_mut(4) {
+    for pixel in image.as_mut().as_chunks_mut::<4>().0 {
         quantizer.map_pixel(pixel);
     }
     let width = image.width();

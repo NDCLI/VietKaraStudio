@@ -11,9 +11,11 @@ vietkara-storage = { path = "../vietkara-storage" }
 vietkara-media = { path = "../vietkara-media" }
 vietkara-render = { path = "../vietkara-render" }
 vietkara-ai-bridge = { path = "../vietkara-ai-bridge" }
+vietkara-jobs = { path = "../vietkara-jobs" }
 serde_json = "1"
+tempfile = "3"
+rust-embed = "8.13.0"
 unicode-segmentation = "1.10"
 
 
 [dev-dependencies]
-tempfile = "3"

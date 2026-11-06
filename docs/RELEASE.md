@@ -31,3 +31,34 @@ Bản Setup Nuitka có thể nhận gói vá nhỏ qua **Cài đặt → Cập n
 4. Tạo GitHub Release có tag `v<phiên-bản>` rồi tải lên cả `VietKaraStudio-<phiên-bản>-Nuitka-Patch.zip` và tệp `.sha256` đi kèm. App chỉ nhận đúng tên gói này từ release mới nhất.
 
 Khi đổi Python, Nuitka hoặc thư viện AI, phát hành Setup đầy đủ. Tạo Setup đầy đủ bằng `python packaging/build_nuitka.py all`; thao tác đó cập nhật mốc tương thích patch cho các bản vá sau.
+
+## Rust/GPUI preview
+
+Bộ cài Rust/GPUI dùng AppId và thư mục riêng để cài song song với bản Python.
+Updater trong bản Setup chỉ nhận stable GitHub Release có tag `vMAJOR.MINOR.PATCH`,
+`downloads.json` và đúng asset `VietKaraStudio-Rust-<version>-Setup-x64.exe`.
+Updater tải từng part qua HTTPS, xác minh SHA-256, ghép bộ cài rồi mới chạy Setup;
+portable ZIP cập nhật thủ công bằng cách tải ZIP mới và thay thư mục app, giữ
+`data/` riêng.
+
+Sau khi hoàn tất kiểm thử và tạo cùng phiên bản stage/Setup, chia artifact vượt
+giới hạn GitHub bằng:
+
+```powershell
+python packaging/split_rust_release.py `
+  releases/VietKaraStudio-Rust-<version>-Setup-x64.exe `
+  releases/VietKaraStudio-Rust-Portable-x64.zip
+```
+
+Tải toàn bộ `.001…`, `downloads.json` và `SHA256SUMS.txt` lên cùng GitHub Release.
+Thư mục output của `split_rust_release.py` cũng tạo sẵn `Ghep-File.ps1`,
+`Ghep-File.cmd` và `HUONG-DAN.txt`; tải thêm các tệp này để người dùng có thể
+ghép và kiểm tra artifact trực tiếp trên Windows.
+Không đưa thư mục `data/`, model hoặc cache cá nhân vào artifact. Build portable
+và installer cần cùng phiên bản; kiểm `BUILD-INFO.json` trước khi upload.
+Updater Rust compile được nhưng chưa kiểm download thật vì chưa có Rust Release
+trên GitHub. Local build3 trong `releases/` đã được dựng sau khi thêm updater
+và qua smoke install/uninstall; hash và giới hạn kiểm chứng được ghi trong
+`docs/windows-plan.md`. Đây là snapshot kiểm thử, chưa phải artifact phát hành
+GitHub; trước khi public cần hoàn tất QA máy sạch và kiểm tra update E2E với
+release thật.

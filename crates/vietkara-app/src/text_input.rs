@@ -75,6 +75,12 @@ impl TextInput {
         self.last_bounds = None;
     }
 
+    pub(super) fn set_placeholder(&mut self, value: &str) {
+        self.placeholder = value.to_owned().into();
+        self.last_layout = None;
+        self.last_bounds = None;
+    }
+
     fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.move_to(self.previous_boundary(self.cursor_offset()), cx);
