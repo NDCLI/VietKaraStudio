@@ -56,7 +56,16 @@ def main() -> int:
     entries = list(stage.rglob("*"))
     if any(path.is_symlink() for path in entries):
         raise SystemExit("Stage contains a symbolic link; refusing to archive external files.")
-    files = sorted(path for path in entries if path.is_file())
+    # Packaged Python smoke/runtime checks may create bytecode after the stage
+    # manifest was written. Match build_rust_installer.py: these files are
+    # transient and are excluded from the installer payload as well.
+    files = sorted(
+        path
+        for path in entries
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    )
     listed = {path.relative_to(stage).as_posix() for path in files if path != manifest_path}
     if listed != expected.keys():
         missing = sorted(expected.keys() - listed)[:10]
