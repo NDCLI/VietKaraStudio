@@ -181,4 +181,43 @@ mod tests {
             b"complete media bytes"
         );
     }
+
+    #[test]
+    fn fixture_v2_save_as_and_reopen_round_trip_in_unicode_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let source_dir = root.path().join("nguồn Bài hát");
+        let target_dir = root.path().join("bản lưu Tiếng Việt");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let source_project = source_dir.join("project.json");
+        let target_project = target_dir.join("project.json");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vietkara-domain/tests/fixtures/project-v2.json");
+        let mut project = Project::load(&fixture).unwrap();
+        project.name = "Bài hát round-trip".into();
+        std::fs::write(source_dir.join("beat.wav"), b"fixture beat bytes").unwrap();
+
+        save_project_copy(&project, Some(&source_project), &target_project).unwrap();
+        let reopened = crate::load_project(&target_project).unwrap();
+        let saved_json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&target_project).unwrap()).unwrap();
+
+        assert_eq!(reopened.id, project.id);
+        assert_eq!(reopened.name, "Bài hát round-trip");
+        assert_eq!(reopened.words.len(), project.words.len());
+        assert_eq!(
+            serde_json::to_value(&reopened.words).unwrap(),
+            serde_json::to_value(&project.words).unwrap()
+        );
+        assert_eq!(reopened.anchors, project.anchors);
+        assert_eq!(saved_json["future_python_field"]["keep"], true);
+        assert_eq!(
+            std::fs::read(target_dir.join("beat.wav")).unwrap(),
+            b"fixture beat bytes"
+        );
+        assert_eq!(
+            std::fs::read(source_dir.join("beat.wav")).unwrap(),
+            b"fixture beat bytes"
+        );
+    }
 }

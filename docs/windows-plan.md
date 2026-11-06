@@ -211,9 +211,11 @@ sửa khi migration/import/restore lỗi.
 - [x] Relink audio project bị thiếu: hiển thị trạng thái thiếu file và nút
   chọn lại beat/bản hát; chọn đúng nội dung cũ được nhận diện bằng fingerprint
   để giữ anchors/lời như `vietkara-storage::audio_import` đã hỗ trợ.
-- [ ] Dùng `vietkara-domain` + `vietkara-storage` cho load/save, không
+- [x] Dùng `vietkara-domain` + `vietkara-storage` cho load/save, không
   viết lại logic save trong app.
-- [ ] Test: tạo project → lưu → đóng → mở lại → nội dung khớp fixture v2.
+- [ ] Test runtime UI: tạo project → lưu → đóng → mở lại → nội dung khớp
+  fixture v2. Storage Save As/load round-trip đã có test trên Windows trong
+  thư mục có dấu; kiểm tra thao tác qua cửa sổ app vẫn còn.
 
 ### 4.2. Playback thật bằng thiết bị Windows
 
@@ -538,6 +540,11 @@ sang thư mục khác trước khi coi luồng Save As đầy đủ.
 
 Luồng Open mới: Ctrl+O/nút Mở dùng dialog native, load/candidate/Editor
 trên background executor; chỉ thay session sau khi tất cả thành công.
+Save As gọi `vietkara-storage::copy::save_project_copy`; media được copy
+trước khi project JSON publish và xung đột file đích không ghi đè dữ liệu.
+Windows test đã Save As fixture v2 vào thư mục Unicode rồi load lại, so
+khớp ID/lời/anchors/unknown field và kiểm tra media nguồn/đích; runtime UI
+đóng/mở lại bằng dialog vẫn cần xác minh.
 Dirty độc lập với autosave_pending, không mất cờ chưa lưu sau autosave.
 Nếu dirty, banner cho bỏ thay đổi và mở hoặc hủy; có thể lưu bằng nút
 Lưu/Ctrl+S trước rồi chọn Mở lại. Cancel/load lỗi giữ project/history/path.
