@@ -303,9 +303,13 @@ kiểm tra runtime có FFmpeg trên Windows.
 > bắt/sửa inset title lệch 16.512 px và màu fallback lane Nam khác baseline.
 > `DisplayPlan` hiện giữ countdown windows dùng chung cho preview và ASS;
 > role marker mang cả geometry artwork để các surface dùng cùng số đo.
+> Các PNG icon ASS dùng palette Pillow FASTOCTREE của baseline; full fixture
+> ASS và 6 frame libass giờ khớp pixel với Python khi planner dùng measurer
+> cố định. Harness `tests/test_ass_raster_parity.ps1` chạy cả hai fixture.
 > `cargo test -p vietkara-render --test layout_python_golden` pass. Nó kiểm
 > chứng quy tắc planner độc lập với font; không thay thế đo/shaping Arial và
-> font bundled trên Windows hay raster golden cho toàn bộ icon/countdown.
+> font bundled trên Windows. Raster đầy đủ với measurer/font hệ thống thật
+> vẫn cần kiểm chứng riêng.
 
 - [ ] Chốt parity đầy đủ cho `layout.display_plan` với font đo được trên
   Windows (font hệ thống + font bundled trong `bundled_assets.py`):

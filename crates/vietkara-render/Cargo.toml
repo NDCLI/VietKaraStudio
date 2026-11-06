@@ -10,7 +10,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 vietkara-domain = { path = "../vietkara-domain" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
-color_quant = "1.1"
 unicode-normalization.workspace = true
 
 [dev-dependencies]

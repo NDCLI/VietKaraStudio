@@ -255,13 +255,18 @@ fn role_marker_path(role: &str, size: f64) -> String {
 /// image attachments, matching the Python renderer's behavior.
 fn role_icon_layers(filename: &str, size: f64) -> Option<Vec<([u8; 4], String)>> {
     let icon = crate::role_icons::role_icon(filename)?;
-    let mut layers = std::collections::BTreeMap::<[u8; 4], Vec<String>>::new();
+    let mut layers = Vec::<([u8; 4], Vec<String>)>::new();
+    let mut layer_indices = std::collections::HashMap::<[u8; 4], usize>::new();
     for rectangle in &icon.rectangles {
         let x1 = rectangle.x * size;
         let x2 = (rectangle.x + rectangle.width) * size;
         let y1 = rectangle.y * size;
         let y2 = (rectangle.y + rectangle.height) * size;
-        layers.entry(rectangle.color).or_default().push(format!(
+        let index = *layer_indices.entry(rectangle.color).or_insert_with(|| {
+            layers.push((rectangle.color, Vec::new()));
+            layers.len() - 1
+        });
+        layers[index].1.push(format!(
             "m {x1:.3} {y1:.3} l {x2:.3} {y1:.3} {x2:.3} {y2:.3} {x1:.3} {y2:.3} {x1:.3} {y1:.3}"
         ));
     }
@@ -815,7 +820,7 @@ pub fn build_lyrics_ass_with_scenes(
                         rgba[0],
                         255 - rgba[3]
                     );
-                    if let Some(event) = dialogue(4, row.show_start, row.show_end, &tags, &drawing)
+                    if let Some(event) = dialogue(2, row.show_start, row.show_end, &tags, &drawing)
                     {
                         lines.push(event);
                     }
@@ -1268,7 +1273,7 @@ mod tests {
         assert_eq!(plan.rows[0].role_marker.as_ref().unwrap().role, "female");
         assert!(
             ass.lines()
-                .any(|line| line.starts_with("Dialogue: 4,") && line.contains("\\p1"))
+                .any(|line| line.starts_with("Dialogue: 2,") && line.contains("\\p1"))
         );
     }
 
@@ -1284,7 +1289,7 @@ mod tests {
         let ass = build_lyrics_ass(&project, &plan);
         let icon_events = ass
             .lines()
-            .filter(|line| line.starts_with("Dialogue: 4,"))
+            .filter(|line| line.starts_with("Dialogue: 2,"))
             .collect::<Vec<_>>();
         assert!(!icon_events.is_empty());
         assert!(icon_events.iter().all(|line| line.contains("\\p1")));

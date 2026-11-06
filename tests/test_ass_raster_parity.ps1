@@ -24,6 +24,7 @@ if (-not $tempRoot.StartsWith($tempBase, [System.StringComparison]::OrdinalIgnor
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 $previousDump = [Environment]::GetEnvironmentVariable('VIETKARA_ASS_GOLDEN_DUMP', 'Process')
+$previousLayoutDump = [Environment]::GetEnvironmentVariable('VIETKARA_ASS_LAYOUT_DUMP', 'Process')
 try {
     $baseline = Join-Path $repoRoot 'crates\vietkara-render\tests\fixtures\python-c8dae55-simple-karaoke.ass'
     $rustAss = Join-Path $tempRoot 'rust.ass'
@@ -65,9 +66,47 @@ try {
     }
     finally { Pop-Location }
 
-    Write-Output 'ASS raster parity passed: six frames match Python baseline c8dae55.'
+    $layoutBaseline = Join-Path $repoRoot 'crates\vietkara-render\tests\fixtures\python-c8dae55-layout-fixed-width.ass'
+    $layoutRust = Join-Path $tempRoot 'layout-rust.ass'
+    [Environment]::SetEnvironmentVariable('VIETKARA_ASS_LAYOUT_DUMP', $layoutRust, 'Process')
+    Push-Location $repoRoot
+    try {
+        & $cargo test -p vietkara-render --test ass_layout_python_golden -- --exact `
+            complete_ass_events_match_python_layout_baseline_with_fixed_width_metrics
+        if ($LASTEXITCODE -ne 0) { throw "Rust layout ASS generation failed: $LASTEXITCODE" }
+    }
+    finally { Pop-Location }
+    if (-not (Test-Path -LiteralPath $layoutRust)) { throw 'Rust layout ASS output was not generated.' }
+    Copy-Item -LiteralPath $layoutBaseline -Destination (Join-Path $tempRoot 'layout-baseline.ass')
+
+    Push-Location $tempRoot
+    try {
+        foreach ($frame in 0..5) {
+            foreach ($kind in @('layout-baseline', 'layout-rust')) {
+                $filter = "subtitles=$kind.ass,select=eq(n\,$frame)"
+                $raw = "$kind-$frame.rgb"
+                & $ffmpeg -y -hide_banner -loglevel error `
+                    -f lavfi -i 'color=c=0x101d2b:s=1920x1080:r=2:d=3' `
+                    -vf $filter -fps_mode passthrough -frames:v 1 `
+                    -pix_fmt rgb24 -f rawvideo $raw
+                if ($LASTEXITCODE -ne 0) { throw "FFmpeg layout render failed: $kind frame $frame" }
+                if ((Get-Item -LiteralPath $raw).Length -ne $expectedBytes) {
+                    throw "Unexpected layout frame size: $kind frame $frame"
+                }
+            }
+            $baselineHash = (Get-FileHash -Algorithm SHA256 "layout-baseline-$frame.rgb").Hash
+            $rustHash = (Get-FileHash -Algorithm SHA256 "layout-rust-$frame.rgb").Hash
+            if ($baselineHash -ne $rustHash) {
+                throw "Full-layout ASS raster differs from Python baseline at frame $frame (t=$($frame / 2)s)."
+            }
+        }
+    }
+    finally { Pop-Location }
+
+    Write-Output 'ASS raster parity passed: simple serializer and full fixed-metric layout each match six Python baseline frames.'
 }
 finally {
     [Environment]::SetEnvironmentVariable('VIETKARA_ASS_GOLDEN_DUMP', $previousDump, 'Process')
+    [Environment]::SetEnvironmentVariable('VIETKARA_ASS_LAYOUT_DUMP', $previousLayoutDump, 'Process')
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

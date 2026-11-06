@@ -17,6 +17,7 @@ sys.path.insert(0, str(PYTHON_ROOT))
 sys.path.insert(1, str(ROOT))
 
 import layout  # noqa: E402
+import subtitles  # noqa: E402
 
 
 class FixedMeasure:
@@ -108,6 +109,7 @@ project = {
 
 layout.Measure = FixedMeasure
 plan = layout.display_plan(project)
+ass = subtitles.build_ass(project)
 rows = []
 for row in plan["rows"]:
     rows.append(
@@ -172,3 +174,6 @@ output = {
 fixture = ROOT / "crates" / "vietkara-render" / "tests" / "fixtures" / "python-c8dae55-layout-fixed-width.json"
 fixture.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 print(f"Wrote {fixture}")
+ass_fixture = ROOT / "crates" / "vietkara-render" / "tests" / "fixtures" / "python-c8dae55-layout-fixed-width.ass"
+ass_fixture.write_text(ass, encoding="utf-8")
+print(f"Wrote {ass_fixture}")

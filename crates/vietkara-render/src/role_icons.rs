@@ -4,39 +4,39 @@ use std::sync::OnceLock;
 const ICONS: &[(&str, &[u8])] = &[
     (
         "man-new-blue.png",
-        include_bytes!("../assets/role-icons/man-new-blue.png"),
+        include_bytes!("../assets/role-icons-32/man-new-blue.png"),
     ),
     (
         "man-new-green.png",
-        include_bytes!("../assets/role-icons/man-new-green.png"),
+        include_bytes!("../assets/role-icons-32/man-new-green.png"),
     ),
     (
         "lady-pink.png",
-        include_bytes!("../assets/role-icons/lady-pink.png"),
+        include_bytes!("../assets/role-icons-32/lady-pink.png"),
     ),
     (
         "lady-red.png",
-        include_bytes!("../assets/role-icons/lady-red.png"),
+        include_bytes!("../assets/role-icons-32/lady-red.png"),
     ),
     (
         "lady-darkred.png",
-        include_bytes!("../assets/role-icons/lady-darkred.png"),
+        include_bytes!("../assets/role-icons-32/lady-darkred.png"),
     ),
     (
         "men(blue) & lady(pink).png",
-        include_bytes!("../assets/role-icons/men(blue) & lady(pink).png"),
+        include_bytes!("../assets/role-icons-32/men(blue) & lady(pink).png"),
     ),
     (
         "men(blue) & lady(red).png",
-        include_bytes!("../assets/role-icons/men(blue) & lady(red).png"),
+        include_bytes!("../assets/role-icons-32/men(blue) & lady(red).png"),
     ),
     (
         "men(green) & lady(pink).png",
-        include_bytes!("../assets/role-icons/men(green) & lady(pink).png"),
+        include_bytes!("../assets/role-icons-32/men(green) & lady(pink).png"),
     ),
     (
         "men(green) & lady(red).png",
-        include_bytes!("../assets/role-icons/men(green) & lady(red).png"),
+        include_bytes!("../assets/role-icons-32/men(green) & lady(red).png"),
     ),
 ];
 
@@ -58,11 +58,10 @@ pub struct RoleIcon {
 }
 
 fn decode_icon(bytes: &[u8]) -> Option<RoleIcon> {
-    let mut image = image::load_from_memory(bytes).ok()?.to_rgba8();
-    let quantizer = color_quant::NeuQuant::new(1, 32, image.as_raw());
-    for pixel in image.as_mut().as_chunks_mut::<4>().0 {
-        quantizer.map_pixel(pixel);
-    }
+    // The checked-in PNGs are quantized with Pillow FASTOCTREE to match the
+    // Python ASS renderer. Keeping the exact palette also makes GPUI preview
+    // and exported ASS share the same role artwork colors.
+    let image = image::load_from_memory(bytes).ok()?.to_rgba8();
     let width = image.width();
     let height = image.height();
     if width == 0 || height == 0 {
