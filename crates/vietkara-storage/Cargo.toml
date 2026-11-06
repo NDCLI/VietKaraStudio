@@ -12,6 +12,6 @@ thiserror.workspace = true
 vietkara-domain = { path = "../vietkara-domain" }
 vietkara-media = { path = "../vietkara-media" }
 zip.workspace = true
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"

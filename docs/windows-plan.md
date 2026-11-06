@@ -543,12 +543,14 @@ hoặc tiếp tục khi dirty. Header có dấu * cho thay đổi chưa lưu, t�
 trạng thái recovery với save chính. Autosave thành công cập nhật trạng
 thái riêng và giữ dirty. Chưa build/test thay đổi mới (gom kiểm thử).
 
-Đang viết Save As bảo toàn layout media Python: copy managed media sang
-thư mục đích, preflight từ chối media cùng tên khác nội dung, publish
-media bằng hard-link từ bản copy tạm và JSON atomic cuối cùng. Không
-replace media đích. Nếu bước cuối lỗi, media mới thêm có thể còn để retry;
-file JSON cũ giữ nguyên. Cần kiểm tra filesystem không hỗ trợ hard-link
-và các media ref chưa thuộc allowlist trong lượt kiểm thử tổng hợp.
+Save As bảo toàn layout media Python: copy managed media sang thư mục đích,
+preflight từ chối media cùng tên khác nội dung, publish no-clobber (hard-link
+hoặc staged `persist_noclobber`) và ghi JSON sau cùng. File đích cùng bytes
+được chấp nhận khi retry; file khác bytes không bị thay. Nếu lưu JSON lỗi,
+media mới có thể còn để retry, JSON cũ vẫn nguyên. Storage tests xác nhận
+copy allowlist, bỏ file không quản lý, retry idempotent, conflict giữ nguyên
+JSON/media và fallback publish chạy được; phần copy Save As vẫn cần thao tác
+UI runtime để kiểm tra dialog/path thực tế.
 
 Đang viết nhập SRT theo `static/app.js`: chia từ đều trong cue trên clock
 beat, inverse-map qua anchors về reference, bỏ tag, normalize và validate
