@@ -205,7 +205,9 @@ sửa khi migration/import/restore lỗi.
 ### 4.1. `vietkara-app`: create/open/relink/save/close/reopen
 
 - [ ] Gắn action thật vào UI mock hiện tại (`crates/vietkara-app/src/main.rs`):
-  mở file (file picker GPUI), tạo project mới, save/close/reopen.
+  mở file (file picker GPUI), save/close/reopen.
+- [x] Tạo project trắng từ nút `Project mới` hoặc Ctrl+N; project mới có
+  dirty marker và yêu cầu xác nhận nếu bỏ state chưa lưu.
 - [x] Relink audio project bị thiếu: hiển thị trạng thái thiếu file và nút
   chọn lại beat/bản hát; chọn đúng nội dung cũ được nhận diện bằng fingerprint
   để giữ anchors/lời như `vietkara-storage::audio_import` đã hỗ trợ.
@@ -740,3 +742,13 @@ hold theo wall clock ≥180ms, chống repeat/press sát nhau, mốc dưới 40m
 clock lùi, Backspace/finish và beat→reference/locked validation. `cargo test
 -p vietkara-domain` pass 24 unit + 3 settings integration; `node --test
 tests/tapping.test.js` pass 10/10; workspace Clippy và test đã lọc FFmpeg pass.
+
+### W4: tạo project mới trong studio
+
+Thêm nút `Project mới` và Ctrl+N. Tạo project thay Editor, path, history,
+playback, selection và timeline cache; project mới mang dirty marker để
+Save/Save As hoạt động đúng. Nếu state hiện tại dirty, app hiển thị xác nhận
+trước khi bỏ thay đổi. Runtime Windows: tạo project từ nút và thấy trạng thái
+`Đã tạo project mới • chưa lưu`; bấm lại mở banner xác nhận; Hủy giữ dirty
+marker; Ctrl+N cũng mở cùng banner. Nhánh xác nhận bỏ state chưa lưu chưa
+được kích hoạt trong runtime.

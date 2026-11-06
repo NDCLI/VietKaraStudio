@@ -26,6 +26,7 @@ actions!(
         Save,
         SaveAs,
         Open,
+        NewProject,
         ImportSrt,
         ImportLyrics,
         TogglePlayback,
@@ -82,6 +83,7 @@ struct Studio {
     render_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     dirty: bool,
     confirm_open: bool,
+    confirm_new: bool,
     confirm_close: bool,
     pending_lyrics: Option<Command>,
     pending_audio: Option<(AudioSlot, PathBuf)>,
@@ -2325,20 +2327,97 @@ impl Studio {
     fn open(&mut self, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
+            || self.rendering
             || self.recovery.is_some()
             || self.pending_lyrics.is_some()
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
+            || self.confirm_close
         {
             return;
         }
+        self.confirm_new = false;
         if self.dirty {
             self.confirm_open = true;
             cx.notify();
             return;
         }
         self.choose_open(cx);
+    }
+
+    fn new_project(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.confirm_close
+        {
+            return;
+        }
+        self.confirm_open = false;
+        if self.dirty {
+            self.confirm_new = true;
+            cx.notify();
+            return;
+        }
+        self.create_empty_project(cx);
+    }
+
+    fn create_empty_project(&mut self, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+            || self.confirm_close
+        {
+            return;
+        }
+        match Editor::new(Project::new("Bài hát mới")) {
+            Ok(editor) => {
+                self.editor = editor;
+                self.path = None;
+                self.recovery = None;
+                self.dirty = true;
+                self.autosave_pending = false;
+                self.confirm_open = false;
+                self.confirm_new = false;
+                self.confirm_close = false;
+                self.selected_word = None;
+                self.selected_anchor = None;
+                self.timeline_drag = None;
+                self.timeline_scroll = ScrollHandle::new();
+                self.timeline_word_index = std::cell::RefCell::default();
+                self.preview_layout = preview::PreviewLayoutCache::default();
+                self.tapping = None;
+                self.pending_lyrics = None;
+                self.pending_audio = None;
+                self.background_video_frame = None;
+                self.background_frame_requested_at = -1.0;
+                self.background_frame_pending = false;
+                self.set_word_input("", cx);
+                self.reset_playback();
+                self.edit_status = "Đã tạo project mới • chưa lưu".into();
+            }
+            Err(error) => self.edit_status = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn discard_and_navigate(&mut self, cx: &mut Context<Self>) {
+        if self.confirm_new {
+            self.create_empty_project(cx);
+        } else if self.confirm_open {
+            self.choose_open(cx);
+        }
     }
     fn choose_open(&mut self, cx: &mut Context<Self>) {
         if self.saving
@@ -2348,10 +2427,13 @@ impl Studio {
             || self.pending_audio.is_some()
             || self.tapping.is_some()
             || self.timeline_drag.is_some()
+            || self.rendering
+            || self.confirm_close
         {
             return;
         }
         self.confirm_open = false;
+        self.confirm_new = false;
         self.saving = true;
         let selection = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -2695,6 +2777,7 @@ impl Studio {
                         this.path = Some(saved_path);
                         this.dirty = false;
                         this.confirm_open = false;
+                        this.confirm_new = false;
                         this.confirm_close = false;
                         this.autosave_pending = false;
                         "Đã lưu project".into()
@@ -3669,6 +3752,7 @@ impl Render for Studio {
             .on_action(cx.listener(|this, _: &Redo, _, cx| this.history(true, cx)))
             .on_action(cx.listener(|this, _: &Save, _, cx| this.save(cx)))
             .on_action(cx.listener(|this, _: &SaveAs, _, cx| this.save_as(cx)))
+            .on_action(cx.listener(|this, _: &NewProject, _, cx| this.new_project(cx)))
             .on_action(cx.listener(|this, _: &ExportVideo, window, cx| this.export_video(window, cx)))
             .on_action(cx.listener(|this, _: &CancelExport, _, cx| this.cancel_export(cx)))
             .on_action(cx.listener(|this, _: &Open, _, cx| this.open(cx)))
@@ -3699,6 +3783,8 @@ impl Render for Studio {
                         self.editor.project().name,
                         if self.dirty { " *" } else { "" }
                     ))
+                    .child(div().cursor_pointer().px_3().child("Project mới (Ctrl+N)")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.new_project(cx))))
                     .child(div().cursor_pointer().px_3().child("Nhập SRT")
                         .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.import_srt(cx))))
                     .child(div().cursor_pointer().px_3().child("Mở project")
@@ -3767,12 +3853,16 @@ impl Render for Studio {
                     })))
                 .child(div().cursor_pointer().px_3().child("Tiếp tục chỉnh sửa")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx| {this.confirm_close=false;cx.notify();})))))
-            .when(self.confirm_open, |root| root.child(div().flex().gap_3().p_3()
-                .child("Project chưa lưu. Lưu trước, hoặc bỏ thay đổi để mở project khác.")
-                .child(div().cursor_pointer().px_3().child("Bỏ thay đổi và mở")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.choose_open(cx))))
+            .when(self.confirm_open || self.confirm_new, |root| root.child(div().flex().gap_3().p_3()
+                .child(if self.confirm_new {
+                    "Project chưa lưu. Tạo project mới sẽ bỏ các thay đổi hiện tại."
+                } else {
+                    "Project chưa lưu. Lưu trước, hoặc bỏ thay đổi để mở project khác."
+                })
+                .child(div().cursor_pointer().px_3().child(if self.confirm_new { "Bỏ thay đổi và tạo mới" } else { "Bỏ thay đổi và mở" })
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.discard_and_navigate(cx))))
                 .child(div().cursor_pointer().px_3().child("Hủy")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.confirm_open=false;cx.notify();})))))
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.confirm_open=false;this.confirm_new=false;cx.notify();})))))
             .when(self.recovery.is_some(), |root| {
                 root.child(
                     div()
@@ -4974,6 +5064,7 @@ fn main() {
             KeyBinding::new("ctrl-shift-i", ImportSrt, Some("Studio")),
             KeyBinding::new("ctrl-shift-l", ImportLyrics, Some("Studio")),
             KeyBinding::new("ctrl-o", Open, Some("Studio")),
+            KeyBinding::new("ctrl-n", NewProject, Some("Studio")),
             KeyBinding::new("ctrl-s", Save, Some("Studio")),
             KeyBinding::new("ctrl-shift-s", SaveAs, Some("Studio")),
             KeyBinding::new("ctrl-shift-e", ExportVideo, Some("Studio")),
@@ -5099,6 +5190,7 @@ fn main() {
                         render_cancel: None,
                         dirty: false,
                         confirm_open: false,
+                        confirm_new: false,
                         confirm_close: false,
                         pending_lyrics: None,
                         pending_audio: None,
