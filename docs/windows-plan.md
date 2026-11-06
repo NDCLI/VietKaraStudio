@@ -12,14 +12,16 @@
 > lượt test tổng, runtime Windows/hardware, golden parity, dựng lại artifacts,
 > QA máy sạch và updater E2E; xem các ghi chú mới nhất ở cuối tài liệu.
 
-> **Cập nhật 2026-11-06 — kiểm thử tổng/UI:** commit `eccd6de` trên nhánh
-> rewrite chuẩn hóa kiểu toolbar button, trạng thái preview rỗng và tab
-> Inspector hẹp. Đây là lượt polish đầu tiên; chưa chứng minh parity giao diện
-> với baseline. `cargo test --workspace` pass trên Windows (một Whisper model
-> test ignored do model/fixture riêng), app **57/57**, workspace fmt/clippy
-> sạch. Release build pass ở `target/ui-release`; target release mặc định bị
-> khóa bởi một executable đang mở. Runtime còn thiếu seek/pause-resume, test
-> nhiều thiết bị audio, project batch/AI, crash/recovery UI và golden full
+> **Cập nhật 2026-11-06 — kiểm thử tổng/UI:** toolbar rewrite được tách thành
+> project/actions chính, thao tác lời/preset/batch và công cụ nâng cao có thể
+> thu gọn; preview trống và Inspector được phân biệt rõ hơn. Đây vẫn là lượt
+> tái cấu trúc đầu, chưa chứng minh parity giao diện với baseline.
+> `cargo test --workspace` pass trên Windows (một Whisper model test ignored
+> do model/fixture riêng), app **57/57**, workspace fmt/clippy sạch. Ảnh
+> runtime xác nhận hàng project/actions chính nằm ngang; Inspector vẫn cần
+> lượt chỉnh/QA riêng. Release build pass ở `target/ui-release`; target release
+> mặc định bị khóa bởi executable đang mở. Runtime còn thiếu seek/pause-resume, test nhiều
+> thiết bị audio, batch/AI project fixture, crash/recovery UI và golden full
 > layout. QA máy sạch, ký mã và updater E2E chờ môi trường/release phù hợp.
 >
 > **Nhánh:** `codex/rust-gpui-rewrite`

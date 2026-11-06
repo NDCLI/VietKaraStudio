@@ -3,17 +3,18 @@
 > **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
 
 > **Tiến độ 2026-11-06 — lượt kiểm thử tổng và chỉnh UI GPUI:** nhánh
-> `codex/rust-gpui-rewrite` ở commit `eccd6de` đã gom lại kiểu nút toolbar
-> (nền, hover, khoảng cách/nhãn gọn hơn), tạo nền dễ phân biệt cho trạng thái
-> preview trống và làm tab Inspector chia đều bề ngang. Đây là polish ban đầu,
-> chưa phải parity giao diện với baseline; vẫn cần thiết kế lại phân cấp màn
-> Studio và đối chiếu ảnh runtime. Trên Windows: `cargo test --workspace`
-> pass (một Whisper model test ignored theo yêu cầu fixture/model riêng),
-> app tests **57/57**, workspace fmt/clippy pass. Release build pass trong
-> `target/ui-release` vì executable mặc định đang bị khóa. Các phần còn khả
-> thi nhưng thiếu bằng chứng runtime gồm seek/pause-resume, nhiều audio device,
-> batch/AI trên project fixture, golden full-layout và recovery UI; QA sạch,
-> signing và updater E2E vẫn phụ thuộc môi trường/release công khai.
+> `codex/rust-gpui-rewrite` đã tách toolbar thành phần nhận diện/tên project và
+> hành động chính, hàng thao tác lời/preset/batch, cùng nhóm preset import/export,
+> diagnostics và updater có thể thu gọn. Preview rỗng có nền riêng, Inspector
+> dùng tab chia đều. Đây vẫn là lượt tái cấu trúc đầu, chưa phải parity giao
+> diện với baseline; ảnh runtime xác nhận hàng project/actions chính nằm ngang,
+> còn Inspector và phần thân editor cần lượt thiết kế/QA riêng. Trên Windows:
+> `cargo test --workspace` pass (một Whisper model test ignored do cần
+> model/fixture riêng), app tests **57/57**, workspace fmt/clippy pass. Release
+> build pass trong `target/ui-release` vì executable mặc định đang bị khóa.
+> Runtime seek/pause-resume, nhiều audio device,
+> batch/AI trên project fixture, golden full-layout và recovery UI còn thiếu;
+> QA sạch, signing và updater E2E còn phụ thuộc môi trường/release công khai.
 
 > **Tiến độ 2026-11-06 — batch UI và xác minh FFmpeg fallback:** toolbar GPUI
 > được phép wrap để nút batch không bị cắt ở cửa sổ thấp/rộng. Tách parser
