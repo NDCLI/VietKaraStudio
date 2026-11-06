@@ -2647,32 +2647,84 @@ impl Studio {
         .detach();
     }
     fn accept_lyrics(&mut self, cx: &mut Context<Self>) {
-        let Some(command) = self.pending_lyrics.take() else {
+        if self.saving || self.autosaving || self.pending_lyrics.is_none() {
             return;
-        };
-        self.edit_status = match self.editor.execute(command) {
-            Ok(_) => {
-                self.dirty = true;
-                self.autosave_pending = true;
-                self.selected_word = self
-                    .editor
-                    .project()
-                    .words
-                    .first()
-                    .map(|word| word.id.clone());
-                let first_text = self
-                    .editor
-                    .project()
-                    .words
-                    .first()
-                    .map(|word| word.text.clone())
-                    .unwrap_or_default();
-                self.set_word_input(&first_text, cx);
-                "Đã thay lời • chưa lưu".into()
-            }
-            Err(error) => error.to_string(),
-        };
+        }
+        let project = self.editor.project().clone();
+        let path = self.path.clone();
+        self.saving = true;
+        self.edit_status = "Đang tạo phiên bản trước khi thay lời…".into();
         cx.notify();
+        cx.spawn(async move |this, cx| {
+            let snapshot = match path {
+                Some(path) => {
+                    let Some(project_dir) = path.parent().map(std::path::Path::to_path_buf) else {
+                        let _ = this.update(cx, |this, cx| {
+                            this.saving = false;
+                            this.edit_status =
+                                "Không xác định được thư mục project để tạo phiên bản".into();
+                            cx.notify();
+                        });
+                        return;
+                    };
+                    cx.background_executor()
+                        .spawn(async move {
+                            vietkara_storage::create_version(
+                                &project_dir,
+                                &project,
+                                "Trước khi nhập lời/SRT",
+                            )
+                            .map(|record| Some(record.id))
+                            .map_err(|error| error.to_string())
+                        })
+                        .await
+                }
+                None => Ok(None),
+            };
+            let _ = this.update(cx, |this, cx| {
+                this.saving = false;
+                match snapshot {
+                    Ok(version_id) => {
+                        let Some(command) = this.pending_lyrics.take() else {
+                            cx.notify();
+                            return;
+                        };
+                        this.edit_status = match this.editor.execute(command) {
+                            Ok(_) => {
+                                this.dirty = true;
+                                this.autosave_pending = true;
+                                this.selected_word = this
+                                    .editor
+                                    .project()
+                                    .words
+                                    .first()
+                                    .map(|word| word.id.clone());
+                                let first_text = this
+                                    .editor
+                                    .project()
+                                    .words
+                                    .first()
+                                    .map(|word| word.text.clone())
+                                    .unwrap_or_default();
+                                this.set_word_input(&first_text, cx);
+                                version_id.map_or_else(
+                                    || "Đã thay lời • chưa lưu".into(),
+                                    |id| format!("Đã thay lời • chưa lưu • phiên bản trước: {id}"),
+                                )
+                            }
+                            Err(error) => error.to_string(),
+                        };
+                    }
+                    Err(error) => {
+                        this.edit_status = format!(
+                            "Không tạo được phiên bản trước khi thay lời; project chưa đổi: {error}"
+                        );
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn open(&mut self, cx: &mut Context<Self>) {
@@ -4313,11 +4365,17 @@ impl Render for Studio {
                 .child(div().cursor_pointer().child("Hủy")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_audio=None;cx.notify();})))))
             .when(self.pending_lyrics.is_some(), |root| root.child(div().flex().gap_3().p_3()
-                .child("Thay lời sẽ cập nhật toàn bộ từ và mốc hiện tại.")
+                .child("Thay lời sẽ cập nhật toàn bộ từ và mốc hiện tại. Project đã lưu sẽ tạo phiên bản khôi phục trước khi thay.")
                 .child(div().cursor_pointer().px_3().child("Thay toàn bộ lời")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.accept_lyrics(cx))))
-                .child(div().cursor_pointer().px_3().child("Hủy")
-                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_lyrics=None;this.edit_status="Đã hủy nhập lời".into();cx.notify();})))))
+                .child(div().cursor_pointer().px_3().opacity(if self.saving { 0.5 } else { 1. }).child("Hủy")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{
+                        if !this.saving {
+                            this.pending_lyrics=None;
+                            this.edit_status="Đã hủy nhập lời".into();
+                            cx.notify();
+                        }
+                    })))))
             .when(self.pending_sync.is_some(), |root| root.child(div().flex().items_center().gap_3().p_3().bg(rgb(theme::ACCENT_SURFACE))
                 .child(format!("Gợi ý đồng bộ · {} · lệch {:.2}s · tỷ lệ {:.3}",
                     self.pending_sync.as_ref().and_then(|item|item.result.get("confidence")).and_then(Value::as_str).unwrap_or("chưa rõ"),
