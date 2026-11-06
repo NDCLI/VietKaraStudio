@@ -253,3 +253,96 @@ mod estimate_tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod srt_tests {
+    use super::*;
+
+    fn lyrics(command: Command) -> (Vec<Word>, String) {
+        let Command::SetLyrics { words, text } = command else {
+            panic!("expected lyrics command");
+        };
+        (words, text)
+    }
+
+    #[test]
+    fn imports_bom_crlf_multiline_and_comma_or_dot_milliseconds() {
+        let project = Project::new("Bài hát");
+        let source = "\u{feff}1\r\n00:00:02,000 --> 00:00:04,000\r\n<i>Xin chào</i>\r\nTạm biệt\r\n\r\n2\r\n00:00:05.000 --> 00:00:06.000\r\nĐiệp khúc";
+
+        let (words, text) = lyrics(import_srt(&project, source).unwrap());
+
+        assert_eq!(text, "Xin chào Tạm biệt\nĐiệp khúc");
+        assert_eq!(
+            words
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>(),
+            ["Xin", "chào", "Tạm", "biệt", "Điệp", "khúc"]
+        );
+        assert_eq!(words[0].start, 2.0);
+        assert_eq!(words[0].end, 2.5);
+        assert_eq!(words[3].start, 3.5);
+        assert_eq!(words[4].start, 5.0);
+        assert_eq!(words[0].line, words[3].line);
+        assert_ne!(words[3].line_uid, words[4].line_uid);
+        assert!(words.iter().all(|word| word.estimated));
+    }
+
+    #[test]
+    fn maps_srt_beat_times_back_to_reference_clock() {
+        let mut project = Project::new("Bài hát");
+        project.anchors.push(crate::Anchor {
+            r#ref: 1.0,
+            beat: 2.0,
+        });
+
+        let (words, _) =
+            lyrics(import_srt(&project, "1\n00:00:02,000 --> 00:00:04,000\nXin chào").unwrap());
+
+        assert_eq!((words[0].start, words[0].end), (1.0, 2.0));
+        assert_eq!((words[1].start, words[1].end), (2.0, 3.0));
+    }
+
+    #[test]
+    fn rejects_empty_or_unmappable_srt_and_locked_existing_words() {
+        let project = Project::new("Bài hát");
+        assert!(matches!(
+            import_srt(&project, "not an SRT cue"),
+            Err(ImportError::Empty)
+        ));
+
+        let mut negative = Project::new("Bài hát");
+        negative.anchors.push(crate::Anchor {
+            r#ref: 0.0,
+            beat: 10.0,
+        });
+        assert!(matches!(
+            import_srt(&negative, "1\n00:00:01,000 --> 00:00:02,000\nXin chào"),
+            Err(ImportError::Empty)
+        ));
+
+        let mut locked = Project::new("Bài hát");
+        locked.words.push(Word {
+            id: new_id(),
+            text: "Xin".into(),
+            start: 0.0,
+            end: 1.0,
+            line_uid: new_id(),
+            role: "all".into(),
+            line: 0,
+            estimated: false,
+            locked: Some(true),
+            section: None,
+            section_name: None,
+            manual: None,
+            label_color: None,
+            row: None,
+            extra: Default::default(),
+        });
+        assert!(matches!(
+            import_srt(&locked, "1\n00:00:01,000 --> 00:00:02,000\nXin chào"),
+            Err(ImportError::Locked)
+        ));
+    }
+}

@@ -562,6 +562,12 @@ Chưa nối nút nhập vào UI, chưa build/test theo lịch gom kiểm thử.
 chờ, chặn chỉnh sửa/đổi project để candidate không áp vào state khác.
 Hủy/error giữ data/history. Chưa build/test các thay đổi mới.
 
+Đã bổ sung test parser SRT cho BOM/CRLF, cue nhiều dòng, timestamp dấu phẩy
+và dấu chấm, HTML tag, chia mốc từng từ, inverse-map qua anchor, cue rỗng/
+không map được và project có từ khóa. `cargo test -p vietkara-domain` pass
+27 unit tests cùng 3 integration tests. Kiểm thử này xác nhận domain; thao
+tác dialog/confirm vẫn dựa trên smoke test UI ghi ở phần runtime bên dưới.
+
 Đang viết backend audio Windows DevicePlayer dùng Rodio 0.21.1 đã ghim
 API (docs.rs versioned). Play/pause/stop/seek và position từ sink, không
 dùng fake clock để giả playback thật. Có reload khi kết thúc file. Chưa
