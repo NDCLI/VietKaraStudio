@@ -73,6 +73,28 @@ def _resolve_ai_backend(options, backend):
     raise ValueError("Thiết bị AI chỉ được là auto, cpu hoặc cuda[:index].")
 
 
+def _is_cuda_device(device):
+    return device == "cuda" or (isinstance(device, str) and device.startswith("cuda:"))
+
+
+def _run_with_cpu_fallback(device, report_progress, operation):
+    """Retry a failed CUDA model operation once on CPU for known runtime faults."""
+    try:
+        return operation(device, None)
+    except Exception as error:
+        message = str(error)
+        lower = message.casefold()
+        retryable = any(token in lower for token in (
+            "cuda", "cudnn", "cublas", "out of memory", "float16",
+            "device-side", "driver", "no kernel image",
+        ))
+        if not _is_cuda_device(device) or not retryable:
+            raise
+        reason = f"CUDA thất bại; chuyển sang CPU: {message[:400]}"
+        report_progress(45, reason)
+        return operation("cpu", reason)
+
+
 def dispatch(request, report_progress):
     """Run one validated request and return its JSON-serializable result."""
     if not isinstance(request, dict):
@@ -182,10 +204,41 @@ def dispatch(request, report_progress):
         with tempfile.TemporaryDirectory(prefix="vietkara-ai-") as directory:
             output = Path(directory) / "result.json"
             request_for_worker["output"] = str(output)
-            run(request_for_worker, request_for_worker["device"], report_progress)
-            result = json.loads(output.read_text(encoding="utf-8"))
+            def execute_whisper(device, fallback_reason):
+                request_for_worker["device"] = device
+                request_for_worker["device_index"] = (
+                    request_for_worker.get("device_index", 0) if _is_cuda_device(device) else 0
+                )
+                request_for_worker["compute_type"] = (
+                    request_for_worker.get("compute_type") if _is_cuda_device(device) else "int8"
+                )
+                request_for_worker["fallback_reason"] = fallback_reason
+                run(request_for_worker, device, report_progress)
+                return json.loads(output.read_text(encoding="utf-8"))
+
+            result = _run_with_cpu_fallback(
+                selected_backend["device"],
+                report_progress,
+                execute_whisper,
+            )
         if cache_key:
             from analysis_cache import store as store_cache
+
+            actual_device = result.get("device", request_for_worker["device"])
+            cache_options = {
+                "device": actual_device,
+                "device_index": result.get("device_index", request_for_worker["device_index"]),
+                "compute_type": result.get("compute_type", request_for_worker["compute_type"]),
+            }
+            cache_key = make_cache_key(
+                source,
+                model,
+                language,
+                lyrics,
+                options.get("preference", "auto"),
+                region,
+                extra_options=cache_options,
+            )
 
             try:
                 store_cache(Path(cache_root_value), cache_key, result, Path(vocals))
@@ -218,16 +271,24 @@ def dispatch(request, report_progress):
 
     report_progress(1.0, f"Đang tách vocal bằng Demucs trên {selected_backend.get('name') or device}…")
     with tempfile.TemporaryDirectory(prefix="vietkara-demucs-") as directory:
-        args = ["--two-stems", "vocals", "--float32", "--shifts", "1", "--jobs", "1",
-                "-o", directory, "-n", model, "-d", device, reference]
-        main(args)
+        def execute_demucs(actual_device, fallback_reason):
+            args = ["--two-stems", "vocals", "--float32", "--shifts", "1", "--jobs", "1",
+                    "-o", directory, "-n", model, "-d", actual_device, reference]
+            main(args)
+            return actual_device, fallback_reason
+
+        actual_device, fallback_reason = _run_with_cpu_fallback(
+            device,
+            report_progress,
+            execute_demucs,
+        )
         found = list(Path(directory).glob("*/*/vocals.wav"))
         if not found:
             raise RuntimeError("Demucs chưa tạo được track vocals.wav.")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(found[0], destination)
     report_progress(100.0, "Đã tách vocal.")
-    return {"vocals": str(destination)}
+    return {"vocals": str(destination), "device": actual_device, "fallback_reason": fallback_reason}
 
 
 def _write(stream, request_id, message_type, **fields):

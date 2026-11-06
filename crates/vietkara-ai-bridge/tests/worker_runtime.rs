@@ -165,13 +165,14 @@ fn installed_whisper_small_recognizes_speech_through_jsonl_worker() {
         std::env::var("VIETKARA_MODELS_ROOT")
             .expect("VIETKARA_MODELS_ROOT must point to the app data root"),
     );
+    let device = std::env::var("VIETKARA_AI_DEVICE").unwrap_or_else(|_| "cpu".into());
     let temp = tempfile::tempdir().unwrap();
     let request = AiRequest::new(
         AiKind::Recognize,
         vietkara_domain::new_id(),
         serde_json::json!({ "vocals": vocals }),
         serde_json::json!({
-            "device": "cpu",
+            "device": device,
             "model": "small",
             "language": "en",
             "models_root": models_root,
@@ -189,6 +190,7 @@ fn installed_whisper_small_recognizes_speech_through_jsonl_worker() {
     )
     .unwrap();
     assert!(progress.iter().any(|(value, _)| *value >= 50.0));
+    assert_eq!(result["device"], device);
     let words = result["words"]
         .as_array()
         .expect("worker returns word timings");

@@ -392,8 +392,9 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   worker crash không treo app, timeout có lỗi rõ ràng.
   Smoke Windows dùng model Whisper small đã tải riêng và speech WAV do
   Windows SAPI tạo; `run_request` nhận đúng từ “hello”/“recognition”, timing
-  từng từ và progress. Test worker audio-sync thật xác nhận cancel dừng process;
-  test bridge unit bao phủ worker crash và timeout. Model inference chạy CPU.
+  từng từ và progress. Cùng fixture pass trên CPU và RTX 3060 CUDA. Test worker
+  audio-sync thật xác nhận cancel dừng process; test bridge unit bao phủ worker
+  crash và timeout.
 - [x] Không thay model/runtime ngay (Demucs/Whisper vẫn chạy bằng Python).
 
 ### 6.2. Audio sync, cache và batch render
@@ -437,6 +438,10 @@ protocol JSONL và gọi lại runtime Python hiện tại. Nó chạy qua
   cache nằm ngoài project và không được đóng gói cùng app.
 - [ ] Kiểm tra mức dùng RAM/VRAM, fallback khi model CUDA hết bộ nhớ và giữ
   model/cache qua update bằng smoke test runtime trên máy CPU-only/NVIDIA.
+  Adapter JSONL nay retry một lần trên CPU khi Whisper/Demucs gặp lỗi CUDA,
+  cuDNN/cuBLAS/OOM; lỗi khác không bị retry. Test giả lập OOM xác nhận cả hai
+  backend chuyển từ CUDA sang CPU, còn smoke Whisper small đã chạy thật trên
+  CPU và RTX 3060. Đo VRAM và bảo toàn model/cache qua nâng cấp vẫn chưa test.
 
 **Hoàn tất khi:** worker lỗi/hủy không treo app; batch resume đúng item;
 cache không trả nhầm; project không bị ghi đè trước khi xác nhận AI.

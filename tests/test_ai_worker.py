@@ -79,6 +79,74 @@ def test_dispatch_auto_selects_verified_nvidia_backend(monkeypatch):
     assert result == {"device": "cuda", "index": 2, "compute_type": "float16"}
 
 
+def test_recognition_retries_cuda_oom_on_cpu_and_reports_fallback(tmp_path, monkeypatch):
+    hardware = ModuleType("hardware")
+    hardware.select_ai = lambda preference: {
+        "whisper": {
+            "device": "cuda", "device_index": 0, "name": "RTX fixture",
+            "compute_type": "float16", "reason": "",
+        }
+    }
+    worker_module = ModuleType("worker")
+    calls = []
+
+    def run(payload, device, report_progress):
+        calls.append((device, payload["compute_type"]))
+        if device == "cuda":
+            raise RuntimeError("CUDA out of memory while allocating model workspace")
+        Path(payload["output"]).write_text(
+            json.dumps({"words": [], "device": device,
+                        "compute_type": payload["compute_type"],
+                        "fallback_reason": payload["fallback_reason"]}),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    monkeypatch.setitem(sys.modules, "worker", worker_module)
+    worker_module.run = run
+    vocals = tmp_path / "vocals.wav"
+    vocals.write_bytes(b"audio fixture")
+    progress = []
+    result = ai_worker.dispatch(
+        request(options={
+            "device": "auto", "model": "small", "language": "en",
+            "data_root": str(tmp_path / "data"),
+        }, input={"vocals": str(vocals)}),
+        lambda value, message: progress.append((value, message)),
+    )
+
+    assert calls == [("cuda", "float16"), ("cpu", "int8")]
+    assert result["device"] == "cpu"
+    assert "CUDA thất bại" in result["fallback_reason"]
+    assert any("chuyển sang CPU" in message for _, message in progress)
+
+
+def test_recognition_does_not_retry_non_cuda_errors_on_cpu(monkeypatch):
+    hardware = ModuleType("hardware")
+    hardware.select_ai = lambda preference: {
+        "whisper": {
+            "device": "cuda", "device_index": 0, "name": "RTX fixture",
+            "compute_type": "float16", "reason": "",
+        }
+    }
+    worker_module = ModuleType("worker")
+    calls = []
+
+    def run(payload, device, report_progress):
+        calls.append(device)
+        raise RuntimeError("Invalid audio container")
+
+    worker_module.run = run
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    monkeypatch.setitem(sys.modules, "worker", worker_module)
+    with pytest.raises(RuntimeError, match="Invalid audio container"):
+        ai_worker.dispatch(
+            request(options={"device": "auto"}, input={"vocals": "vocals.wav"}),
+            lambda *_: None,
+        )
+    assert calls == ["cuda"]
+
+
 def test_auto_backend_cache_key_uses_the_resolved_runtime(tmp_path, monkeypatch):
     import analysis_cache
 
@@ -146,6 +214,51 @@ def test_separation_auto_selects_verified_demucs_device(tmp_path, monkeypatch):
     assert calls[calls.index("-d") + 1] == "cuda:1"
     assert destination.read_bytes() == b"vocal fixture"
     assert result["vocals"] == str(destination)
+
+
+def test_separation_retries_cuda_driver_failure_on_cpu(tmp_path, monkeypatch):
+    hardware = ModuleType("hardware")
+    hardware.select_ai = lambda preference: {
+        "demucs": {
+            "device": "cuda:0", "device_index": 0, "name": "RTX fixture",
+            "compute_type": "float32", "reason": "",
+        }
+    }
+    demucs = ModuleType("demucs")
+    demucs.__path__ = []
+    separate = ModuleType("demucs.separate")
+    devices = []
+
+    def main(args):
+        device = args[args.index("-d") + 1]
+        devices.append(device)
+        if device.startswith("cuda"):
+            raise RuntimeError("CUDA out of memory")
+        output_root = Path(args[args.index("-o") + 1])
+        model = args[args.index("-n") + 1]
+        vocals = output_root / model / "reference" / "vocals.wav"
+        vocals.parent.mkdir(parents=True)
+        vocals.write_bytes(b"cpu vocal fixture")
+
+    separate.main = main
+    monkeypatch.setitem(sys.modules, "hardware", hardware)
+    monkeypatch.setitem(sys.modules, "demucs", demucs)
+    monkeypatch.setitem(sys.modules, "demucs.separate", separate)
+    destination = tmp_path / "cache" / "vocals.wav"
+    progress = []
+    result = ai_worker.dispatch(
+        request("separate", input={
+            "reference": str(tmp_path / "reference.wav"),
+            "output": str(destination),
+        }, options={"device": "auto"}),
+        lambda value, message: progress.append((value, message)),
+    )
+
+    assert devices == ["cuda:0", "cpu"]
+    assert destination.read_bytes() == b"cpu vocal fixture"
+    assert result["device"] == "cpu"
+    assert "CUDA thất bại" in result["fallback_reason"]
+    assert any("chuyển sang CPU" in message for _, message in progress)
 
 
 def test_ai_device_rejects_unsupported_values():
