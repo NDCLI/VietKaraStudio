@@ -14,6 +14,7 @@ use std::{
 pub enum PlaybackCommand {
     Load(PathBuf),
     LoadOnDevice { path: PathBuf, device: String },
+    RefreshDevices,
     Unload,
     Play,
     Pause,
@@ -114,7 +115,7 @@ fn worker_loop(
 ) {
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
-    let (output_devices, default_output_device, mut error) =
+    let (mut output_devices, mut default_output_device, mut error) =
         match DevicePlayer::output_device_names() {
             Ok((devices, default_device)) if devices.is_empty() => (
                 devices,
@@ -177,6 +178,20 @@ fn worker_loop(
                 player = None;
                 current_path = None;
             }
+            Some(PlaybackCommand::RefreshDevices) => match DevicePlayer::output_device_names() {
+                Ok((devices, default_device)) => {
+                    output_devices = devices;
+                    default_output_device = default_device;
+                    error = output_devices.is_empty().then(|| {
+                            "Windows chưa phát hiện thiết bị đầu ra âm thanh. Kết nối loa/tai nghe hoặc kiểm tra Windows Sound settings rồi thử làm mới danh sách.".into()
+                        });
+                }
+                Err(message) => {
+                    output_devices.clear();
+                    default_output_device = None;
+                    error = Some(message);
+                }
+            },
             Some(command) => {
                 if let Some(device) = &mut player {
                     match command {
@@ -186,6 +201,7 @@ fn worker_loop(
                         PlaybackCommand::Seek(seconds) => device.seek(seconds),
                         PlaybackCommand::Load(_)
                         | PlaybackCommand::LoadOnDevice { .. }
+                        | PlaybackCommand::RefreshDevices
                         | PlaybackCommand::Unload => unreachable!(),
                     }
                 } else {

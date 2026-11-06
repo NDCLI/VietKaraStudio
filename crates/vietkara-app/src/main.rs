@@ -2110,7 +2110,20 @@ impl Studio {
                 snapshot.default_output_device.as_deref(),
             );
             if choices.is_empty() {
-                self.edit_status = "Không tìm thấy thiết bị đầu ra audio bổ sung".into();
+                if snapshot.output_devices.is_empty() {
+                    let refresh = self
+                        .playback
+                        .as_ref()
+                        .ok_or_else(|| "Playback worker chưa sẵn sàng".to_owned())
+                        .and_then(|worker| worker.send(PlaybackCommand::RefreshDevices));
+                    self.edit_status = refresh.map_or_else(
+                        |error| error,
+                        |_| "Đang làm mới danh sách thiết bị đầu ra audio…".into(),
+                    );
+                } else {
+                    self.edit_status =
+                        "Chỉ có thiết bị mặc định; kết nối thêm thiết bị để đổi output".into();
+                }
                 cx.notify();
                 return;
             }
