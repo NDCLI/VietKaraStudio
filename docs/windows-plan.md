@@ -550,10 +550,14 @@ Nếu dirty, banner cho bỏ thay đổi và mở hoặc hủy; có thể lưu b
 Lưu/Ctrl+S trước rồi chọn Mở lại. Cancel/load lỗi giữ project/history/path.
 Thay đổi này đang viết, chưa build/test theo yêu cầu gom kiểm thử.
 
-Đã viết guard đóng cửa sổ: chặn trong lúc ghi file, hỏi đóng không lưu
-hoặc tiếp tục khi dirty. Header có dấu * cho thay đổi chưa lưu, tách
+Đã viết guard đóng cửa sổ: chặn trong lúc ghi file, hỏi lưu và đóng, đóng
+không lưu hoặc tiếp tục khi dirty. Lưu và đóng chỉ đóng sau khi save thành
+công (kể cả luồng chọn path mới); hủy Save As/lỗi giữ cửa sổ và project.
+Header có dấu * cho thay đổi chưa lưu, tách
 trạng thái recovery với save chính. Autosave thành công cập nhật trạng
-thái riêng và giữ dirty. Chưa build/test thay đổi mới (gom kiểm thử).
+thái riêng và giữ dirty. Lượt kiểm tra gom mới nhất: workspace Clippy và
+test pass (đã lọc sáu bài cần FFmpeg/FFprobe); runtime save/close vẫn cần
+smoke test trên Windows.
 
 Save As bảo toàn layout media Python: copy managed media sang thư mục đích,
 preflight từ chối media cùng tên khác nội dung, publish no-clobber (hard-link

@@ -4,9 +4,10 @@ mod theme;
 mod timeline;
 mod ui_preferences;
 use gpui::{
-    App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding, KeyDownEvent, KeyUpEvent,
-    MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle, Task, Timer, Window,
-    WindowBounds, WindowOptions, actions, div, img, prelude::*, px, rgb, size, uniform_list,
+    AnyWindowHandle, App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding,
+    KeyDownEvent, KeyUpEvent, MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle,
+    Task, Timer, Window, WindowBounds, WindowOptions, actions, div, img, prelude::*, px, rgb, size,
+    uniform_list,
 };
 use serde_json::Value;
 use vietkara_domain::{
@@ -93,6 +94,7 @@ struct Studio {
     confirm_open: bool,
     confirm_new: bool,
     confirm_close: bool,
+    close_after_save_window: Option<AnyWindowHandle>,
     navigate_after_save: Option<PendingNavigation>,
     pending_lyrics: Option<Command>,
     pending_audio: Option<(AudioSlot, PathBuf)>,
@@ -2506,6 +2508,24 @@ impl Studio {
         }
     }
 
+    fn save_and_close(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.saving
+            || self.autosaving
+            || !self.confirm_close
+            || !self.dirty
+            || self.rendering
+            || self.recovery.is_some()
+            || self.pending_lyrics.is_some()
+            || self.pending_audio.is_some()
+            || self.tapping.is_some()
+            || self.timeline_drag.is_some()
+        {
+            return;
+        }
+        self.close_after_save_window = Some(window.window_handle());
+        self.save(cx);
+    }
+
     fn choose_open(&mut self, cx: &mut Context<Self>) {
         if self.saving
             || self.autosaving
@@ -2649,16 +2669,19 @@ impl Studio {
                     Ok(Ok(Some(path))) => this.save_to(path, cx),
                     Ok(Ok(None)) => {
                         this.navigate_after_save = None;
+                        this.close_after_save_window = None;
                         this.edit_status = "Đã hủy chọn nơi lưu".into();
                         cx.notify();
                     }
                     Ok(Err(error)) => {
                         this.navigate_after_save = None;
+                        this.close_after_save_window = None;
                         this.edit_status = error.to_string();
                         cx.notify();
                     }
                     Err(error) => {
                         this.navigate_after_save = None;
+                        this.close_after_save_window = None;
                         this.edit_status = error.to_string();
                         cx.notify();
                     }
@@ -2861,7 +2884,7 @@ impl Studio {
                     )
                 })
                 .await;
-            let _ = this.update(cx, |this, cx| {
+            let close_window = this.update(cx, |this, cx| {
                 this.saving = false;
                 let saved = result.is_ok();
                 this.edit_status = match result {
@@ -2888,7 +2911,16 @@ impl Studio {
                     Some(PendingNavigation::OpenProject) => this.choose_open(cx),
                     None => {}
                 }
+                if saved {
+                    this.close_after_save_window.take()
+                } else {
+                    this.close_after_save_window = None;
+                    None
+                }
             });
+            if let Ok(Some(window)) = close_window {
+                let _ = window.update(cx, |_, window, _| window.remove_window());
+            }
         })
         .detach();
     }
@@ -3988,6 +4020,10 @@ impl Render for Studio {
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|{this.pending_lyrics=None;this.edit_status="Đã hủy nhập lời".into();cx.notify();})))))
             .when(self.confirm_close, |root| root.child(div().flex().gap_3().p_3()
                 .child("Project chưa lưu. Lưu trước khi đóng hoặc chọn đóng không lưu.")
+                .child(div().cursor_pointer().px_3().child("Lưu và đóng")
+                    .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, cx| {
+                        this.save_and_close(window, cx);
+                    })))
                 .child(div().cursor_pointer().px_3().child("Đóng không lưu")
                     .on_mouse_down(MouseButton::Left,cx.listener(|this, _, window, _| {
                         if !this.saving && !this.autosaving { window.remove_window(); }
@@ -5413,6 +5449,7 @@ fn main() {
                         confirm_open: false,
                         confirm_new: false,
                         confirm_close: false,
+                        close_after_save_window: None,
                         navigate_after_save: None,
                         pending_lyrics: None,
                         pending_audio: None,
