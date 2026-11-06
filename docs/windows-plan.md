@@ -627,20 +627,23 @@ timeline hình học; code mới chưa build/test.
 
 Đã viết timeline hình học: waveform reference/beat từ metadata peaks,
 axis thời gian, khối từ hai hàng theo line, playhead sink, zoom10..500px/s
-và scroll ngang. Danh sách từ cuộn riêng để chọn. Chưa drag handle hoặc
-tối ưu virtualization cho project lớn. Chưa build/test phần mới.
+và scroll ngang. Danh sách từ cuộn riêng để chọn. Khối từ trên timeline
+hiện vẫn dựng toàn bộ; cần culling/virtualization khi project lớn.
 
-Đang viết drag đầu/cuối khối từ: preview riêng, commit Batch một lần khi
+Đã triển khai kéo đầu/cuối khối từ: preview riêng, commit Batch một lần khi
 mouseup/up-out; delta tính zoom và scroll. Khóa các lệnh đổi state trong
-drag, zoom giữ nguyên trong gesture. Cần kiểm tra event routing/capture
-và borrow/lifetime khi gom build/test; chưa tuyên bố runtime đạt.
+gesture, zoom giữ nguyên trong gesture. Code đã qua workspace build/test;
+runtime drag vẫn cần kiểm tra bằng thao tác chuột thật.
 
 Đã chuyển danh sách lời bên trái sang `gpui::uniform_list` của GPUI 0.2.2:
 callback chỉ tạo row trong visible range, selection vẫn gọi cùng action và
 highlight active word lấy từ playback snapshot của lần render. Nội dung mỗi
 row được giữ một dòng để thỏa điều kiện chiều cao đồng nhất của UniformList.
-`cargo check -p vietkara-app` pass; cần runtime smoke test với project dài
-để xác nhận scroll/selection và hiệu năng trên Windows.
+`cargo check -p vietkara-app` pass. Runtime Windows dùng project fixture 3.000
+từ: app mở project bằng dialog, hiện đúng tổng số từ, cuộn danh sách và chọn
+`Từ16`; editor cập nhật nội dung, vai và khoảng thời gian tương ứng. Điều này
+xác nhận scroll/selection của UniformList; chưa đo thời gian render hay xác
+nhận culling riêng của các khối timeline.
 
 ### W3: kiểm thử gom mốc (sau commit 516dd2d)
 
