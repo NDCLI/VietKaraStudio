@@ -1,1 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#151b20"/><g fill="none" stroke-linecap="round" stroke-width="4"><path d="M12 28v8m8-17v26" stroke="#b7dc48"/><path d="M28 12v40m8-34v28" stroke="#27deb0"/><path d="M44 23v18m8-12v6" stroke="#f0b24a"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="voice" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9be86f"/>
+      <stop offset=".48" stop-color="#38e0bd"/>
+      <stop offset="1" stop-color="#37a9dc"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe38a"/>
+      <stop offset="1" stop-color="#f0a746"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".32" r=".8">
+      <stop offset="0" stop-color="#214d43"/>
+      <stop offset="1" stop-color="#11191f"/>
+    </radialGradient>
+  </defs>
+  <rect x="3" y="3" width="122" height="122" rx="30" fill="url(#glow)" stroke="#38534e" stroke-width="2"/>
+  <path d="M31 49v17m11-29v42m44-42v42m11-30v17" fill="none" stroke="url(#voice)" stroke-width="6" stroke-linecap="round"/>
+  <rect x="53" y="24" width="22" height="58" rx="11" fill="url(#voice)"/>
+  <path d="M59 38h10M59 48h10M59 58h10" fill="none" stroke="#12332f" stroke-width="3" stroke-linecap="round" opacity=".62"/>
+  <path d="M43 62v4a21 21 0 0 0 42 0v-4M64 88v15M51 104h26" fill="none" stroke="#c5f4df" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M91 25v13m-5-8h10" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="96" cy="45" r="2.5" fill="#ffd57c"/>
+</svg>

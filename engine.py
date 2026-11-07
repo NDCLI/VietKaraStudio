@@ -362,8 +362,6 @@ def render(project, directory, job, render_id=None):
     """Render from the original beat, optionally mixed with separated guide vocals."""
     if not project.get("beat") or not (directory / "beat.wav").exists():
         raise ValueError("Hãy nạp beat gốc trước khi xuất.")
-    if not beat_words(project):
-        raise ValueError("Chưa có từ nào nằm trong thời lượng beat.")
     opts = validate_settings(project.get("settings", {}))
     project = {**project, 'settings':opts}
     import media_tools

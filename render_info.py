@@ -172,7 +172,6 @@ def describe(project,directory):
     if source and (source['width']<width or source['height']<height):warnings.append('Nguồn video nhỏ hơn khung xuất: phóng lớn không tạo thêm chi tiết thật.')
     if source and fps>fps_value(source.get('fps',30))+.1:warnings.append('FPS xuất cao hơn nguồn chỉ lặp khung hình, không tạo chuyển động mới.')
     if not project.get('beat') or not (directory/'beat.wav').is_file():errors.append('Chưa có beat gốc.')
-    if not project.get('words'):errors.append('Chưa có lời để xuất.')
     if s['audio_output']=='guide' and not (directory/'vocals.wav').is_file() and not (directory/'reference.wav').is_file():
         errors.append('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
     if s['logo_enabled'] and project.get('logo_name') and not (directory/'logo.png').is_file():errors.append('Thiếu file logo. Hãy nạp lại ảnh logo.')

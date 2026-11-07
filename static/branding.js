@@ -16,9 +16,9 @@ const studioIcons={
 };
 function studioIcon(name){return `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${studioIcons[name]||studioIcons.music}</svg>`;}
 function initBranding(){
-  const wave='<svg class="brand-wave" viewBox="0 0 32 32" aria-hidden="true"><g stroke-linecap="round" stroke-width="2.5"><path d="M4 14v4M9 9v14" stroke="#b7dc48"/><path d="M14 5v22M19 9v14" stroke="#27deb0"/><path d="M24 12v8M29 15v2" stroke="#f0b24a"/></g></svg>';
-  document.querySelector('.rail-brand').innerHTML=wave;
-  document.querySelector('.brand-icon').innerHTML=wave;
+  const mark='<img class="brand-mark" src="/static/vietkara.svg?v=2026.11-brand" alt="">';
+  document.querySelector('.rail-brand').innerHTML=mark;
+  document.querySelector('.brand-icon').innerHTML=mark;
   for(const [page,icon] of [['karaoke','mic'],['separation','headphones'],['settings','settings']])document.querySelector(`[data-page="${page}"]`).innerHTML=studioIcon(icon);
   for(const el of document.querySelectorAll('[data-icon]'))el.innerHTML=studioIcon(el.dataset.icon);
   document.querySelector('.reference-card .upload-icon').innerHTML=studioIcon('mic');

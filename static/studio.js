@@ -245,8 +245,7 @@ function initWorkspaceChrome(){
   $('editLyricsBtn').onclick=()=>{const editor=$('lyricsEditor');editor.open=!editor.open;$('editLyricsBtn').setAttribute('aria-expanded',String(editor.open));if(editor.open){document.querySelector('[data-left-tab="lyrics"]').click();$('lyricsText').focus();}};
   document.querySelectorAll('[data-menu-click]').forEach(button=>button.onclick=()=>{
     const target=button.dataset.menuClick;
-    if(target==='timelineManualTab')showInspector('sync');
-    else if(target==='resetLayoutBtn')resetStudioLayout();
+    if(target==='resetLayoutBtn')resetStudioLayout();
     else $(target)?.click();
     button.closest('.menu-pop')?.removeAttribute('open');
   });
@@ -369,17 +368,16 @@ function initStudio(){
 
 function timelineGutter(width){return width<480?70:94;}
 function showInspector(name){
-  const designNames=['design','duet','title','background','scenes','logo','countdown','presets'];
-  if(!designNames.includes(name)&&!['timing','sync'].includes(name))name='design';
+  const designNames=['design','duet','title','background','logo','countdown','presets'];
+  if(!designNames.includes(name)&&name!=='timing')name='design';
   document.querySelectorAll('[data-inspector-tab]').forEach(button=>{const active=button.dataset.inspectorTab===name;button.classList.toggle('on',active);button.setAttribute('aria-selected',String(active));});
   const design=designNames.includes(name);document.querySelector('[data-inspector-pane="design"]').hidden=!design;$('wordTools').hidden=design;
   if(design){
     document.querySelectorAll('.style-panel [data-property-section]').forEach(section=>{section.hidden=section.dataset.propertySection!==name;section.open=!section.hidden;});
-    $('inspectorScope').textContent=name==='scenes'?'Đang sửa: cảnh theo phân đoạn':'Đang sửa: cả bài';
-    if(name==='scenes')renderSceneControls();
+    $('inspectorScope').textContent='Đang sửa: cả bài';
   }else{
-    $('selectedPanel').hidden=name==='sync';$('syncPanel').hidden=name!=='sync';
-    $('inspectorScope').textContent=name==='sync'?'Đang sửa: mốc đồng bộ':'Đang sửa: từ / câu';
+    $('selectedPanel').hidden=false;
+    $('inspectorScope').textContent='Đang sửa: từ / câu';
   }
 }
 function compactProjectView(){
