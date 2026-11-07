@@ -1199,3 +1199,12 @@ khi nạp để sửa bố cục đã lưu trước đây. Workspace Clippy và 
 thay đổi (app 58/58); release build lại pass. Screenshot QA ở viewport
 1442×932 xác nhận empty state mới hiển thị và timeline còn trong vùng nhìn
 thấy sau khi thêm giới hạn co dọc cho workspace/preview.
+### 2026-11-07: giữ thứ tự seek trong playback
+
+Seek liên tiếp được gộp trong hàng đợi playback, nhưng các lệnh Load,
+Stop và lệnh transport khác vẫn giữ thứ tự với seek. Nhờ vậy seek gửi
+trong lúc nạp không bị lấy ra trước Load rồi bỏ mất; seek ở hai phía của
+Stop cũng không bị gộp thành một. `cargo test -p vietkara-media
+playback::tests` đạt 3/3; `cargo clippy -p vietkara-media --all-targets --
+-D warnings` và `cargo fmt --all -- --check` đạt. Chưa kiểm tra hành trình
+seek/playback bằng thiết bị âm thanh thực qua giao diện Studio.

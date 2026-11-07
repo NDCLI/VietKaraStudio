@@ -49,14 +49,32 @@ impl Default for PlaybackSnapshot {
     }
 }
 pub struct Playback {
-    commands: SyncSender<PlaybackCommand>,
+    commands: SyncSender<QueuedCommand>,
     snapshot: Arc<Mutex<PlaybackSnapshot>>,
     cancelled: Arc<AtomicBool>,
-    /// Latest seek requested while the worker is busy. Seeking is
-    /// coalesced here instead of going through the bounded command
-    /// channel, so dragging the playhead can never drop a position (the
-    /// newest position wins) and can never block the UI thread.
-    pending_seek: Arc<Mutex<Option<f64>>>,
+    pending_seek: Arc<Mutex<Option<Arc<Mutex<f64>>>>>,
+}
+
+enum QueuedCommand {
+    Action(PlaybackCommand),
+    Seek(Arc<Mutex<f64>>),
+}
+
+fn dequeue(command: QueuedCommand, pending: &Mutex<Option<Arc<Mutex<f64>>>>) -> PlaybackCommand {
+    match command {
+        QueuedCommand::Action(command) => command,
+        QueuedCommand::Seek(value) => {
+            let mut pending = pending.lock().unwrap_or_else(|e| e.into_inner());
+            if pending
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &value))
+            {
+                *pending = None;
+            }
+            let seconds = *value.lock().unwrap_or_else(|e| e.into_inner());
+            PlaybackCommand::Seek(seconds)
+        }
+    }
 }
 impl Playback {
     pub fn new() -> Result<Self, String> {
@@ -97,24 +115,29 @@ impl Playback {
         if self.cancelled.load(Ordering::Acquire) {
             return Err("Playback worker đã dừng".into());
         }
-        if let PlaybackCommand::Seek(seconds) = command {
-            // Coalesce seeks: the worker consumes the newest value on its
-            // next turn, so rapid playhead drags cannot fill the bounded
-            // channel and silently lose the final position.
-            *self
-                .pending_seek
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(seconds);
-            return Ok(());
-        }
-        // Keep the UI responsive while guaranteeing a command is either
-        // delivered or reported as an error, never silently dropped.
+        let mut pending = self.pending_seek.lock().unwrap_or_else(|e| e.into_inner());
+        let queued = match command {
+            PlaybackCommand::Seek(seconds) => {
+                if let Some(value) = pending.as_ref() {
+                    *value.lock().unwrap_or_else(|e| e.into_inner()) = seconds;
+                    return Ok(());
+                }
+                QueuedCommand::Seek(Arc::new(Mutex::new(seconds)))
+            }
+            other => QueuedCommand::Action(other),
+        };
+        let next_seek = match &queued {
+            QueuedCommand::Seek(value) => Some(value.clone()),
+            QueuedCommand::Action(_) => None,
+        };
         self.commands
-            .try_send(command)
+            .try_send(queued)
             .map_err(|error| match error {
-                TrySendError::Full(_) => "Playback đang bận, hãy thử lại".into(),
-                TrySendError::Disconnected(_) => "Playback worker đã dừng".into(),
-            })
+                TrySendError::Full(_) => "Playback đang bận, hãy thử lại".to_owned(),
+                TrySendError::Disconnected(_) => "Playback worker đã dừng".to_owned(),
+            })?;
+        *pending = next_seek;
+        Ok(())
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         self.snapshot
@@ -129,10 +152,10 @@ fn publish(shared: &Mutex<PlaybackSnapshot>, state: PlaybackSnapshot) {
 }
 
 fn worker_loop(
-    receiver: mpsc::Receiver<PlaybackCommand>,
+    receiver: mpsc::Receiver<QueuedCommand>,
     shared: Arc<Mutex<PlaybackSnapshot>>,
     shutdown: Arc<AtomicBool>,
-    pending_seek: Arc<Mutex<Option<f64>>>,
+    pending_seek: Arc<Mutex<Option<Arc<Mutex<f64>>>>>,
 ) {
     let mut player: Option<DevicePlayer> = None;
     let mut current_path = None;
@@ -150,19 +173,9 @@ fn worker_loop(
         };
     let mut pending_commands = VecDeque::new();
     while !shutdown.load(Ordering::Acquire) {
-        // Apply the newest coalesced seek before waiting for the next
-        // command, so the final playhead position is never lost.
-        if let Some(seconds) = pending_seek
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take()
-            && let Some(device) = &mut player
-        {
-            device.seek(seconds);
-        }
         let command = if pending_commands.is_empty() {
             match receiver.recv_timeout(Duration::from_millis(20)) {
-                Ok(command) => Some(command),
+                Ok(command) => Some(dequeue(command, &pending_seek)),
                 Err(RecvTimeoutError::Timeout) => None,
                 Err(RecvTimeoutError::Disconnected) => break,
             }
@@ -182,6 +195,7 @@ fn worker_loop(
                     path,
                     &mut output_device,
                     &receiver,
+                    &pending_seek,
                     &mut pending_commands,
                     &shared,
                     &shutdown,
@@ -198,6 +212,7 @@ fn worker_loop(
                     path,
                     &mut output_device,
                     &receiver,
+                    &pending_seek,
                     &mut pending_commands,
                     &shared,
                     &shutdown,
@@ -272,7 +287,8 @@ fn load_device(
     error: &mut Option<String>,
     path: PathBuf,
     output_device: &mut Option<String>,
-    receiver: &mpsc::Receiver<PlaybackCommand>,
+    receiver: &mpsc::Receiver<QueuedCommand>,
+    pending_seek: &Mutex<Option<Arc<Mutex<f64>>>>,
     pending_commands: &mut VecDeque<PlaybackCommand>,
     shared: &Arc<Mutex<PlaybackSnapshot>>,
     shutdown: &AtomicBool,
@@ -298,7 +314,10 @@ fn load_device(
         if shutdown.load(Ordering::Acquire) {
             return;
         }
-        match receiver.try_recv() {
+        match receiver
+            .try_recv()
+            .map(|command| dequeue(command, pending_seek))
+        {
             Ok(PlaybackCommand::Load(path)) => {
                 pending_commands.clear();
                 requested = Some((path, None));
@@ -351,6 +370,42 @@ mod tests {
                 .send(PlaybackCommand::Seek(index as f64 / 100.0))
                 .expect("coalesced seek must always be accepted");
         }
+    }
+
+    #[test]
+    fn seek_keeps_its_place_between_load_and_transport_commands() {
+        let (commands, receiver) = mpsc::sync_channel(32);
+        let pending_seek = Arc::new(Mutex::new(None));
+        let playback = Playback {
+            commands,
+            snapshot: Arc::new(Mutex::new(PlaybackSnapshot::default())),
+            cancelled: Arc::new(AtomicBool::new(false)),
+            pending_seek: pending_seek.clone(),
+        };
+        playback
+            .send(PlaybackCommand::Load("track.wav".into()))
+            .unwrap();
+        playback.send(PlaybackCommand::Seek(1.0)).unwrap();
+        playback.send(PlaybackCommand::Seek(2.0)).unwrap();
+        playback.send(PlaybackCommand::Stop).unwrap();
+        playback.send(PlaybackCommand::Seek(3.0)).unwrap();
+
+        assert!(matches!(
+            dequeue(receiver.try_recv().unwrap(), &pending_seek),
+            PlaybackCommand::Load(_)
+        ));
+        assert!(matches!(
+            dequeue(receiver.try_recv().unwrap(), &pending_seek),
+            PlaybackCommand::Seek(2.0)
+        ));
+        assert!(matches!(
+            dequeue(receiver.try_recv().unwrap(), &pending_seek),
+            PlaybackCommand::Stop
+        ));
+        assert!(matches!(
+            dequeue(receiver.try_recv().unwrap(), &pending_seek),
+            PlaybackCommand::Seek(3.0)
+        ));
     }
 
     #[test]
