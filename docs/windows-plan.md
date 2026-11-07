@@ -1208,3 +1208,14 @@ Stop cũng không bị gộp thành một. `cargo test -p vietkara-media
 playback::tests` đạt 3/3; `cargo clippy -p vietkara-media --all-targets --
 -D warnings` và `cargo fmt --all -- --check` đạt. Chưa kiểm tra hành trình
 seek/playback bằng thiết bị âm thanh thực qua giao diện Studio.
+
+### 2026-11-07: nhóm thiết kế trong UI demo
+
+Trạng thái: đang làm Chặng 1. Inspector mẫu có sáu nhóm thu gọn: chữ,
+song ca, nền/scene, tiêu đề/logo, đếm ngược và xuất. Chuyển sang Căn lời
+mở danh sách lời; đổi vai mẫu theo từng câu cập nhật lane Nam/Nữ trên
+timeline. Các hộp thoại chưa nối backend tiếp tục nêu rõ đây là bản mẫu.
+`cargo check -p vietkara-app`, `cargo clippy -p vietkara-app --all-targets
+-- -D warnings` và `cargo build -p vietkara-app` đạt. Đã mở UI demo trên
+Windows ở khoảng 1440×900, xác nhận nhóm thiết kế hiển thị và mở nhóm
+Song ca. Chưa kiểm tra các viewport/DPI còn lại hoặc toàn bộ tương tác.

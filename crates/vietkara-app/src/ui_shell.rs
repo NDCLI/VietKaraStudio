@@ -15,6 +15,7 @@ enum Mode {
 #[derive(Clone, Copy)]
 enum Action {
     Mode(Mode),
+    ToggleGroup(usize),
     Select(usize),
     Media(bool),
     Dialog(&'static str),
@@ -38,15 +39,22 @@ struct Shell {
     color: usize,
     zoom: i32,
     position: i32,
-    female: bool,
+    female: Vec<bool>,
     dialog: Option<&'static str>,
+    design_groups: [bool; 6],
     status: String,
 }
 
 impl Shell {
     fn act(&mut self, action: Action, cx: &mut Context<Self>) {
         match action {
-            Action::Mode(mode) => self.mode = mode,
+            Action::Mode(mode) => {
+                self.mode = mode;
+                if mode == Mode::Timing {
+                    self.media = false;
+                }
+            }
+            Action::ToggleGroup(index) => self.design_groups[index] = !self.design_groups[index],
             Action::Media(media) => self.media = media,
             Action::Select(index) => {
                 self.selected = index;
@@ -70,7 +78,7 @@ impl Shell {
             Action::Color => self.color = (self.color + 1) % 3,
             Action::Zoom(delta) => self.zoom = (self.zoom + delta).clamp(60, 180),
             Action::Seek(delta) => self.position = (self.position + delta).clamp(0, 30),
-            Action::Role => self.female = !self.female,
+            Action::Role => self.female[self.selected] = !self.female[self.selected],
             Action::Reset => {
                 self.position = 0;
                 self.status = "Đã đưa con trỏ mẫu về đầu".into();
@@ -103,6 +111,27 @@ impl Shell {
                 cx.listener(move |this, _, _, cx| this.act(action, cx)),
             )
             .child(label.into())
+    }
+
+    fn group(
+        &self,
+        title: &str,
+        index: usize,
+        body: gpui::Div,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let open = self.design_groups[index];
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(self.button(
+                format!("{}  {}", if open { "▾" } else { "▸" }, title),
+                Action::ToggleGroup(index),
+                open,
+                cx,
+            ))
+            .when(open, |group| group.child(body))
     }
 }
 
@@ -258,7 +287,7 @@ impl Render for Shell {
                     self.selected * 5 + 4
                 )))
                 .child(self.button(
-                    if self.female {
+                    if self.female[self.selected] {
                         "Vai mẫu: Nữ"
                     } else {
                         "Vai mẫu: Nam"
@@ -281,42 +310,105 @@ impl Render for Shell {
                 )),
             Mode::Design => inspector
                 .child(caption("THIẾT KẾ VIDEO"))
-                .child(caption("CHỮ KARAOKE"))
-                .child(self.button("Chọn font", Action::Dialog("Thư viện font"), false, cx))
                 .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .items_center()
-                        .child(self.button("−", Action::Size(-2), false, cx))
-                        .child(caption(format!("Cỡ mẫu: {}", self.font_size)))
-                        .child(self.button("+", Action::Size(2), false, cx)),
+                    self.group(
+                        "Chữ karaoke",
+                        0,
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(self.button(
+                                "Chọn font",
+                                Action::Dialog("Thư viện font"),
+                                false,
+                                cx,
+                            ))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(self.button("−", Action::Size(-2), false, cx))
+                                    .child(caption(format!("Cỡ mẫu: {}", self.font_size)))
+                                    .child(self.button("+", Action::Size(2), false, cx)),
+                            )
+                            .child(self.button("Đổi màu chữ mẫu", Action::Color, true, cx))
+                            .child(self.button(
+                                "Preset kiểu chữ",
+                                Action::Dialog("Thư viện preset"),
+                                false,
+                                cx,
+                            ))
+                            .child(self.button(
+                                "Viền / bóng / hiệu ứng",
+                                Action::Dialog("Hiệu ứng chữ"),
+                                false,
+                                cx,
+                            )),
+                        cx,
+                    ),
                 )
-                .child(self.button("Đổi màu chữ mẫu", Action::Color, true, cx))
-                .child(self.button(
-                    "Preset kiểu chữ",
-                    Action::Dialog("Thư viện preset"),
-                    false,
+                .child(
+                    self.group(
+                        "Song ca",
+                        1,
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(caption("Bố cục hai vai Nam / Nữ"))
+                            .child(self.button(
+                                "Thiết lập song ca",
+                                Action::Dialog("Thiết lập song ca"),
+                                false,
+                                cx,
+                            )),
+                        cx,
+                    ),
+                )
+                .child(self.group(
+                    "Nền & scene",
+                    2,
+                    div().flex().flex_col().gap_2().child(self.button(
+                        "Thiết lập nền và scene",
+                        Action::Dialog("Nền và scene"),
+                        false,
+                        cx,
+                    )),
                     cx,
                 ))
-                .child(self.button(
-                    "Viền / bóng / hiệu ứng",
-                    Action::Dialog("Hiệu ứng chữ"),
-                    false,
-                    cx,
-                ))
-                .child(caption("BỐ CỤC & TRANG TRÍ"))
-                .child(self.button("Nền & scene", Action::Dialog("Nền và scene"), false, cx))
-                .child(self.button(
+                .child(self.group(
                     "Tiêu đề & logo",
-                    Action::Dialog("Tiêu đề và logo"),
-                    false,
+                    3,
+                    div().flex().flex_col().gap_2().child(self.button(
+                        "Thiết lập tiêu đề và logo",
+                        Action::Dialog("Tiêu đề và logo"),
+                        false,
+                        cx,
+                    )),
                     cx,
                 ))
-                .child(self.button(
-                    "Song ca & countdown",
-                    Action::Dialog("Song ca và đếm ngược"),
-                    false,
+                .child(self.group(
+                    "Đếm ngược",
+                    4,
+                    div().flex().flex_col().gap_2().child(self.button(
+                        "Thiết lập đếm ngược",
+                        Action::Dialog("Đếm ngược"),
+                        false,
+                        cx,
+                    )),
+                    cx,
+                ))
+                .child(self.group(
+                    "Xuất video",
+                    5,
+                    div().flex().flex_col().gap_2().child(self.button(
+                        "Mở thiết lập xuất",
+                        Action::Mode(Mode::Export),
+                        false,
+                        cx,
+                    )),
                     cx,
                 )),
             Mode::Export => inspector
@@ -363,7 +455,7 @@ impl Render for Shell {
                         .children((0..100).map(|i| div().flex_1().h(px(5. + ((i * 17 + 7) % 23) as f32)).bg(rgb(0x528a99)))))
                     .children((0..2).map(|lane| div().flex().gap_2().h(px(34.))
                         .child(caption(if lane == 0 {"Nam"} else {"Nữ"}))
-                        .children(self.lines.iter().enumerate().filter(|(i, _)| i % 2 == lane).map(|(i, line)|
+                        .children(self.lines.iter().enumerate().filter(|(i, _)| usize::from(self.female[*i]) == lane).map(|(i, line)|
                             self.button(line.clone(), Action::Select(i), self.selected == i, cx)))))));
         div().size_full().relative().bg(rgb(theme::CANVAS)).text_color(rgb(theme::TEXT)).text_size(px(13.))
             .child(div().id("demo-workspace").size_full().overflow_y_scroll().overflow_x_scroll()
@@ -422,8 +514,9 @@ pub fn run() {
                     color: 0,
                     zoom: 100,
                     position: 0,
-                    female: false,
+                    female: vec![false, true, false, true, false, true],
                     dialog: None,
+                    design_groups: [true, false, false, false, false, false],
                     status: "UI mẫu · Thay đổi chỉ tồn tại trong phiên này".into(),
                 })
             },
