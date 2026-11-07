@@ -1167,11 +1167,10 @@ def render_information(pid):
 @app.post('/api/projects/<pid>/export-folder')
 def choose_export_folder(pid):
     import subprocess
-    import sys
     idle(pid)
     data=request.get_json(silent=True) or {}
     if data.get('pick'):
-        result=subprocess.run([sys.executable,engine.ROOT/'tools/pick_export_folder.py'],stdin=subprocess.DEVNULL,
+        result=subprocess.run(task_command('pick-folder'),stdin=subprocess.DEVNULL,
                               capture_output=True,text=True,encoding='utf-8',timeout=300,
                               creationflags=engine.CREATE_NO_WINDOW)
         if result.returncode:raise ValueError('Không mở được hộp chọn thư mục. Bạn có thể nhập đường dẫn rồi bấm Lưu.')
