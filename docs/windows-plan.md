@@ -1,5 +1,14 @@
 # Kế hoạch còn lại — làm trên Windows
 
+> **UI-first prototype 2026-11-07:** module `ui_shell` mở bằng
+> `cargo run -p vietkara-app -- --ui-demo`, thoát khỏi đường khởi động editor
+> trước khi đọc project hoặc tạo worker. Có ba chế độ Căn lời/Thiết kế/Xuất,
+> tab media, danh sách câu, preview mẫu, Inspector và timeline hai hàng.
+> Chọn/sửa câu, màu/cỡ chữ, zoom và con trỏ mẫu chỉ đổi state trong RAM.
+> Các chức năng backend hiện là hộp thoại placeholder ghi rõ chưa nối xử lý.
+> Chưa nghiệm thu build/runtime của module này; cần chạy checklist README
+> và duyệt UI trước khi nối engine. Editor hiện có vẫn chạy khi không truyền cờ.
+
 > **Mục đích:** tài liệu này là danh sách việc còn lại của kế hoạch chuyển
 > sang Rust + GPUI, viết để làm **trên máy Windows 10/11**. Mọi phần làm
 > được trên Linux đã xong và đã push; đừng làm lại, chỉ kiểm chứng lại

@@ -1,5 +1,19 @@
 # VietKara Studio
 
+## Khung UI GPUI (chưa nối engine)
+
+Chạy `cargo run -p vietkara-app -- --ui-demo` để mở giao diện mẫu độc lập.
+Gồm ba chế độ Căn lời / Thiết kế / Xuất video, danh sách lời và media,
+preview, Inspector, timeline hai hàng và hộp thoại các chức năng.
+Chọn câu, sửa lời mẫu, đổi cỡ/màu chữ, zoom và con trỏ mẫu hoạt động trong RAM.
+Các thao tác mở/lưu, AI, phát nhạc và xuất video chỉ mở hộp thoại thông báo
+chưa nối xử lý; không tạo file, đọc project hay khởi chạy engine.
+Chạy không có `--ui-demo` vẫn mở editor hiện có.
+
+Nghiệm thu UI trước: chuyển ba chế độ; chọn câu từ danh sách/timeline;
+sửa lời và áp dụng; đổi cỡ/màu chữ; mở/đóng hộp thoại; resize cửa sổ.
+Đây là prototype, chưa có playback/waveform hoặc render thật.
+
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Dùng **beat gốc** cho video xuất; vocal tách riêng phục vụ nhận dạng và căn lời.
 
 ## Bản cục bộ 1.1.1 và bản vá 1.1.4

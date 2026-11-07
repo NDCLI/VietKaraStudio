@@ -4,6 +4,13 @@ Ngày chốt: 2026-11-07. Người thực hiện: **Claude Code**, chạy trực
 
 ## 1. Mục tiêu và điểm bắt đầu
 
+**Ưu tiên mới của người dùng: UI trước, engine nối sau.** Hoàn thiện khung giao diện,
+các tab/nút/hộp thoại và tương tác bằng dữ liệu mẫu trước. Dùng chế độ `--ui-demo`
+để duyệt UI mà không gọi engine. Chặng 0 chỉ chuẩn bị môi trường/UI; các kiểm tra
+worker/media chuyển sang chặng tích hợp tương ứng. Chặng 1 là mốc bàn giao đầu;
+chặng 2–6 là công việc nối xử lý sau đó. Không hiển thị thành công giả cho thao tác
+chưa nối backend. Giữ editor và engine hiện có để tái sử dụng sau.
+
 Hoàn thiện bản Windows dùng nội bộ: người dùng có thể nhập nhạc, nhập/nhận dạng lời, căn lời, thiết kế, xuất video, lưu và mở lại project an toàn. Bàn giao portable và bộ cài đã kiểm chứng trên môi trường độc lập với máy build.
 
 - Repository: `https://github.com/NDCLI/VietKaraStudio`.

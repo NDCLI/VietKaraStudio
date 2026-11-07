@@ -6,6 +6,7 @@ mod text_input;
 mod theme;
 mod timeline;
 mod ui_preferences;
+mod ui_shell;
 use gpui::{
     AnyWindowHandle, App, Application, Bounds, Context, Entity, FocusHandle, KeyBinding,
     KeyDownEvent, KeyUpEvent, MouseButton, ObjectFit, PathPromptOptions, Render, ScrollHandle,
@@ -8696,6 +8697,10 @@ fn role_label(role: &str) -> &'static str {
 }
 
 fn main() {
+    if std::env::args_os().any(|argument| argument == "--ui-demo") {
+        ui_shell::run();
+        return;
+    }
     let path = std::env::args_os().nth(1).map(PathBuf::from);
     let project = match path
         .as_ref()
