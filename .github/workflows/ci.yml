@@ -113,6 +113,15 @@ jobs:
           if-no-files-found: ignore
       - name: Build app (release smoke)
         run: cargo build -p vietkara-app --release
+      - name: Upload Windows app for UI smoke testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: vietkara-windows-ui
+          path: |
+            target/release/vietkara-app.exe
+            target/release/*.dll
+          if-no-files-found: error
+          retention-days: 7
 
   # Baseline scripting checks. The full Python suite needs the local
   # resources/source fixtures and AI model cache, so only syntax plus the
