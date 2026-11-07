@@ -530,18 +530,25 @@ impl Worker {
     }
 
     fn exited_error(&mut self) -> AiError {
-        let code = match self.child.as_mut() {
-            Some(child) => match child.wait() {
-                Ok(status) => {
-                    self.child.take();
-                    status.code()
+        // EOF on stdout does not guarantee that the process exited. A worker
+        // can close that handle and keep running, so never block on `wait()`
+        // here; otherwise a broken worker can bypass the request timeout.
+        let code = if let Some(mut child) = self.child.take() {
+            let deadline = Instant::now() + TERMINAL_EXIT_GRACE;
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status.code(),
+                    Ok(None) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    Ok(None) | Err(_) => {
+                        let _ = child.kill();
+                        break child.wait().ok().and_then(|status| status.code());
+                    }
                 }
-                Err(_) => {
-                    self.child.take();
-                    None
-                }
-            },
-            None => None,
+            }
+        } else {
+            None
         };
         // Reaping the child closes the pipe, but the drain thread may still
         // be publishing its final read. Wait a bounded moment so the report
