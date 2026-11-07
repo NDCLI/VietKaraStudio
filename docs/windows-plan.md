@@ -9,6 +9,14 @@
 > Chưa nghiệm thu build/runtime của module này; cần chạy checklist README
 > và duyệt UI trước khi nối engine. Editor hiện có vẫn chạy khi không truyền cờ.
 
+> **Smoke 2026-11-07:** CI commit `b74a07b` hoàn tất Linux, Windows workspace
+> fmt/Clippy/test và release build; artifact `vietkara-windows-ui` được tải về.
+> Chạy executable với `--ui-demo` trên Windows đã tạo tiến trình và cửa sổ
+> GPUI, tiến trình vẫn sống khi kiểm tra. Công cụ điều khiển cửa sổ báo cửa sổ
+> đang thu nhỏ rồi lỗi khi kích hoạt (`system cursor manager did not become
+> ready`), nên chưa xác nhận ảnh và tương tác từng nút. Cần mở cửa sổ bằng tay
+> trên máy nhà và chạy checklist UI ở README trước khi gọi UI đạt.
+
 > **Mục đích:** tài liệu này là danh sách việc còn lại của kế hoạch chuyển
 > sang Rust + GPUI, viết để làm **trên máy Windows 10/11**. Mọi phần làm
 > được trên Linux đã xong và đã push; đừng làm lại, chỉ kiểm chứng lại
