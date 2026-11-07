@@ -1,5 +1,13 @@
 # VietKara Studio: kế hoạch chuyển dần sang Rust + GPUI
 
+> **UI editor 2026-11-07:** áp dụng bố cục lời bên trái, preview ở giữa,
+> thuộc tính bên phải và timeline chạy ngang bên dưới ba cột. Thêm lối tắt
+> Căn lời / Thiết kế để chuyển Inspector; Căn lời mở lại danh sách lời.
+> Thanh playback và công cụ timeline được phép wrap khi cửa sổ hẹp.
+> Diff check pass. Cargo check đã dừng khi AhnLab giữ các bước
+> compiler, kể cả khi giới hạn `-j 1`; chưa xác nhận build/runtime/DPI cho
+> thay đổi bố cục này.
+
 > **Trạng thái kế hoạch:** cập nhật sau khi kiểm kê workspace hiện tại.
 
 > **Tiến độ 2026-11-06 — CI, hardening và test phụ thuộc môi trường:**

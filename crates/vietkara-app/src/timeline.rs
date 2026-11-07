@@ -861,6 +861,8 @@ impl Studio {
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
+                    .items_center()
                     .gap_3()
                     .child(div().cursor_pointer().child("Zoom −").on_mouse_down(
                         MouseButton::Left,

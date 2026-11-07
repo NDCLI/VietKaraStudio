@@ -5650,7 +5650,6 @@ impl Render for Studio {
         }
         let font_query = self.font_query_input.read(cx).value().to_lowercase();
         let viewport_width = f32::from(window.viewport_size().width);
-        let layout_mode = workspace_mode(viewport_width);
         let workspace = self
             .workspace_layout
             .unwrap_or_else(|| workspace_size(viewport_width));
@@ -6998,6 +6997,29 @@ impl Render for Studio {
                     .child(self.autosave_status.clone()),
             )
             .child(
+                div().flex().flex_wrap().items_center().gap_2().px_3().pt_2()
+                    .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("KHÔNG GIAN LÀM VIỆC"))
+                    .child(div().cursor_pointer().px_4().py_2().rounded_md()
+                        .bg(rgb(if !self.inspector_design {theme::ACCENT_SURFACE}else{theme::SURFACE}))
+                        .child("♫  Căn lời")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                            this.inspector_design=false;
+                            this.left_tab_media=false;
+                            let text=this.selected_word.as_ref().and_then(|id|this.editor.project().words.iter().find(|word|&word.id==id)).map(|word|word.text.clone()).unwrap_or_default();
+                            this.set_word_input(&text,cx);
+                            cx.notify();
+                        })))
+                    .child(div().cursor_pointer().px_4().py_2().rounded_md()
+                        .bg(rgb(if self.inspector_design {theme::ACCENT_SURFACE}else{theme::SURFACE}))
+                        .child("▧  Thiết kế")
+                        .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
+                            this.inspector_design=true;
+                            let text=this.editor.project().settings.extra.get("title_text").and_then(Value::as_str).unwrap_or("").to_owned();
+                            this.set_word_input(&text,cx);
+                            cx.notify();
+                        })))
+            )
+            .child(
                 div()
                     .flex()
                     .flex_1()
@@ -7179,23 +7201,6 @@ impl Render for Studio {
                                                                 .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|this.import_srt(cx)))))))))),
                                     ),
                             )
-                            .child(
-                                div()
-                                    .h(px(match layout_mode {
-                                        WorkspaceMode::Compact => 260.,
-                                        WorkspaceMode::Standard => 320.,
-                                        WorkspaceMode::Wide => 390.,
-                                    }))
-                                    .bg(rgb(theme::SURFACE))
-                                    .rounded_md()
-                                    .p_3()
-                                    .child(timeline)
-                                    .child(div().flex().justify_between().items_center().mt_2()
-                                        .child("TIMELINE · Kéo khối để chọn, kéo mép để chỉnh mốc")
-                                        .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_1()
-                                            .child(if self.editor.project().settings.timeline_linked {"Mốc liên kết"}else{"Mốc độc lập"})
-                                            .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx))))),
-                            ),
                     )
                     .child(
                         div()
@@ -7224,7 +7229,7 @@ impl Render for Studio {
                             .child(div().flex().gap_1().mb_3().p_1().rounded_md().bg(rgb(theme::CANVAS))
                                 .child(div().flex_1().text_center().cursor_pointer().px_2().py_2().rounded_sm().text_size(px(12.))
                                     .bg(rgb(if !self.inspector_design {theme::ACCENT_SURFACE}else{theme::CANVAS}))
-                                    .child("Từ")
+                                    .child("Lời & thời gian")
                                     .on_mouse_down(MouseButton::Left,cx.listener(|this,_,_,cx|{
                                         this.inspector_design=false;
                                         let text=this.selected_word.as_ref().and_then(|id|this.editor.project().words.iter().find(|word|&word.id==id)).map(|word|word.text.clone()).unwrap_or_default();
@@ -7620,8 +7625,27 @@ impl Render for Studio {
             )
             .child(
                 div()
+                    .mx_3()
+                    .mb_3()
+                    .flex_shrink_0()
+                    .bg(rgb(theme::SURFACE))
+                    .rounded_md()
+                    .p_3()
+                    .child(div().flex().flex_wrap().justify_between().items_center().gap_2().mb_2()
+                        .child(div().text_size(px(12.)).child("TIMELINE · CĂN LỜI"))
+                        .child(div().text_size(px(11.)).text_color(rgb(theme::TEXT_MUTED)).child("Space: đặt mốc · Kéo mép từ: chỉnh thời gian"))
+                        .child(div().cursor_pointer().rounded_sm().bg(rgb(theme::CANVAS)).hover(|style| style.bg(rgb(theme::SURFACE_HOVER))).px_2().py_1()
+                            .child(if self.editor.project().settings.timeline_linked {"Mốc liên kết"}else{"Mốc độc lập"})
+                            .on_mouse_down(MouseButton::Left,cx.listener(|this, _, _, cx|this.toggle_linked(cx)))))
+                    .child(timeline),
+            )
+            .child(
+                div()
                     .flex()
                     .justify_between()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
                     .px_5()
                     .py_3()
                     .bg(rgb(theme::SURFACE))
