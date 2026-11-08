@@ -358,8 +358,8 @@ def export_text(project, kind, directory=None):
     raise ValueError("Định dạng không hợp lệ.")
 
 
-def render(project, directory, job, render_id=None):
-    """Render from the original beat, optionally mixed with separated guide vocals."""
+def render(project, directory, job, render_id=None, *, frozen_audio=False):
+    """Render from the selected karaoke soundtrack."""
     if not project.get("beat") or not (directory / "beat.wav").exists():
         raise ValueError("Hãy nạp beat gốc trước khi xuất.")
     opts = validate_settings(project.get("settings", {}))
@@ -382,7 +382,7 @@ def render(project, directory, job, render_id=None):
         render_start=max(0.,min(max(0.,duration-.5),float(preview.get("start",0))))
         render_duration=max(.5,min(12.,float(preview.get("duration",8)),duration-render_start))
     import render_info
-    manifest=render_info.describe(project,directory)
+    manifest=render_info.describe(project,directory,frozen_audio=frozen_audio)
     if manifest['errors']:raise ValueError(' '.join(manifest['errors']))
     if preview is not None:
         manifest['render_preview']={'start':round(render_start,3),'duration':round(render_duration,3)}
@@ -404,8 +404,9 @@ def render(project, directory, job, render_id=None):
         args += ["-loop", "1", "-framerate", str(fps), "-i", str(background)]
     else:
         args += ["-f", "lavfi", "-i", f"color=c=0x{bg[1:]}:s={width}x{height}:r={fps}"]
-    # The default soundtrack is always beat.wav; guide variants optionally add separated vocals.
-    args += ['-i',str(directory/'beat.wav')]
+    from backing_vocals import mix_file
+    soundtrack_file = mix_file(project, directory) if opts['audio_output'] == 'backing' else directory / 'beat.wav'
+    args += ['-i',str(soundtrack_file)]
     guide_audio = opts['audio_output'] == 'guide'
     if guide_audio:
         vocal_path=directory/'vocals.wav'
@@ -555,12 +556,13 @@ def render(project, directory, job, render_id=None):
         trailer += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
     if opts['render_format'] in ('mp4','mov'):trailer += ['-movflags','+faststart']
     trailer += [video_name]
-    job.update(5, f"Đang dựng video từ beat gốc · {video_device['name']}…")
+    soundtrack = {'beat': 'beat gốc', 'guide': 'beat + vocal hướng dẫn',
+                  'backing': 'beat + bè'}[opts['audio_output']]
+    job.update(5, f"Đang dựng video từ {soundtrack} · {video_device['name']}…")
     def progress(line):
         if line.startswith("out_time_us="):
             try:
                 seconds = int(line.split("=", 1)[1]) / 1e6
-                soundtrack='beat gốc + vocal hướng dẫn' if guide_audio else 'beat gốc'
                 job.update(min(98, 5 + seconds / render_duration * 93), f"Đang ghép chữ và {soundtrack} · {video_device['name']}…")
             except ValueError:
                 pass

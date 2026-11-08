@@ -14,12 +14,14 @@ from pathlib import Path
 
 FIXED_MEDIA = {
     "reference.wav", "beat.wav", "vocals.wav", "reference_instrumental.wav",
+    "backing.wav",
     "background.jpg", "logo.png", "countdown.png",
 }
 MEDIA_PATTERN = re.compile(
     r"^(?:reference|beat|background)_source\.[a-z0-9]{1,8}$|"
     r"^(?:reference|beat|background)_preview\.mp4$|"
-    r"^scene_(?:decoration_)?[0-9a-f]{32}\.png$"
+    r"^scene_(?:decoration_)?[0-9a-f]{32}\.png$|"
+    r"^bb_[0-9a-f]{24}\.wav$"
 )
 MAX_ARCHIVE_SIZE = 3 * 1024 ** 3
 

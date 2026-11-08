@@ -4,7 +4,7 @@ import sys
 
 COMPILED = '__compiled__' in globals()
 VERSION='1.1.9'
-TASKS = frozenset(('probe','speech','roles','demucs','model','pick-folder','diagnose'))
+TASKS = frozenset(('probe','speech','roles','demucs','backing','model','pick-folder','diagnose'))
 
 
 def task_command(task,*arguments):
@@ -38,6 +38,10 @@ def dispatch(task,arguments):
     elif task=='demucs':
         from demucs.separate import main
         main(arguments)
+    elif task=='backing':
+        if len(arguments)!=4:raise ValueError('Backing separation requires input, output, model directory and device')
+        from backing_vocals import run_separator
+        run_separator(*(Path(item) for item in arguments[:3]), arguments[3])
     elif task=='model':
         if len(arguments) not in (2,3) or (len(arguments)==3 and arguments[2]!='--fresh'):raise ValueError('Model requires a data path and name')
         from model_manager import download

@@ -88,6 +88,11 @@ def required_media(project: dict, source: Path) -> list[Path]:
             needed.append("reference.wav")
         else:
             raise ValueError(f"Project {project.get('name', '')} cần bản hát hoặc vocal đã tách cho bản hướng dẫn.")
+    if settings.get("audio_output") == "backing":
+        import backing_vocals
+        if backing_vocals.status(project, source) != "ready":
+            raise ValueError(f"Project {project['name']} cần bản bè đã căn nhịp và xác nhận.")
+        needed.append(backing_vocals.mix_file(project, source).name)
     return [available[name] for name in dict.fromkeys(needed) if name in available]
 
 
@@ -100,7 +105,7 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
     if not requested_aspects or any(value not in ("current", "landscape", "portrait") for value in requested_aspects):
         raise ValueError("Tỉ lệ đầu ra theo lô không hợp lệ.")
     requested_audio = list(dict.fromkeys(audio_outputs or (("beat", "guide") if include_guide else ("beat",))))
-    if not requested_audio or any(value not in ("beat", "guide") for value in requested_audio):
+    if not requested_audio or any(value not in ("beat", "guide", "backing") for value in requested_audio):
         raise ValueError("Loại âm thanh đầu ra không hợp lệ.")
     if mode not in ("batch", "single-render"):
         raise ValueError("Loại hàng đợi không hợp lệ.")
@@ -157,7 +162,8 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
                     shutil.copy2(media_snapshots[project["id"]][media.name], destination)
                 assets.append(media.name)
             aspect_label = "Hiện tại" if requested_aspect == "current" else ("Ngang 16:9" if requested_aspect == "landscape" else "Dọc 9:16")
-            audio_label = "Beat gốc" if audio_output == "beat" else "Beat + vocal hướng dẫn"
+            audio_label = {"beat": "Beat gốc", "guide": "Beat + vocal hướng dẫn",
+                           "backing": "Beat + bè"}[audio_output]
             items.append({"project_id": project["id"], "render_id": render_id,
                           "name": f"{project['name']} · {aspect_label} · {audio_label}",
                           "variant": {"aspect": snapshot["settings"]["aspect"], "audio": audio_output},
@@ -202,7 +208,7 @@ def run(data_root: Path, batch_id: str, job, recognize=None) -> dict:
                 project["words"] = words
                 _write(frozen / "snapshot.json", project)
             render_id = item.get("render_id") or job.id
-            result = engine.render(project, frozen, job, render_id=render_id)
+            result = engine.render(project, frozen, job, render_id=render_id, frozen_audio=True)
             job.check()
             generated = frozen / "exports" / render_id
             destination = data_root / "projects" / item["project_id"] / "exports" / render_id

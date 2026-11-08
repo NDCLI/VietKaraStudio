@@ -2,7 +2,8 @@
 let exportMenuRevision=0;
 async function refreshExportMenu(){
   const revision=++exportMenuRevision,p=state.project,s=p.settings;
-  for(const [id,key] of [['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).value=s[key]??({render_quality:'high',render_fps:'source',render_format:'mp4'}[key]);
+  for(const [id,key] of [['exportAudio','audio_output'],['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).value=s[key]??({audio_output:'beat',render_quality:'high',render_fps:'source',render_format:'mp4'}[key]);
+  $('exportAudio').querySelector('[value="backing"]').disabled=p.backing_status!=='ready';
   $('exportFolder').value=p.export_directory||'';
   $('exportBeatName').textContent=p.beat?.name||'Chưa nạp beat';
   $('exportInventory').textContent='Đang kiểm tra file và thiết lập…';
@@ -18,8 +19,8 @@ async function refreshExportMenu(){
     ['Tiêu đề',s.title_enabled&&s.title_text?`${s.title_text} · ${s.title_start}–${s.title_end}s · ${s.title_enter} / ${s.title_exit}`:'Tắt'],
     ['Đếm ngược',s.countdown==='none'?'Tắt':countdown+' · đầu bài / sau nhạc dạo'],
     ['Logo',info.logo?`${p.logo_name} · ${s.logo_size}% · độ rõ ${s.logo_opacity}% · ${$('logoEffect').selectedOptions[0]?.textContent||s.logo_effect}`:'Tắt / chưa có ảnh'],
-    ['Âm thanh',`Beat gốc · ${o.audio}${s.audio_normalize?' · Chuẩn hóa gần −16 LUFS / −1,5 dBTP':''}${info.audio_quality?` · peak ${info.audio_quality.peak_dbfs} dBFS · RMS ${info.audio_quality.rms_dbfs} dBFS`:''}`],['Thư mục',info.folder]];
-  $('exportInventory').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl><details><summary>Không đưa vào video</summary><p>'+info.excluded.map(esc).join(' · ')+'</p></details><p class="hint">Video được dựng từ beat gốc; file xuất ghép cảnh, ảnh trang trí, lời và logo.</p>';
+    ['Âm thanh',`${o.audio}${info.audio_quality?` · peak ${info.audio_quality.peak_dbfs} dBFS · RMS ${info.audio_quality.rms_dbfs} dBFS`:''}`],['Thư mục',info.folder]];
+  $('exportInventory').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')+'</dl><details><summary>Không đưa vào video</summary><p>'+info.excluded.map(esc).join(' · ')+'</p></details>';
   $('exportNotice').textContent=[...info.errors,...info.warnings].join('\n');$('exportNotice').classList.toggle('export-error',info.errors.length>0);
   const checks=info.checks||[],box=$('exportChecks');box.hidden=!checks.length;
   box.innerHTML=checks.length?'<h3>Rà soát lời · bấm để tới vị trí</h3><div class="export-check-list">'+checks.slice(0,200).map(item=>`<button type="button" class="export-check-item" data-qa-word="${Number(item.word_index)}"><small>${time(mapTime(item.time),true)} · C${Number(item.line)+1}</small><span>${esc(item.message)}</span></button>`).join('')+'</div>'+(checks.length>200?`<p class="hint">Còn ${checks.length-200} điểm khác; danh sách đang hiển thị 200 điểm đầu.</p>`:''):'';
@@ -53,7 +54,7 @@ function initExportMenu(){
     selectWord(index, false);
     seekBeat(Math.max(0, mapTime(word.start)));
   };
-  for(const [id,key] of [['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).onchange=wrap(async()=>{
+  for(const [id,key] of [['exportAudio','audio_output'],['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).onchange=wrap(async()=>{
     if(state.job)return;state.project.settings[key]=$(id).value;renderStyle();await saveNow();await refreshExportMenu();
   });
   async function folder(pick){

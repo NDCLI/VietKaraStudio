@@ -157,7 +157,8 @@ def encoding_options(quality,encoder):
     return ['-c:v','libx264','-preset',preset,'-crf',str(crf)]
 
 
-def describe(project,directory):
+def describe(project,directory,*,frozen_audio=False):
+    import backing_vocals
     s=validate_settings(project.get('settings',{}));warnings=[];errors=[]
     width,height=(1080,1920) if s['aspect']=='portrait' else (1920,1080)
     if s['resolution']=='4k':width*=2;height*=2
@@ -174,6 +175,11 @@ def describe(project,directory):
     if not project.get('beat') or not (directory/'beat.wav').is_file():errors.append('Chưa có beat gốc.')
     if s['audio_output']=='guide' and not (directory/'vocals.wav').is_file() and not (directory/'reference.wav').is_file():
         errors.append('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
+    if s['audio_output']=='backing':
+        mix = backing_vocals.mix_file(project, directory)
+        ready = bool(mix and mix.is_file()) if frozen_audio else backing_vocals.status(project, directory) == 'ready'
+        if not ready:
+            errors.append('Cần căn nhịp và xác nhận bản bè trước khi xuất Beat + bè.')
     if s['logo_enabled'] and project.get('logo_name') and not (directory/'logo.png').is_file():errors.append('Thiếu file logo. Hãy nạp lại ảnh logo.')
     if s['countdown']=='image' and not (directory/'countdown.png').is_file():errors.append('Thiếu ảnh đếm ngược.')
     words=project.get('words',[])
@@ -324,8 +330,8 @@ def describe(project,directory):
     folder=project.get('export_directory','')
     if folder and (not Path(folder).is_absolute() or not Path(folder).is_dir()):errors.append('Thư mục xuất không còn tồn tại. Hãy chọn lại.')
     audio_quality=None
-    beat_file=directory/'beat.wav'
-    if beat_file.is_file():
+    beat_file=backing_vocals.mix_file(project,directory) if s['audio_output']=='backing' else directory/'beat.wav'
+    if beat_file and beat_file.is_file():
         try:
             stat=beat_file.stat()
             audio_quality=_audio_metrics(str(beat_file.resolve()),stat.st_mtime_ns,stat.st_size)
@@ -335,8 +341,7 @@ def describe(project,directory):
                 warnings.append('Peak beat dưới 0,5 dB so với ngưỡng clipping; nên kiểm tra âm lượng.')
         except Exception as exc:
             warnings.append('Chưa đo được peak/RMS của beat: '+str(exc)[:180])
-    audio_label='Beat gốc'
-    if s['audio_output']=='guide':audio_label='Beat + vocal hướng dẫn'
+    audio_label={'beat':'Beat gốc','guide':'Beat + vocal hướng dẫn','backing':'Beat + bè'}[s['audio_output']]
     return {'project':project.get('name',''),'output':{'width':width,'height':height,'fps':round(fps,5),'format':s['render_format'].upper()+' · H.264','audio':audio_label+' · AAC · 320 kbps'+(' · chuẩn hóa gần −16 LUFS' if s['audio_normalize'] else ''),'quality':s['render_quality']},
             'folder':folder or 'Thư mục exports của project (mặc định)',
             'duration':(project.get('beat') or {}).get('duration',0),'background':{'kind':kind,'name':path.name if path else s['background'],'source':source},
@@ -344,4 +349,4 @@ def describe(project,directory):
             'words':len(words),'lines':len({w['line'] for w in words}),
             'logo':bool(s['logo_enabled'] and project.get('logo_name')),'settings':s,'warnings':warnings,'errors':errors,
             'checks':checks,'audio_quality':audio_quality,
-            'audio_source':(project.get('beat') or {}).get('name'),'excluded':(['Giọng hát tham chiếu'] if s['audio_output']=='beat' else [])+['Âm thanh video nền','Màu nhãn timeline','Bố cục màn hình chỉnh sửa']}
+            'audio_source':(project.get('beat') or {}).get('name'),'excluded':(['Giọng hát tham chiếu'] if s['audio_output']!='guide' else [])+['Âm thanh video nền','Màu nhãn timeline','Bố cục màn hình chỉnh sửa']}

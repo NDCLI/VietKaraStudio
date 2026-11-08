@@ -105,7 +105,7 @@ def validate_settings(values, base=None):
                          ("singing_mode", ("solo", "duet")), ("align", ("left", "center", "right", "justify")),
                          ("mv_style", ("single", "stack", "scroll")), ("logo_effect", ("none", "fade", "float", "pulse")),
                          ("render_quality", ("standard", "high", "maximum")), ("render_fps", ("source", "30", "60")),
-                         ("audio_output", ("beat", "guide")),
+                         ("audio_output", ("beat", "guide", "backing")),
                          ("render_format", ("mp4", "mov", "mkv"))):
         if result[key] not in choices:
             raise ValueError(f"Giá trị {key} không hợp lệ.")

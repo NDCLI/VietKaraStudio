@@ -1,6 +1,6 @@
 # VietKara Studio
 
-Studio karaoke chạy cục bộ trên Windows 10/11 x64. Dùng **beat gốc** cho video xuất; vocal tách riêng phục vụ nhận dạng và căn lời.
+Studio karaoke chạy cục bộ trên Windows 10/11 x64. Video xuất dùng **beat gốc** mặc định. Có thể chọn thêm giọng bè đã duyệt hoặc vocal hướng dẫn.
 
 ## Bản cục bộ 1.1.1 và bản vá 1.1.9
 
@@ -18,6 +18,7 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Video/ảnh/màu nền, đếm ngược đầu bài hoặc sau nhạc dạo, logo và hiệu ứng logo.
 - Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/4K; kèm SRT/LRC/ASS và thông tin render.
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
+- Tách giọng bè từ bản hát, nghe thử và xác nhận. Nút **Bè** bật/tắt phần bè khi nghe beat. Khi dựng lẻ hoặc theo lô, chọn **Beat + bè** để xuất bản đã nghe thử.
 - Chỉnh bố cục nhiều tính năng, chọn video làm nguồn, tiêu đề căn trái có nền ôm sát chữ; cập nhật trạng thái tác vụ bằng câu dễ hiểu.
 - Tự kiểm tra và tải bản vá từ GitHub Releases; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
 - Icon nam, nữ, song ca và 315 font trong `SOURCE/`; tự chuyển mã VNI/TCVN3 khi xem trước và xuất video.
@@ -35,6 +36,7 @@ GPU NVIDIA dùng PyTorch CUDA cho Demucs, CTranslate2 cho Whisper và NVENC khi 
 - Chạy nguồn/portable: `data/` cạnh app. Bản Setup: `%LOCALAPPDATA%/VietKaraStudio`.
 - Whisper tải vào `data/models/whisper/<model>/`; Demucs dùng `data/models/` và cache quản lý `data/cache/`.
 - Model đã có trong cache người dùng được dùng lại; có thể chép model thủ công theo đường dẫn trong Cài đặt.
+- Trong **Nguồn media**, nạp bản hát và beat rồi bấm **Tách giọng bè**. Lần đầu tải khoảng 913 MB vào `data/models/backing/`. Nếu dùng beat khác bản thu, kiểm tra mốc đồng bộ trước khi duyệt. CPU có thể xử lý lâu hơn GPU. Kết quả tách cần nghe thử, nhất là các đoạn hát đúp và song ca.
 - Project tự lưu; bản `.obs.json` không chứa media, cần nạp lại nguồn khi chuyển máy.
 - Mã nguồn không chứa dự án cá nhân, bài hát, video, model hoặc runtime đóng gói.
 

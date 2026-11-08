@@ -327,7 +327,7 @@ function initStudio(){
   initBranding();
   initTimelineEditing();
   initLayoutResize();
-  initWorkspaceTools();initSongTitle();initWaveTrackControls();
+  initWorkspaceTools();initSongTitle();initWaveTrackControls();initBackingVocals();
   initSceneTools();
   initTimelineTools();
   document.querySelectorAll('[data-inspector-tab]').forEach(b=>b.onclick=()=>showInspector(b.dataset.inspectorTab));

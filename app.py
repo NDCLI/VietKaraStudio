@@ -20,6 +20,7 @@ from werkzeug.exceptions import HTTPException
 
 import engine
 import analysis_cache
+import backing_vocals
 from app_runtime import task_command
 import hardware
 import presets
@@ -234,6 +235,7 @@ def public(project):
     result["scenes"] = scene_tools.public(project.get("scenes", []), project_dir)
     result["beat_words"] = beat_words(project)
     result["vocals_ready"] = (project_dir / "vocals.wav").is_file()
+    result["backing_status"] = backing_vocals.status(project, project_dir)
     if result['vocals_ready'] and not result.get('vocals'):
         result['vocals']={'name':'Vocal riêng',**engine.waveform(engine.DATA/'projects'/project['id']/'vocals.wav')}
     return result
@@ -696,9 +698,62 @@ def _matches_missing_media(project, slot, media_path):
 
 @app.get("/api/projects/<pid>/audio/<slot>")
 def audio(pid, slot):
+    if slot == "beat_backing":
+        with LOCK:
+            path = directory(pid)
+            project = load(pid)
+            if (backing_vocals.status(project, path) not in ("review", "ready") or
+                    request.args.get("v", project["backing_vocals"]["mix"]) != project["backing_vocals"]["mix"]):
+                raise FileNotFoundError("Chưa có bản beat + bè phù hợp với nguồn và mốc hiện tại.")
+            return send_file(backing_vocals.mix_file(project, path), conditional=True)
     if slot not in ("reference", "beat", "vocals"):
         raise ValueError("Track không hợp lệ.")
     return send_file(directory(pid) / f"{slot}.wav", conditional=True)
+
+
+@app.post("/api/projects/<pid>/backing")
+def prepare_backing(pid):
+    preference = (request.get_json(silent=True) or {}).get("device", "auto")
+    if preference not in ("auto", "cpu"):
+        raise ValueError("Thiết bị phải là auto hoặc cpu.")
+    with LOCK:
+        project = load(pid)
+        path = directory(pid)
+        if not project.get("beat") or not (path / "beat.wav").is_file():
+            raise ValueError("Hãy nạp beat trước khi tách bè.")
+        if not any((path / name).is_file() for name in ("reference.wav", "vocals.wav")):
+            raise ValueError("Hãy nạp bản hát tham chiếu để tách bè.")
+
+        def work(job):
+            result = backing_vocals.prepare(project, path, job, preference)
+            with LOCK:
+                job.check()
+                current = load(pid)
+                current["backing_vocals"] = result
+                save(current)
+                backing_vocals.discard_old_mixes(current, path)
+            return {"backing_status": backing_vocals.status(current, path)}
+
+        return task(pid, "backing", work)
+
+
+@app.post("/api/projects/<pid>/backing/review")
+def review_backing(pid):
+    data = request.get_json(silent=True) or {}
+    accepted = data.get("accepted")
+    if type(accepted) is not bool:
+        raise ValueError("Lựa chọn xác nhận giọng bè không hợp lệ.")
+    with LOCK:
+        idle(pid)
+        project = load(pid)
+        if (backing_vocals.status(project, directory(pid)) != "review" or
+                data.get("mix") != project["backing_vocals"]["mix"]):
+            raise ValueError("Bản bè đã thay đổi. Hãy nghe thử bản mới.")
+        project["backing_vocals"]["confirmed"] = accepted
+        if not accepted:
+            project["backing_vocals"]["rejected"] = True
+        save(project)
+        return jsonify(public(project))
 
 
 @app.get("/api/projects/<pid>/background")
@@ -1090,6 +1145,9 @@ def create_render_batch():
     include_guide = data.get("include_guide", False)
     if type(include_guide) is not bool:
         raise ValueError("Lựa chọn vocal hướng dẫn không hợp lệ.")
+    include_backing = data.get("include_backing", False)
+    if type(include_backing) is not bool:
+        raise ValueError("Lựa chọn giọng bè không hợp lệ.")
     recognize_missing = data.get("recognize_missing", False)
     if type(recognize_missing) is not bool:
         raise ValueError("Lựa chọn nhận lời không hợp lệ.")
@@ -1111,7 +1169,12 @@ def create_render_batch():
         if require_review and any(not word.get("locked") for word in project["words"]):
             raise ValueError(f"Project {project['name']} còn câu chưa khóa. Hãy rà lời trước khi dựng.")
         selected.append((project, directory(pid)))
-    record = batch_render.create(engine.DATA, selected, project_ids[0], aspects, include_guide)
+    outputs = ["beat"]
+    if include_guide:
+        outputs.append("guide")
+    if include_backing:
+        outputs.append("backing")
+    record = batch_render.create(engine.DATA, selected, project_ids[0], aspects, audio_outputs=outputs)
     job = start_batch_job(record)
     return jsonify(job.public()), 202
 
@@ -1299,7 +1362,7 @@ def import_project_bundle():
                    "scenes": scene_tools.validate(data.get("scenes", [])),
                    "background_video": background_video,
                    "relink_assets": fingerprints, "missing_media": missing_media}
-        for key in ("background_name", "logo_name", "logo_image", "logo_version", "countdown_name", "processing"):
+        for key in ("background_name", "logo_name", "logo_image", "logo_version", "countdown_name", "processing", "backing_vocals"):
             if key in data:
                 project[key] = data[key]
         if data.get("logo_name") and "logo.png" not in copied:
