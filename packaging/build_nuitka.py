@@ -14,7 +14,7 @@ import sys
 import build_release as legacy
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='1.1.11'
+VERSION='1.1.12'
 BUILD=ROOT/'build-tools/nuitka-1.1.0'
 DIST=BUILD/'desktop_entry.dist'
 STAGE=BUILD/'payload'

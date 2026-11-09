@@ -1,35 +1,6 @@
 'use strict';
 function initWorkspaceTools(){
-  let separated=null, backingOn=false, pendingBeat=null;
   const beatPreview=$('separatedBeatPreview');
-  const backingToggle=$('separationBackingToggle');
-
-  function setBeatSource(){
-    const label=backingOn?'Beat có bè':'Beat không bè';
-    const url=backingOn?separated.backing_mix:separated.beat;
-    $('separatedBeatLabel').textContent=label;
-    $('separatedBeatDownload').href=url;
-    $('separatedBeatDownload').textContent='Tải '+label.toLowerCase()+' WAV';
-    backingToggle.textContent=backingOn?'Bè · Bật':'Bè · Tắt';
-    backingToggle.setAttribute('aria-pressed',String(backingOn));
-    beatPreview.src=url;
-  }
-
-  backingToggle.onclick=wrap(()=>{
-    if(!separated?.backing_mix)return;
-    const position=pendingBeat?.position??beatPreview.currentTime;
-    const resume=pendingBeat?.resume??!beatPreview.paused;
-    const rate=pendingBeat?.rate??beatPreview.playbackRate;
-    backingOn=!backingOn;
-    pendingBeat={position,resume,rate};
-    beatPreview.onloadedmetadata=()=>{
-      pendingBeat=null;beatPreview.onloadedmetadata=null;
-      beatPreview.currentTime=Math.min(position,beatPreview.duration);
-      beatPreview.playbackRate=rate;
-      if(resume)beatPreview.play().catch(handleError);
-    };
-    setBeatSource();
-  });
   $('videoReferenceBtn').onclick=wrap(async()=>{
     if(state.job||state.manualTiming)return;
     if(state.project.reference&&state.project.words.length&&!confirm('Dùng âm thanh video thay bản hát sẽ xóa mốc từ cũ. Tiếp tục?'))return;
@@ -66,16 +37,25 @@ function initWorkspaceTools(){
     $('separationStatus').textContent=youtube?'Đang chuẩn bị tải YouTube…':'Đang nạp bài nhạc…';
     try{
       const job=await api(endpoint('/separate'),{method:'POST',body});
-      separated=null;backingOn=false;pendingBeat=null;beatPreview.onloadedmetadata=null;beatPreview.pause();
+      beatPreview.pause();
       $('separationResult').hidden=true;
       const result=await waitUtilityJob(job,'separationStatus');
       if(result){
-        separated=result;backingOn=!!result.backing_mix;
-        backingToggle.hidden=!result.backing_mix;
+        const mixed=result.backing_mix;
+        const mixedDownload=$('separatedBeatBackingDownload');
+        $('separatedBeatDownload').href=result.beat;
+        if(mixed){
+          mixedDownload.href=mixed;
+          mixedDownload.removeAttribute('aria-disabled');
+        }else{
+          mixedDownload.removeAttribute('href');
+          mixedDownload.setAttribute('aria-disabled','true');
+        }
+        $('separatedBeatLabel').textContent=mixed?'Beat có bè':'Beat không bè';
+        beatPreview.src=mixed||result.beat;
         if(result.backing_status==='weak'){
           $('separationStatus').textContent='Không tách được bè rõ. Đã tạo beat không bè.';
         }
-        setBeatSource();
         $('separationResult').hidden=false;
       }
     }finally{separationButtons.forEach(button=>button.disabled=false);}
