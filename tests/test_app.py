@@ -195,6 +195,49 @@ def test_separation_tool_backing_uses_isolated_result_and_requires_review(client
     assert client.get(url).get_json()['beat'] is None
 
 
+@pytest.mark.parametrize('mode, weak', [('beat', False), ('backing', False), ('backing', True)])
+def test_separation_tool_direct_beat_modes(client, monkeypatch, mode, weak):
+    project = client.post('/api/projects', json={}).get_json()
+    url = '/api/projects/' + project['id']
+    command = engine.command
+    worker_calls = []
+
+    def separate(reference, folder, job, device):
+        (folder / 'vocals.wav').write_bytes(wave_bytes(1200).getvalue())
+        (folder / service.TOOL_BEAT).write_bytes(wave_bytes(440).getvalue())
+
+    def command_with_model(args, *extra, **options):
+        if 'backing' in args and '--vcl-task' in args:
+            worker_calls.append(args)
+            stem = Path(args[-3])
+            if weak:
+                sf.write(stem, np.zeros(44100), 44100)
+            else:
+                stem.write_bytes(wave_bytes(880).getvalue())
+            return
+        return command(args, *extra, **options)
+
+    monkeypatch.setattr(engine, 'separate', separate)
+    monkeypatch.setattr(engine, 'command', command_with_model)
+    monkeypatch.setattr(engine.hardware, 'select_ai', lambda **_: {'demucs': engine.hardware.cpu_backend()})
+    result = wait(client, client.post(url + '/separate', data={'file': (wave_bytes(), 'song.wav'),
+                                                              'mode': mode}))['result']
+    beat = client.get(result['beat']).data
+    assert beat == wave_bytes(440).getvalue()
+    assert len(worker_calls) == int(mode == 'backing')
+    if mode == 'backing' and not weak:
+        assert result['backing_status'] == 'ready'
+        mix = client.get(result['backing_mix'])
+        assert mix.status_code == 200
+        samples, rate = sf.read(io.BytesIO(mix.data), always_2d=True)
+        spectrum = np.abs(np.fft.rfft(samples[:rate, 0]))
+        assert spectrum[440] > 1000 and spectrum[880] > 1000 and spectrum[1200] < 1
+    else:
+        assert 'backing_mix' not in result
+        assert result.get('backing_status') == ('weak' if weak else None)
+    assert client.get(url).get_json()['beat'] is None
+
+
 def test_backing_alignment_across_multiple_anchors(tmp_path):
     rate = backing_vocals.SAMPLE_RATE
     stem = tmp_path / 'backing.wav'

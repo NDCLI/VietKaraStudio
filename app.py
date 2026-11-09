@@ -129,6 +129,9 @@ def separate_tool(pid):
     from_video = payload.get('source') == 'background'
     from_youtube = payload.get('source') == 'youtube'
     apply_project = from_video and payload.get('apply_to_project') is True
+    mode = payload.get('mode', 'beat') if from_youtube or from_video else request.form.get('mode', 'beat')
+    if mode not in ('beat', 'backing') or (from_video and mode != 'beat'):
+        raise ValueError('Chọn tách beat không bè hoặc beat có bè.')
     if apply_project:
         project_archive.create_version(project_path, load(pid), "Trước khi thay media bằng kết quả tách vocal/beat")
     source = media_tools.local_asset(project_path, load(pid).get('background_video', {}).get('source_file')) if from_video else None
@@ -181,8 +184,20 @@ def separate_tool(pid):
                     current.pop('processing', None); current.pop('role_analysis', None)
                     current['settings'] = validate_settings({'background_type': 'video'}, current['settings'])
                     save(current)
-            return {'id': identifier, 'beat': f'/api/tools/{identifier}/beat',
-                    'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+            result = {'id': identifier, 'beat': f'/api/tools/{identifier}/beat',
+                      'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+            if mode == 'backing':
+                job.update(42, 'Đang chuẩn bị tách giọng bè để trộn vào beat…')
+                backing = backing_vocals.prepare({}, folder, job, preference, beat_name=TOOL_BEAT)
+                job.check()
+                if backing.get('weak'):
+                    result['backing_status'] = 'weak'
+                else:
+                    backing['confirmed'] = True
+                    save_tool_backing(folder, backing)
+                    result.update(backing_status='ready', backing_mix=f'/api/tools/{identifier}/beat_backing',
+                                  backing_stem=f'/api/tools/{identifier}/backing')
+            return result
         finally:
             if downloaded:
                 downloaded.unlink(missing_ok=True)

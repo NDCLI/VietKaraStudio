@@ -125,7 +125,7 @@ async function applyAlignment(){
 function friendlyJobMessage(job){
   const phase=String(job.message||'');
   if(['backing','tool-backing'].includes(job.kind))return phase;
-  if(job.kind==='separate')return 'Đang tách nhạc…';
+  if(job.kind==='separate')return phase;
   if(job.kind==='align-region')return 'Đang căn lại câu đã chọn…';
   if(job.kind==='sync-suggest')return 'Đang dò mốc giữa bản hát và beat…';
   if(job.kind==='analyze')return phase.includes('căn lời có sẵn')?'Đang căn lời theo nhạc…':'Đang nhận lời và căn thời gian…';

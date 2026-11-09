@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 COMPILED = '__compiled__' in globals()
-VERSION='1.1.10'
+VERSION='1.1.11'
 TASKS = frozenset(('probe','speech','roles','demucs','backing','model','pick-folder','diagnose'))
 
 
