@@ -181,19 +181,90 @@ def separate_tool(pid):
                     current.pop('processing', None); current.pop('role_analysis', None)
                     current['settings'] = validate_settings({'background_type': 'video'}, current['settings'])
                     save(current)
-            return {'beat': f'/api/tools/{identifier}/beat', 'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+            return {'id': identifier, 'beat': f'/api/tools/{identifier}/beat',
+                    'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
         finally:
             if downloaded:
                 downloaded.unlink(missing_ok=True)
     return task(pid, 'separate', work)
 
 
+TOOL_BEAT = 'reference_instrumental.wav'
+
+
+def separation_folder(identifier):
+    if not re.fullmatch(r'[0-9a-f]{32}', identifier):
+        raise ValueError('File không hợp lệ.')
+    return engine.DATA / 'tools' / identifier
+
+
+def load_tool_backing(folder):
+    path = folder / 'backing.json'
+    return {'backing_vocals': json.loads(path.read_text(encoding='utf-8'))} if path.is_file() else {}
+
+
+def save_tool_backing(folder, result):
+    path = folder / 'backing.tmp'
+    path.write_text(json.dumps(result), encoding='utf-8')
+    path.replace(folder / 'backing.json')
+
+
+@app.post('/api/projects/<pid>/separate/<identifier>/backing')
+def separate_tool_backing(pid, identifier):
+    directory(pid)
+    folder = separation_folder(identifier)
+    if not all((folder / filename).is_file() for filename in (TOOL_BEAT, 'vocals.wav')):
+        raise FileNotFoundError('Hãy tách beat và vocal trước.')
+
+    def work(job):
+        with LOCK:
+            current = load_tool_backing(folder)
+        result = backing_vocals.prepare(current, folder, job, 'auto', beat_name=TOOL_BEAT)
+        with LOCK:
+            job.check()
+            save_tool_backing(folder, result)
+            status = backing_vocals.status({'backing_vocals': result}, folder, beat_name=TOOL_BEAT)
+        return {'status': status, 'mix': f'/api/tools/{identifier}/beat_backing'}
+
+    with LOCK:
+        if any(j.kind == 'tool-backing' and getattr(j, 'tool_id', None) == identifier and
+               j.state in ('queued', 'running') for j in JOBS.values()):
+            raise ValueError('Bản tách này đang được xử lý.')
+        return task(pid, 'tool-backing', work, tool_id=identifier)
+
+
+@app.post('/api/tools/<identifier>/backing-review')
+def review_tool_backing(identifier):
+    accepted = (request.get_json(silent=True) or {}).get('accepted')
+    if type(accepted) is not bool:
+        raise ValueError('Lựa chọn xác nhận giọng bè không hợp lệ.')
+    folder = separation_folder(identifier)
+    with LOCK:
+        current = load_tool_backing(folder)
+        if backing_vocals.status(current, folder, beat_name=TOOL_BEAT) != 'review':
+            raise ValueError('Hãy tách và nghe thử giọng bè trước.')
+        result = current['backing_vocals']
+        result.update(confirmed=accepted, rejected=not accepted)
+        save_tool_backing(folder, result)
+    return jsonify({'status': 'ready' if accepted else 'weak'})
+
+
 @app.get('/api/tools/<identifier>/<stem>')
 def separated_audio(identifier, stem):
-    if not re.fullmatch(r'[0-9a-f]{32}', identifier) or stem not in ('beat', 'vocals'):
+    folder = separation_folder(identifier)
+    if stem in ('beat', 'vocals'):
+        path = folder / (TOOL_BEAT if stem == 'beat' else 'vocals.wav')
+    elif stem in ('backing', 'beat_backing'):
+        with LOCK:
+            current = load_tool_backing(folder)
+            status = backing_vocals.status(current, folder, beat_name=TOOL_BEAT)
+            preview = stem == 'beat_backing' and request.args.get('preview') == '1'
+            if status != 'ready' and not (preview and status == 'review'):
+                raise FileNotFoundError('Chưa có bản bè đã xác nhận.')
+            path = folder / backing_vocals.STEM_FILE if stem == 'backing' else backing_vocals.mix_file(current, folder)
+    else:
         raise ValueError('File không hợp lệ.')
-    name = 'reference_instrumental.wav' if stem == 'beat' else 'vocals.wav'
-    return send_file(engine.DATA / 'tools' / identifier / name, as_attachment=True, download_name=stem + '.wav')
+    return send_file(path, as_attachment=request.args.get('preview') != '1', download_name=stem + '.wav')
 
 
 def directory(pid):
@@ -248,10 +319,11 @@ def idle(pid):
             raise ValueError("Project đang xử lý. Hãy chờ xong hoặc hủy tác vụ trước.")
 
 
-def task(pid, kind, fn):
+def task(pid, kind, fn, *, tool_id=None):
     with LOCK:
         idle(pid)
         job = engine.Job(uuid.uuid4().hex, pid, kind, on_change=persist_job)
+        job.tool_id = tool_id
         JOBS[job.id] = job
         persist_job(job)
     def work():

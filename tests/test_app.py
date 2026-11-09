@@ -160,6 +160,41 @@ def test_backing_silent_source_cannot_be_confirmed(client, monkeypatch):
     assert client.post(url + '/backing/review', json={'accepted': True, 'mix': 'missing'}).status_code == 400
 
 
+def test_separation_tool_backing_uses_isolated_result_and_requires_review(client, monkeypatch):
+    project = client.post('/api/projects', json={}).get_json()
+    url = '/api/projects/' + project['id']
+    command = engine.command
+
+    def separate(reference, folder, job, device):
+        (folder / 'vocals.wav').write_bytes(wave_bytes(1200).getvalue())
+        (folder / service.TOOL_BEAT).write_bytes(wave_bytes(440).getvalue())
+
+    def command_with_model(args, *extra, **options):
+        if 'backing' in args and '--vcl-task' in args:
+            Path(args[-3]).write_bytes(wave_bytes(880).getvalue())
+            return
+        return command(args, *extra, **options)
+
+    monkeypatch.setattr(engine, 'separate', separate)
+    monkeypatch.setattr(engine, 'command', command_with_model)
+    monkeypatch.setattr(engine.hardware, 'select_ai', lambda **_: {'demucs': engine.hardware.cpu_backend()})
+    separated = wait(client, client.post(url + '/separate', data={'file': (wave_bytes(), 'input.wav')}))['result']
+    tool_url = '/api/tools/' + separated['id']
+    beat = client.get(separated['beat']).data
+    assert client.get(tool_url + '/beat_backing?preview=1').status_code == 404
+    prepared = wait(client, client.post(url + '/separate/' + separated['id'] + '/backing'))['result']
+    assert prepared['status'] == 'review'
+    assert client.get(prepared['mix']).status_code == 404
+    preview = client.get(prepared['mix'] + '?preview=1').data
+    assert preview != beat
+    assert client.get(tool_url + '/backing').status_code == 404
+    assert client.post(tool_url + '/backing-review', json={'accepted': True}).get_json()['status'] == 'ready'
+    assert client.get(prepared['mix']).data == preview
+    assert client.get(tool_url + '/backing').data == wave_bytes(880).getvalue()
+    assert client.get(separated['beat']).data == beat
+    assert client.get(url).get_json()['beat'] is None
+
+
 def test_backing_alignment_across_multiple_anchors(tmp_path):
     rate = backing_vocals.SAMPLE_RATE
     stem = tmp_path / 'backing.wav'

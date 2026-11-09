@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
 import tempfile
 from urllib.request import urlopen
 
@@ -48,8 +49,8 @@ def source_key(directory: Path) -> str | None:
     return f"{MODEL_SHA256}:{fingerprint(directory / 'reference.wav')}:{vocals}"
 
 
-def mix_key(project: dict, directory: Path, source: str | None) -> str | None:
-    beat = fingerprint(directory / "beat.wav")
+def mix_key(project: dict, beat_path: Path, source: str | None) -> str | None:
+    beat = fingerprint(beat_path)
     if not beat or not source:
         return None
     data = [MIX_REVISION, beat, source, validate_anchors(project.get("anchors", []))]
@@ -64,7 +65,7 @@ def mix_file(project: dict, directory: Path) -> Path | None:
     return None
 
 
-def status(project: dict, directory: Path) -> str:
+def status(project: dict, directory: Path, *, beat_name: str = "beat.wav") -> str:
     saved = project.get("backing_vocals")
     if not isinstance(saved, dict):
         return "missing"
@@ -76,7 +77,7 @@ def status(project: dict, directory: Path) -> str:
     if not (directory / STEM_FILE).is_file():
         return "missing"
     mix = mix_file(project, directory)
-    if not mix or not mix.is_file() or saved.get("mix") != mix_key(project, directory, source):
+    if not mix or not mix.is_file() or saved.get("mix") != mix_key(project, directory / beat_name, source):
         return "stale"
     if saved.get("rejected"):
         return "weak"
@@ -114,6 +115,9 @@ def run_separator(vocals: Path, destination: Path, models: Path, device: str):
     from worker import progress
 
     hardware.prepare_cuda()
+    addon = Path(sys.executable).resolve().parent / "resources" / "backing_runtime"
+    if addon.is_dir():
+        sys.path.insert(0, str(addon))
     try:
         from audio_separator.separator import Separator
     except ImportError as exc:
@@ -221,11 +225,11 @@ def prepare_mix(beat: Path, stem: Path, anchors: list[dict], destination: Path, 
                     "-ac", 2, "-c:a", "pcm_s16le", destination], job)
 
 
-def prepare(project: dict, directory: Path, job, preference: str) -> dict:
-    current = status(project, directory)
+def prepare(project: dict, directory: Path, job, preference: str, *, beat_name: str = "beat.wav") -> dict:
+    current = status(project, directory, beat_name=beat_name)
     if current in ("ready", "review", "weak"):
         return project["backing_vocals"]
-    beat = directory / "beat.wav"
+    beat = directory / beat_name
     vocals = directory / "vocals.wav"
     reference = directory / "reference.wav"
     device = None
@@ -235,7 +239,7 @@ def prepare(project: dict, directory: Path, job, preference: str) -> dict:
         device = hardware.select_ai(preference=preference)["demucs"]
         vocals = engine.separate(reference, directory, job, device)
     source = source_key(directory)
-    key = mix_key(project, directory, source)
+    key = mix_key(project, beat, source)
     if not key:
         raise ValueError("Cần nạp beat và bản hát để tách giọng bè.")
     if current != "stale" and not _audible(vocals):
