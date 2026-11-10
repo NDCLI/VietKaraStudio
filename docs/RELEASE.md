@@ -33,3 +33,5 @@ Bản Setup Nuitka có thể nhận gói vá nhỏ qua **Cài đặt → Cập n
 Khi đổi Python, Nuitka hoặc thư viện AI, phát hành Setup đầy đủ. Tạo Setup đầy đủ bằng `python packaging/build_nuitka.py all`; thao tác đó cập nhật mốc tương thích patch cho các bản vá sau.
 
 Với bản vá giọng bè trên Setup 1.1.1, giữ thư mục payload hiện có với thông tin runtime khớp mốc Setup. Biên dịch EXE mới rồi chạy `python packaging/build_nuitka_patch.py --with-backing-runtime`. Lệnh đóng gói các thư viện bổ sung vào `resources/backing_runtime`, chỉ worker tách bè nạp các thư viện này. Kiểm tra EXE và worker sau khi áp bản vá lên payload nền trước khi phát hành.
+
+Từ 1.1.13, gói vá chứa trình cài cập nhật mới trong `resources/VietKaraUpdater.exe`. App chạy bản sao của trình cài để có thể thay chính trình cài trong lần cập nhật sau. Nếu cài thất bại, xem `updates/install-error.log` trong thư mục dữ liệu.

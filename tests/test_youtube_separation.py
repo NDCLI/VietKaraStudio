@@ -1,3 +1,5 @@
+import hashlib
+import io
 from pathlib import Path
 import sys
 
@@ -38,9 +40,32 @@ def test_youtube_downloader_is_temporary_and_reports_progress(tmp_path, monkeypa
             (tmp_path / 'youtube_source.webm').write_bytes(b'audio')
             self.options['progress_hooks'][0]({'status': 'finished'})
     monkeypatch.setitem(sys.modules, 'yt_dlp', type('Module', (), {'YoutubeDL': FakeYoutubeDL}))
+    monkeypatch.setattr(media_tools, '_download_youtube_windows', media_tools._download_youtube_python)
     job = type('Job', (), {'cancelled': type('Event', (), {'is_set': lambda self: False})(),
                             'check': lambda self: None,
                             'update': lambda self, value, message: events.append((value, message))})()
     result = media_tools.download_youtube('https://youtu.be/abcDEF_123', tmp_path, job)
     assert result.name == 'youtube_source.webm'
     assert events and events[-1][0] == 40
+
+
+def test_windows_downloader_verifies_and_reuses_tools(tmp_path, monkeypatch):
+    payload = b'official executable'
+    download_url = 'https://github.com/example/releases/download/v1/tool.exe'
+    checksum = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setitem(media_tools.YOUTUBE_TOOLS, 'test.exe', (download_url, checksum, len(payload)))
+    downloads = []
+
+    def download(request, timeout):
+        downloads.append(request.full_url)
+        return io.BytesIO(payload if len(downloads) > 1 else b'wrong')
+
+    monkeypatch.setattr(media_tools, 'urlopen', download)
+    import engine
+    job = engine.Job('test', 'test', 'separate')
+    with pytest.raises(ValueError, match='mã kiểm tra'):
+        media_tools._windows_youtube_tool('test.exe', tmp_path, job)
+    tool = media_tools._windows_youtube_tool('test.exe', tmp_path, job)
+    assert tool.read_bytes() == payload
+    assert media_tools._windows_youtube_tool('test.exe', tmp_path, job) == tool
+    assert downloads == [download_url, download_url]

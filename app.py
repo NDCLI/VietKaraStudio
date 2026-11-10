@@ -442,8 +442,9 @@ def index():
 def health():
     deps = {}
     import importlib.util
-    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "yt_dlp"):
+    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa"):
         deps[name] = importlib.util.find_spec(name) is not None
+    deps["yt_dlp"] = media_tools.youtube_available()
     for name in ("ffmpeg", "ffprobe"):
         try:
             deps[name] = bool(engine.binary(name))

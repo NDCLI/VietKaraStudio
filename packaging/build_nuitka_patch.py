@@ -34,6 +34,7 @@ def stage_backing_patch(stage: Path, base: dict):
     shutil.copy2(build_nuitka.DIST / 'VietKaraStudio.exe', stage / 'VietKaraStudio.exe')
     for name in ('static', 'resources'):
         shutil.copytree(ROOT / name, stage / name, ignore=build_nuitka.ignore)
+    build_nuitka.compile_updater(stage / 'resources' / 'VietKaraUpdater.exe')
     site = build_nuitka.SITE.resolve()
     addon = stage / 'resources' / 'backing_runtime'
     libraries = {}

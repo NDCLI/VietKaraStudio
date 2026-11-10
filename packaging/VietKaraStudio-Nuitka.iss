@@ -1,4 +1,4 @@
-#define AppVersion "1.1.12"
+#define AppVersion "1.1.13"
 #ifndef SourceDir
   #error SourceDir must be supplied
 #endif

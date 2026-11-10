@@ -1,8 +1,12 @@
 """Background video is visual only; its audio is never mapped into an export."""
 import json
+import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
+from urllib.request import Request, urlopen
 from urllib.parse import parse_qs, urlparse
 
 import hardware
@@ -10,6 +14,16 @@ import hardware
 VIDEO_EXTENSIONS = ('.mp4','.mov','.mkv','.webm','.avi','.m4v')
 IMAGE_EXTENSIONS = ('.jpg','.jpeg','.png','.webp')
 YOUTUBE_HOSTS = frozenset(('youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'))
+YOUTUBE_TOOLS = {
+    'yt-dlp.exe': (
+        'https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe',
+        'f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d', 23575744,
+    ),
+    'qjs.exe': (
+        'https://github.com/quickjs-ng/quickjs/releases/download/v0.18.0/qjs-windows-x86_64.exe',
+        'ff03398d74ea6e6bd3a8e58058f7003225abcac229d7d57775b7aaae812a49c7', 1873152,
+    ),
+}
 
 
 def youtube_video_id(value):
@@ -34,19 +48,107 @@ def youtube_video_id(value):
     return video_id
 
 
+def _windows_youtube_tool(name, folder, job):
+    url, expected, size = YOUTUBE_TOOLS[name]
+    # Include the upstream digest so a future release can run alongside an older job.
+    folder = folder / expected[:16]
+    folder.mkdir(parents=True, exist_ok=True)
+    tool = folder / name
+
+    def valid():
+        try:
+            with tool.open('rb') as stream:
+                return hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+        except FileNotFoundError:
+            return False
+
+    if valid():
+        return tool
+    job.update(5, f'Đang tải công cụ YouTube ({name}) từ GitHub…')
+    request = Request(url, headers={'User-Agent': 'VietKaraStudio'})
+    with tempfile.TemporaryDirectory(prefix='download-', dir=folder) as staging:
+        temp = Path(staging) / name
+        digest = hashlib.sha256()
+        total = 0
+        with urlopen(request, timeout=25) as response, temp.open('wb') as stream:
+            while chunk := response.read(256 * 1024):
+                job.check()
+                total += len(chunk)
+                if total > size:
+                    raise ValueError('Công cụ YouTube vượt dung lượng dự kiến.')
+                digest.update(chunk)
+                stream.write(chunk)
+        if total != size or digest.hexdigest() != expected:
+            raise ValueError('Tệp công cụ YouTube tải về không khớp mã kiểm tra.')
+        job.check()
+        try:
+            temp.replace(tool)
+        except PermissionError:
+            if not valid():
+                raise
+    return tool
+
+
+def _download_youtube_windows(url, output, job):
+    import engine
+    folder = engine.DATA / 'tools' / 'youtube-runtime'
+    try:
+        downloader = _windows_youtube_tool('yt-dlp.exe', folder, job)
+        javascript = _windows_youtube_tool('qjs.exe', folder, job)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f'Không chuẩn bị được công cụ YouTube từ GitHub: {exc}') from exc
+
+    job.update(5, 'Đang kết nối YouTube…')
+
+    def progress(line):
+        match = re.search(r'VCL_PROGRESS:\s*(\d+(?:\.\d+)?)%', line)
+        if match:
+            job.update(min(40, 5 + float(match[1]) * .35), 'Đang tải nguồn YouTube…')
+
+    # The Windows distribution includes the YouTube solver scripts.
+    engine.command([downloader, '--ignore-config', '--no-plugin-dirs', '--no-cache-dir',
+                    '--no-playlist', '--restrict-filenames', '--no-mtime', '--socket-timeout', '15',
+                    '--retries', '1', '--fragment-retries', '1', '--extractor-retries', '1',
+                    '--js-runtimes', f'quickjs:{javascript}', '--ffmpeg-location', engine.binary('ffmpeg'),
+                    '--newline', '--progress', '--progress-template', 'download:VCL_PROGRESS:%(progress._percent_str)s',
+                    '-f', 'bestaudio/best', '-o', output, '--', url], job, progress=progress)
+
+
+def youtube_available():
+    import importlib.util
+    return os.name == 'nt' or importlib.util.find_spec('yt_dlp') is not None
+
+
 def download_youtube(url, destination, job):
     """Download one user-authorized YouTube video into a temporary job folder."""
     video_id = youtube_video_id(url)
     if not video_id:
         raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+    url = f'https://www.youtube.com/watch?v={video_id}'
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    output = destination / 'youtube_source.%(ext)s'
+    try:
+        if os.name == 'nt':
+            _download_youtube_windows(url, output, job)
+        else:
+            _download_youtube_python(url, output, job)
+    except Exception as exc:
+        if job.cancelled.is_set():
+            raise
+        raise RuntimeError('Không tải được video YouTube: ' + str(exc).strip()[-600:]) from exc
+    candidates = [path for path in destination.glob('youtube_source.*')
+                  if path.is_file() and path.suffix not in ('.part', '.ytdl', '.tmp')]
+    if len(candidates) != 1:
+        raise RuntimeError('YouTube không trả về file âm thanh hợp lệ.')
+    return candidates[0]
+
+
+def _download_youtube_python(url, output, job):
     try:
         import yt_dlp
     except ImportError as exc:
         raise RuntimeError('Thiếu yt-dlp. Hãy cài lại dependency của app rồi thử lại.') from exc
-    destination = Path(destination)
-    destination.mkdir(parents=True, exist_ok=True)
-    output = destination / 'youtube_source.%(ext)s'
-
     def hook(item):
         job.check()
         if item.get('status') == 'downloading':
@@ -65,18 +167,11 @@ def download_youtube(url, destination, job):
         'no_warnings': True,
         'progress_hooks': [hook],
         'restrictfilenames': True,
+        'socket_timeout': 15,
+        'retries': 1,
     }
-    try:
-        with yt_dlp.YoutubeDL(options) as downloader:
-            downloader.download([str(url).strip()])
-    except Exception as exc:
-        if job.cancelled.is_set():
-            raise
-        raise RuntimeError('Không tải được video YouTube: ' + str(exc)[-500:]) from exc
-    candidates = [path for path in destination.glob('youtube_source.*') if path.is_file()]
-    if not candidates:
-        raise RuntimeError('YouTube không trả về file âm thanh hợp lệ.')
-    return candidates[0]
+    with yt_dlp.YoutubeDL(options) as downloader:
+        downloader.download([url])
 
 
 def probe_video(path):

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from urllib.parse import urlencode, urlparse
@@ -57,6 +58,9 @@ def _installed_version() -> str:
 
 
 def _helper() -> Path:
+    patched = engine.ROOT / "resources" / "VietKaraUpdater.exe"
+    if patched.is_file():
+        return patched
     return engine.ROOT / "VietKaraUpdater.exe"
 
 
@@ -309,8 +313,21 @@ def apply() -> dict:
         raise ValueError("Không tìm thấy trình cài bản vá. Hãy chạy lại bộ Setup.")
     if not (ready["folder"] and Path(ready["folder"]).is_dir()):
         raise ValueError("Không tìm thấy dữ liệu bản vá.")
+    try:
+        with tempfile.NamedTemporaryFile(prefix=".vcl-update-", dir=engine.ROOT):
+            pass
+    except PermissionError as exc:
+        raise ValueError("Windows từ chối quyền ghi thư mục VietKara. Hãy chạy lại Setup trong thư mục người dùng.") from exc
+    # Start a copy outside the payload so the updater can replace its own installed file.
+    runner = UPDATE_ROOT / f"apply-helper-{os.getpid()}.exe"
+    for old in UPDATE_ROOT.glob("apply-helper-*.exe"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    shutil.copyfile(helper, runner)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0x00000008) | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-    subprocess.Popen([str(helper), str(os.getpid()), ready["folder"], str(engine.ROOT)],
+    subprocess.Popen([str(runner), str(os.getpid()), ready["folder"], str(engine.ROOT)],
                      cwd=str(engine.ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags)
     threading.Timer(1.5, os._exit, args=(0,)).start()
