@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "role_a_icon": "man-new-blue.png", "role_b_icon": "lady-pink.png",
     "role_all_icon": "men(blue) & lady(pink).png",
     "align": "center", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
+    "lyric_x": 50, "lyric_y": 75, "line_gap": None,
     "sweep_feather": 0, "sweep_glow": 0, "sung_gradient": False,
     "gradient_top": "#ffffff", "gradient_bottom": "#1a3ad6", "gradient_start": 0, "gradient_end": 100,
     "line_max_words": 5, "mv_style": "stack", "subtitle_box": True,
@@ -68,6 +69,7 @@ def validate_settings(values, base=None):
                            ("outline_unsung_opacity", 0, 100), ("outline_sung_opacity", 0, 100),
                            ("countdown_seconds", 1, 8), ("vertical_offset", 0, 75),
                            ("horizontal_offset", -40, 40), ("horizontal_scale", 50, 150),
+                           ("lyric_x", 0, 100), ("lyric_y", 0, 100),
                            ("sweep_feather", 0, 40), ("sweep_glow", 0, 200),
                            ("gradient_start", 0, 99), ("gradient_end", 1, 100),
                            ("line_max_words", 2, 20), ("subtitle_box_opacity", 0, 100), ("subtitle_box_radius", 0, 40)):
@@ -78,6 +80,14 @@ def validate_settings(values, base=None):
         if not math.isfinite(number):
             raise ValueError(f"Giá trị {key} không hợp lệ.")
         result[key] = round(max(low, min(high, number)), 2)
+    if result["line_gap"] is not None:
+        try:
+            gap = float(result["line_gap"])
+        except (TypeError, ValueError):
+            raise ValueError("Khoảng cách dòng phải là số.") from None
+        if not math.isfinite(gap):
+            raise ValueError("Khoảng cách dòng không hợp lệ.")
+        result["line_gap"] = round(max(0, min(600, gap)), 2)
     result["font_size"] = round(result["font_size"])
     for key in ('font','title_font'):
         result[key] = re.sub(r"[,\r\n{}\\]", "", str(result[key]))[:80].strip() or "Arial"
@@ -98,7 +108,7 @@ def validate_settings(values, base=None):
         if type(result[key]) is not bool:
             raise ValueError(f"Giá trị {key} phải là true hoặc false.")
     for key, choices in (("title_enter", TITLE_EFFECTS), ("title_exit", TITLE_EFFECTS), ("title_template", TITLE_TEMPLATES), ("aspect", ("landscape", "portrait")),
-                         ("position", ("bottom", "center", "top")),
+                         ("position", ("bottom", "center", "top", "custom")),
                          ("line_animation", ANIMATIONS), ("display_mode", ("karaoke", "lyricsmv", "subtitle")),
                          ("resolution", ("1080p", "4k")), ("background_type", ("auto", "color", "image", "video", "original")),
                          ("countdown", ("none", "mic", "star", "heart", "note", "moon", "image")),

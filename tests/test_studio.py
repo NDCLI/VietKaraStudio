@@ -56,6 +56,52 @@ def test_two_rows_fit_frame_and_never_lose_long_lines():
     assert huge['font_size']<240 and huge['width']<=1920*.9+1
 
 
+def test_precise_lyric_position_and_pixel_gap(client):
+    items = [
+        {'text': 'Thương', 'start': 1, 'end': 2, 'line': 0},
+        {'text': 'nhớ', 'start': 2, 'end': 3, 'line': 1},
+    ]
+    legacy = layout.display_plan({'words': items, 'settings': {'font_size': 100}})
+    assert [row['y'] for row in legacy['rows']] == pytest.approx([585, 840])
+    settings = {'font_size': 100, 'position': 'custom', 'lyric_x': 50, 'lyric_y': 50, 'line_gap': 0}
+    tight = layout.display_plan({'words': items, 'settings': settings})
+    spaced = layout.display_plan({'words': items, 'settings': {**settings, 'line_gap': 40}})
+    tight_pitch = tight['rows'][1]['y'] - tight['rows'][0]['y']
+    spaced_pitch = spaced['rows'][1]['y'] - spaced['rows'][0]['y']
+    assert spaced_pitch - tight_pitch == pytest.approx(40)
+    assert tight_pitch < 130
+    assert (tight['rows'][0]['y'] + tight['rows'][1]['y'] + tight['rows'][0]['height']) / 2 == pytest.approx(540)
+    moved = layout.display_plan({'words': items, 'settings': {**settings, 'lyric_x': 60.1, 'lyric_y': 55.1}})
+    for before, after in zip(tight['rows'], moved['rows']):
+        assert after['x']-before['x'] == pytest.approx(193.92, abs=.002)
+        assert after['y']-before['y'] == pytest.approx(55.08, abs=.002)
+    pid = client.post('/api/projects', json={}).get_json()['id']
+    response = client.patch('/api/projects/' + pid, json={'words': items, 'settings': settings})
+    assert response.status_code == 200
+    saved = client.get('/api/projects/' + pid).get_json()
+    assert saved['settings']['line_gap'] == 0
+    assert saved['settings']['position'] == 'custom'
+    ass = client.get('/api/projects/' + pid + '/download/ass').data.decode('utf-8-sig')
+    for row in tight['rows']:
+        assert f"\\pos({row['x']:.2f},{row['y']:.2f})" in ass
+    restored = client.patch('/api/projects/' + pid, json={'settings': {'line_gap': None}})
+    assert restored.get_json()['settings']['line_gap'] is None
+
+
+@pytest.mark.parametrize('vertical', [0, 100])
+def test_custom_multi_lane_layout_stays_inside_frame(vertical):
+    items = [{'text': 'Thương nhớ', 'start': 1, 'end': 3, 'line': row, 'row': row}
+             for row in range(6)]
+    plan = layout.display_plan({'words': items, 'settings': {
+        'singing_mode': 'duet', 'position': 'custom', 'lyric_y': vertical,
+        'font_size': 160, 'line_gap': 30,
+    }})
+    for row in plan['rows']:
+        assert row['y'] >= 0
+        assert row['y'] + row['height'] <= plan['height'] + .002
+    assert all(b['y'] > a['y'] for a, b in zip(plan['rows'], plan['rows'][1:]))
+
+
 def test_manual_rows_sections_and_overlap_warning():
     a=words('Xin chào',2)
     b=[{**w,'line':1,'row':0} for w in words('Hát cùng',2.1)]

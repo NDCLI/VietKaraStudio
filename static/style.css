@@ -205,6 +205,8 @@ h3{font-size:13px;font-weight:650}
 .separation-downloads{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .separation-downloads a{padding:8px 12px;border:1px solid;border-radius:6px;text-decoration:none}
 .separation-downloads a[aria-disabled="true"]{opacity:.5;pointer-events:none}
+.lyric-slider-control{display:grid;grid-template-columns:minmax(0,1fr) 76px;gap:8px;align-items:center}
+.lyric-slider-control input{min-width:0;width:100%}
 .model-item{background:#1e2428;border-color:#394349;border-radius:7px}
 .app-footer{margin-left:64px;background:transparent;padding:7px 18px;color:#9ba8ae;font-size:10px}
 .job-bar{border-color:#50655b;border-radius:9px;background:#202a26;box-shadow:0 12px 35px #0006}

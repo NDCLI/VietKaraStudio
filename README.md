@@ -2,7 +2,7 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Video xuất dùng **beat gốc** mặc định. Có thể chọn thêm giọng bè đã duyệt hoặc vocal hướng dẫn.
 
-## Setup 1.1.1 và bản vá 1.1.13
+## Setup 1.1.1 và bản vá 1.1.14
 
 Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để nhận bản vá tự động. Mở **Cài đặt → Cập nhật VietKara Studio** để tải và cài bản vá.
 
@@ -16,6 +16,7 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Timeline có zoom bằng cuộn chuột, tự chạy theo nhạc, nhãn màu và kéo mép liên kết/độc lập.
 - Tự chia dòng; preset cỡ chữ 110, font tiếng Việt, viền/bóng, hiệu ứng quét màu và song ca.
 - Video/ảnh/màu nền, đếm ngược đầu bài hoặc sau nhạc dạo, logo và hiệu ứng logo.
+- Trong **Kiểu lời → Vị trí và khoảng cách lời**, nhập khoảng cách hai dòng theo pixel, hoặc chỉnh tọa độ ngang/dọc đến 0,1%. Giá trị dùng chung khi xem trước và xuất video.
 - Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/4K; kèm SRT/LRC/ASS và thông tin render.
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
 - Tách giọng bè từ bản hát, nghe thử và xác nhận. Nút **Bè** bật/tắt phần bè khi nghe beat. Khi dựng lẻ hoặc theo lô, chọn **Beat + bè** để xuất bản đã nghe thử.

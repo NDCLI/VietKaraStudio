@@ -9,6 +9,7 @@ function scheduleLayout(){
       const result=await api('/api/layout',{method:'POST',body:{project_id:p.id,settings:p.settings,words:p.words,anchors:p.anchors,scenes:p.scenes||[],beat:p.beat?{duration:p.beat.duration}:null}});
       if(revision!==layoutRevision||state.project?.id!==p.id)return;
       state.layout=result;
+      syncLyricSliders();
       $('fontNote').hidden=!result.font_fallback;
       $('fontNote').textContent=result.font_fallback?'Không tìm thấy font đã chọn; đang dùng '+result.font+'.':'';
       const conflicts=(result.warnings||[]).filter(w=>w.type==='overlap');
@@ -61,6 +62,7 @@ function studioStyle(){
   $('sourceVideoTools').hidden=!p.background_video;
   $('sourceVideoActions').hidden=!p.background_video;
   renderStyleControls();
+  $('legacyLyricOffsets').hidden=s.position==='custom';
   renderSceneControls();
   document.querySelectorAll('[data-value-for]').forEach(el=>el.textContent=$(el.dataset.valueFor).value);
   fitStudioPreview();scheduleLayout();studioFrame();
@@ -118,7 +120,7 @@ function studioFrame(){
           const neighbor=plan.rows[active.index+d];if(!d||!neighbor)continue;
           const w=neighbor.width*.7;
           const x=active.align==='center'?(plan.width-w)/2:active.align==='left'?active.x:active.x+active.width-w;
-          rows.push({...active,text:neighbor.text,display_text:neighbor.display_text,x,y:active.y+d*active.font_size*s.line_height,width:w,font_size:neighbor.font_size*.7,opacity:Math.max(.2,.65-Math.abs(d)*.15),ghost:true});
+          rows.push({...active,text:neighbor.text,display_text:neighbor.display_text,x,y:active.y+d*active.neighbor_step,width:w,font_size:neighbor.font_size*.7,opacity:Math.max(.2,.65-Math.abs(d)*.15),ghost:true});
         }
       }
     }

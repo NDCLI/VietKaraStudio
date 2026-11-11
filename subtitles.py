@@ -140,7 +140,7 @@ def build_ass(project, directory=None):
                     w=neighbor['width']*scale
                     x=(width-w)/2 if row['align']=='center' else row['x'] if row['align']=='left' else row['x']+row['width']-w
                     ghost={**row,'text':neighbor['text'],'font_size':neighbor['font_size']*scale,
-                           'x':x,'y':row['y']+delta*row['font_size']*s['line_height'], 'section_start':False, 'section_end':False}
+                           'x':x,'y':row['y']+delta*row['neighbor_step'], 'section_start':False, 'section_end':False}
                     plain(ghost,s['unsung'],max(20,65-abs(delta)*15))
             continue
         marker = row.get('role_icon')

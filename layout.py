@@ -258,6 +258,11 @@ def display_plan(project):
     opts = validate_settings(project.get('settings', {}))
     measure = Measure(opts)
     width, height = frame_size(opts)
+    # Use one consistent ink height, including Vietnamese accents, for all lanes.
+    bounds = measure.font.getbbox(font_text("ẮẰẲẴẶẤẦẨẪẬỄỆỖỘỚỜỞỠỢỨỪỬỮỰỸỴgyp", measure.family))
+    ink_height = bounds[3] - bounds[1] + opts['outline_width'] * 2 + opts['shadow']
+    row_step = (opts['font_size'] * (1.15 + opts['line_height']) if opts['line_gap'] is None
+                else ink_height + opts['line_gap'])
     rows = []
     indexed = {**project, 'words': [{**word, 'source_index':i} for i,word in enumerate(project.get('words', []))]}
     for original in lyric_lines(beat_words(indexed)):
@@ -311,7 +316,7 @@ def display_plan(project):
         role_changed = role != previous_role
         size = opts['font_size']
         if lane_count > 2:
-            stack_height = size * (1.2 + (lane_count-1)*(1.15+opts['line_height']))
+            stack_height = size * 1.2 + (lane_count-1) * row_step
             size *= min(1, height*.47/max(1,stack_height))
         text = ' '.join(w['text'] for w in words)
         icon_space = role_icon_space(opts) if role_changed and role in ('male', 'female', 'all') else 0
@@ -322,14 +327,23 @@ def display_plan(project):
         align = opts['align']
         if align == 'justify': align = 'right' if slot else 'left'
         x = width * .05 if align == 'left' else width * .95 - row_width if align == 'right' else (width-row_width)/2
-        x += width * opts['horizontal_offset']/100
+        if opts['position'] == 'custom':
+            x += width * (opts['lyric_x']-50) / 100
+        else:
+            x += width * opts['horizontal_offset']/100
         x = max(width*.02, min(width*.98-row_width, x))
-        baseline = {'bottom':height - size * 1.25, 'center':height/2+size*.5,
-                    'top':size*(opts['line_height']+2)}[opts['position']]
-        if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
-        bottom = baseline - height * opts['vertical_offset']/100
-        lane_offset = (lane_count-1-slot)*(1.15+opts['line_height']) if opts['display_mode']=='karaoke' else 0
-        y = max(0, bottom - size*(1.15+lane_offset))
+        step = row_step * size / opts['font_size']
+        lanes = lane_count if opts['display_mode'] == 'karaoke' else 1
+        if opts['position'] == 'custom':
+            stack_height = size * 1.2 + (lanes-1) * step
+            top = max(0, min(height-stack_height, height*opts['lyric_y']/100-stack_height/2))
+            y = top + (slot if lanes > 1 else 0) * step
+        else:
+            baseline = {'bottom':height - size * 1.25, 'center':height/2+size*.5,
+                        'top':size*(opts['line_height']+2)}[opts['position']]
+            if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
+            bottom = baseline - height * opts['vertical_offset']/100
+            y = max(0, bottom - size*1.15 - (lanes-1-slot)*step)
         role_colors={'male':opts['role_a_color'],'female':opts['role_b_color'],'all':opts['role_all_color'],
                      'voice_c':opts['role_c_color'],'voice_d':opts['role_d_color'],
                      'voice_e':opts['role_e_color'],'voice_f':opts['role_f_color'],
@@ -363,6 +377,7 @@ def display_plan(project):
                      'start':start, 'end':end, 'show_start':ds, 'show_end':max(ds+.01,de),
                      'x':round(x,3), 'y':round(y,3), 'width':round(row_width,3), 'height':round(size*1.2,3),
                      'font_size':round(size,3), 'color':color, 'align':align, 'role':role, 'text':text,
+                     'neighbor_step':round(size*opts['line_height'] if opts['line_gap'] is None else step, 3),
                      'display_text':font_text(text, measure.family),
                      'role_icon':marker, 'words':positioned})
         # A new lyric paragraph/row is not necessarily an instrumental break.
@@ -382,4 +397,5 @@ def display_plan(project):
             warnings.append({'type':'overlap','line':row['line'],'previous_line':previous['line']})
     from song_title import title_plan
     return {'title':title_plan(project), 'width':width, 'height':height, 'font':measure.family, 'font_factor':measure.factor,
+            'effective_line_gap':round(max(0, row_step-ink_height), 2),
             'font_fallback':measure.fallback, 'rows':plan, 'countdowns':countdowns,'warnings':warnings}
