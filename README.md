@@ -2,7 +2,7 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Video xuất dùng **beat gốc** mặc định. Có thể chọn thêm giọng bè đã duyệt hoặc vocal hướng dẫn.
 
-## Setup 1.1.1 và bản vá 1.1.14
+## Setup 1.1.1 và bản vá 1.1.15
 
 Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để nhận bản vá tự động. Mở **Cài đặt → Cập nhật VietKara Studio** để tải và cài bản vá.
 
@@ -20,8 +20,9 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/4K; kèm SRT/LRC/ASS và thông tin render.
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
 - Tách giọng bè từ bản hát, nghe thử và xác nhận. Nút **Bè** bật/tắt phần bè khi nghe beat. Khi dựng lẻ hoặc theo lô, chọn **Beat + bè** để xuất bản đã nghe thử.
-- Trong **Tách nhạc lấy beat**, chọn **Tách beat không bè** hoặc **Tách beat có bè** ngay khi nạp nguồn. Khi tách được bè, kết quả có hai nút tải WAV riêng cho beat có bè và beat không bè.
+- Trong **Tách nhạc lấy beat**, chọn **Tách beat không bè** hoặc **Tách beat có bè** ngay khi nạp nguồn. Kết quả có nghe thử và tải WAV riêng cho beat không bè, beat có bè (nếu tạo được) và vocal. Link YouTube kèm playlist được lấy đúng video đang chọn. Có thêm model tách bè nhẹ UVR Karaoke bên cạnh Mel-RoFormer hiện tại; chỉ hiện trạng thái xử lý đơn giản khi chạy.
 - Lần đầu dùng link YouTube trên Windows, app tự tải và kiểm tra `yt-dlp` cùng QuickJS từ GitHub. Công cụ đã tải được lưu trong thư mục dữ liệu của app.
+- Trong **Cài đặt model**, tải trước hai model tách bè hoặc mở link tải file ngoài, chép vào đường dẫn hiển thị rồi kiểm tra lại. App kiểm tra SHA-256 và dùng chung model với trang tách nhạc.
 - Chỉnh bố cục nhiều tính năng, chọn video làm nguồn, tiêu đề căn trái có nền ôm sát chữ; cập nhật trạng thái tác vụ bằng câu dễ hiểu.
 - Tự kiểm tra và tải bản vá từ GitHub Releases; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
 - Icon nam, nữ, song ca và 315 font trong `SOURCE/`; tự chuyển mã VNI/TCVN3 khi xem trước và xuất video.

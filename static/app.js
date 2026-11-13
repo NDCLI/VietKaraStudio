@@ -134,15 +134,23 @@ async function applyAlignment(){
 
 function friendlyJobMessage(job){
   const phase=String(job.message||'');
-  if(['backing','tool-backing'].includes(job.kind))return phase;
-  if(job.kind==='separate')return phase;
+  if(['separate','backing','tool-backing'].includes(job.kind)){
+    if(job.state==='done')return 'Tách nhạc hoàn tất.';
+    if(job.state==='cancelled')return 'Đã hủy tách nhạc.';
+    if(job.state==='error')return 'Không tách được nhạc. Hãy thử lại.';
+    if(job.state==='queued')return 'Đang chuẩn bị tách nhạc…';
+    if(job.kind!=='separate'||/giọng bè|phân tách.*bè|căn.*bè|trộn.*bè/i.test(phase)||Number(job.progress)>42)return 'Đang xử lý giọng bè…';
+    if(/công cụ|thiết bị|model|mô hình/i.test(phase))return 'Đang chuẩn bị tách nhạc…';
+    if(/YouTube/i.test(phase))return 'Đang tải nhạc từ YouTube…';
+    return 'Đang tách nhạc…';
+  }
   if(job.kind==='align-region')return 'Đang căn lại câu đã chọn…';
   if(job.kind==='sync-suggest')return 'Đang dò mốc giữa bản hát và beat…';
   if(job.kind==='analyze')return phase.includes('căn lời có sẵn')?'Đang căn lời theo nhạc…':'Đang nhận lời và căn thời gian…';
   if(job.kind==='roles')return 'Đang phân tích vocal để gợi ý vai…';
   if(job.kind==='render')return 'Đang tạo video karaoke…';
   if(job.kind==='upload')return ({reference:'Đang nạp bản có vocal…',beat:'Đang nạp beat…',background:'Đang nạp nền…',logo:'Đang nạp logo…',countdown:'Đang nạp ảnh đếm ngược…'})[job.uploadSlot]||'Đang nạp file…';
-  if(job.kind==='model')return 'Đang tải bộ nhận diện…';
+  if(job.kind==='model')return 'Đang tải model…';
   if(job.kind==='estimate')return 'Đang căn thời gian lời…';
   return 'Đang xử lý…';
 }

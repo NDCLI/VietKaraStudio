@@ -1,6 +1,8 @@
 'use strict';
 function initWorkspaceTools(){
   const beatPreview=$('separatedBeatPreview');
+  const separationPlayers=[beatPreview,$('separatedBeatBackingPreview'),$('separatedVocalPreview')];
+  separationPlayers.forEach(player=>player.addEventListener('play',()=>separationPlayers.forEach(other=>{if(other!==player)other.pause();})));
   $('videoReferenceBtn').onclick=wrap(async()=>{
     if(state.job||state.manualTiming)return;
     if(state.project.reference&&state.project.words.length&&!confirm('Dùng âm thanh video thay bản hát sẽ xóa mốc từ cũ. Tiếp tục?'))return;
@@ -18,47 +20,79 @@ function initWorkspaceTools(){
   document.querySelectorAll('[data-page]').forEach(b=>b.onclick=wrap(async()=>{
     if(state.manualTiming)return toast('Kết thúc phiên đồng bộ trước khi chuyển tab.');
     if(!state.project)return;
-    await saveNow();audio.pause();beatPreview.pause();
+    await saveNow();audio.pause();separationPlayers.forEach(player=>player.pause());
     document.querySelectorAll('[data-app-page]').forEach(p=>p.hidden=p.dataset.appPage!==b.dataset.page);
     document.querySelectorAll('[data-page]').forEach(p=>{p.classList.toggle('on',p===b);if(p===b)p.setAttribute('aria-current','page');else p.removeAttribute('aria-current');});
     if(b.dataset.page==='settings'){await refreshModels();if(window.refreshUpdateStatus)window.refreshUpdateStatus();}
     if(b.dataset.page==='karaoke')drawTimeline();
   }));
   const separationButtons=[$('separationRun'),$('separationWithBackingRun')];
+  const separationInputs=[$('separationInput'),$('separationYoutubeUrl'),$('separationBackingModel')];
+  try{const saved=localStorage.getItem('vietkara_backing_model');if(['roformer','uvr-lite'].includes(saved))$('separationBackingModel').value=saved;}catch{}
+  $('separationBackingModel').onchange=()=>{try{localStorage.setItem('vietkara_backing_model',$('separationBackingModel').value);}catch{}};
+  $('separationInput').addEventListener('change',()=>{
+    const file=$('separationInput').files[0];
+    $('separationFileName').textContent=file?file.name:'MP3, WAV, FLAC, M4A, MP4 và nhiều định dạng khác';
+    if(file)$('separationYoutubeUrl').value='';
+  });
+  $('separationYoutubeUrl').addEventListener('input',()=>{
+    if($('separationYoutubeUrl').value.trim()){
+      $('separationInput').value='';
+      $('separationFileName').textContent='MP3, WAV, FLAC, M4A, MP4 và nhiều định dạng khác';
+    }
+  });
   async function runSeparation(mode){
     if(state.job||separationButtons.some(button=>button.disabled))return;
     const file=$('separationInput').files[0];
     const youtube=($('separationYoutubeUrl').value||'').trim();
     if(!file&&!youtube)throw Error('Chọn bài nhạc hoặc dán URL YouTube cần tách.');
     if(file&&youtube)throw Error('Chỉ chọn file hoặc URL YouTube, không dùng cả hai.');
-    const body=youtube?{source:'youtube',url:youtube,device:'auto',mode}:new FormData();
-    if(file){body.append('file',file);body.append('device','auto');body.append('mode',mode);}
+    const backing_model=$('separationBackingModel').value;
+    const body=youtube?{source:'youtube',url:youtube,device:'auto',mode,backing_model}:new FormData();
+    if(file){body.append('file',file);body.append('device','auto');body.append('mode',mode);body.append('backing_model',backing_model);}
     separationButtons.forEach(button=>button.disabled=true);
+    separationInputs.forEach(input=>input.disabled=true);
+    $('separationActivity').dataset.state='running';
+    $('separationProgress').hidden=false;
+    $('separationProgress').removeAttribute('value');
     $('separationStatus').textContent=youtube?'Đang chuẩn bị tải YouTube…':'Đang nạp bài nhạc…';
     try{
       const job=await api(endpoint('/separate'),{method:'POST',body});
-      beatPreview.pause();
+      separationPlayers.forEach(player=>player.pause());
       $('separationResult').hidden=true;
       const result=await waitUtilityJob(job,'separationStatus');
       if(result){
         const mixed=result.backing_mix;
         const mixedDownload=$('separatedBeatBackingDownload');
         $('separatedBeatDownload').href=result.beat;
+        $('separatedVocalDownload').href=result.vocals;
+        $('separatedVocalPreview').src=result.vocals+'?preview=1';
+        const mixedPreview=$('separatedBeatBackingPreview');
+        mixedPreview.hidden=!mixed;
+        $('separatedBackingCard').classList.toggle('unavailable',!mixed);
         if(mixed){
+          mixedPreview.src=mixed+'?preview=1';
+          $('separatedBackingNote').textContent='Nhạc nền giữ lại giọng hát bè.';
           mixedDownload.href=mixed;
           mixedDownload.removeAttribute('aria-disabled');
         }else{
+          mixedPreview.removeAttribute('src');mixedPreview.load();
+          $('separatedBackingNote').textContent=result.backing_status==='weak'?'Chưa tách được bè rõ từ bản thu này.':'Chọn “Tách beat có bè” để tạo bản này.';
           mixedDownload.removeAttribute('href');
           mixedDownload.setAttribute('aria-disabled','true');
         }
-        $('separatedBeatLabel').textContent=mixed?'Beat có bè':'Beat không bè';
-        beatPreview.src=mixed||result.beat;
+        beatPreview.src=result.beat+'?preview=1';
         if(result.backing_status==='weak'){
           $('separationStatus').textContent='Không tách được bè rõ. Đã tạo beat không bè.';
         }
         $('separationResult').hidden=false;
       }
-    }finally{separationButtons.forEach(button=>button.disabled=false);}
+      $('separationActivity').dataset.state=result?'done':'idle';
+    }catch(error){
+      $('separationActivity').dataset.state='error';
+      $('separationStatus').textContent=error.message||'Không tách được nhạc. Hãy thử lại.';
+      throw error;
+    }finally{separationButtons.forEach(button=>button.disabled=false);separationInputs.forEach(input=>input.disabled=false);$('separationProgress').hidden=true;}
   }
   $('separationRun').onclick=wrap(()=>runSeparation('beat'));
   $('separationWithBackingRun').onclick=wrap(()=>runSeparation('backing'));
@@ -83,6 +117,7 @@ async function waitUtilityJob(job,statusId){
   try{
     while(['running','queued'].includes(job.state)){
       if(statusId)$(statusId).textContent=friendlyJobMessage(job);
+      if(statusId==='separationStatus')$('separationProgress').value=Math.max(0,Math.min(100,Number(job.progress)||0));
       await new Promise(resolve=>setTimeout(resolve,750));
       job=await api('/api/jobs/'+job.id);busy(job);
     }
@@ -94,7 +129,7 @@ async function waitUtilityJob(job,statusId){
 async function refreshModels(){
   $('modelList').textContent='Đang kiểm tra model trên máy…';
   const models=await api('/api/models');
-  $('modelList').innerHTML=models.map(m=>`<div class="model-item"><div><strong>${m.id==='demucs'?'Demucs · tách nhạc':'Whisper '+esc(m.id)}</strong><span class="${m.ready?'green-text':'muted'}">${m.ready?'Đã có trên máy':'Chưa tải'}</span></div><p class="model-location">${m.ready?(m.location==='cache'?'Đang dùng cache có sẵn · không tải trùng':'Đang dùng model trong thư mục phần mềm'):'Chưa có model'}</p><label class="hint">${m.ready?'Đường dẫn đang dùng':'Thư mục tải / chép model'}</label><code>${esc(m.path)}</code>${m.ready&&m.download_path!==m.path?`<label class="hint">Thư mục tải mới / chép model thủ công</label><code>${esc(m.download_path)}</code>`:''}<button class="secondary" data-download-model="${esc(m.id)}" ${state.job?'disabled':''}>${m.ready?'Kiểm tra / tải bổ sung':'Tải model'}</button></div>`).join('');
+  $('modelList').innerHTML=models.map(m=>`<div class="model-item"><div><strong>${esc(m.label||(m.id==='demucs'?'Demucs · tách nhạc':'Whisper '+m.id))}</strong><span class="${m.ready?'green-text':'muted'}">${m.ready?'Đã có trên máy':'Chưa tải'}</span></div><p class="model-location">${m.ready?(m.location==='cache'?'Đang dùng cache có sẵn · không tải trùng':'Đang dùng model trong thư mục phần mềm'):'Chưa có model'}</p><label class="hint">${m.ready?'Đường dẫn đang dùng':'Thư mục tải / chép model'}</label><code>${esc(m.path)}</code>${m.ready&&m.download_path!==m.path?`<label class="hint">Thư mục tải mới / chép model thủ công</label><code>${esc(m.download_path)}</code>`:''}${m.files?.length?`<details class="model-manual"><summary>Tải file ngoài / chép thủ công</summary><p>Tải đủ các file bên dưới, chép vào thư mục trên rồi bấm Kiểm tra model.</p>${m.files.map(file=>`<a href="${esc(file.url)}" target="_blank" rel="noopener noreferrer">↓ ${esc(file.name)}</a>`).join('')}</details>`:''}<button class="secondary" data-download-model="${esc(m.id)}" ${state.job?'disabled':''}>${m.ready?'Kiểm tra / tải bổ sung':'Tải model'}</button></div>`).join('');
 }
 async function applyPresetNow(id){
   if(state.job||state.manualTiming)return toast('Kết thúc tác vụ hoặc phiên đồng bộ trước khi đổi preset.');

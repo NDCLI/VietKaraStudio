@@ -132,6 +132,7 @@ def separate_tool(pid):
     mode = payload.get('mode', 'beat') if from_youtube or from_video else request.form.get('mode', 'beat')
     if mode not in ('beat', 'backing') or (from_video and mode != 'beat'):
         raise ValueError('Chọn tách beat không bè hoặc beat có bè.')
+    backing_model = backing_vocals.validate_model((payload if from_youtube or from_video else request.form).get('backing_model', backing_vocals.DEFAULT_MODEL))
     if apply_project:
         project_archive.create_version(project_path, load(pid), "Trước khi thay media bằng kết quả tách vocal/beat")
     source = media_tools.local_asset(project_path, load(pid).get('background_video', {}).get('source_file')) if from_video else None
@@ -139,7 +140,7 @@ def separate_tool(pid):
     if from_video and not source:
         raise ValueError('Hãy nạp video trong File nguồn trước.')
     if from_youtube and not media_tools.youtube_video_id(youtube_url):
-        raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+        raise ValueError('Không tìm thấy video trong URL YouTube. Hãy dán link có mã video, thay vì link danh sách phát.')
     if not from_video and not from_youtube and (not file or not file.filename):
         raise ValueError('Chọn bài nhạc hoặc dán URL YouTube cần tách.')
     ext = source.suffix.lower() if from_video else Path(file.filename).suffix.lower() if file else '.m4a'
@@ -188,7 +189,7 @@ def separate_tool(pid):
                       'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
             if mode == 'backing':
                 job.update(42, 'Đang chuẩn bị tách giọng bè để trộn vào beat…')
-                backing = backing_vocals.prepare({}, folder, job, preference, beat_name=TOOL_BEAT)
+                backing = backing_vocals.prepare({}, folder, job, preference, beat_name=TOOL_BEAT, model=backing_model)
                 job.check()
                 if backing.get('weak'):
                     result['backing_status'] = 'weak'

@@ -195,8 +195,8 @@ def test_separation_tool_backing_uses_isolated_result_and_requires_review(client
     assert client.get(url).get_json()['beat'] is None
 
 
-@pytest.mark.parametrize('mode, weak', [('beat', False), ('backing', False), ('backing', True)])
-def test_separation_tool_direct_beat_modes(client, monkeypatch, mode, weak):
+@pytest.mark.parametrize('mode, weak, model', [('beat', False, 'roformer'), ('backing', False, 'roformer'), ('backing', True, 'roformer'), ('backing', False, 'uvr-lite')])
+def test_separation_tool_direct_beat_modes(client, monkeypatch, mode, weak, model):
     project = client.post('/api/projects', json={}).get_json()
     url = '/api/projects/' + project['id']
     command = engine.command
@@ -209,7 +209,7 @@ def test_separation_tool_direct_beat_modes(client, monkeypatch, mode, weak):
     def command_with_model(args, *extra, **options):
         if 'backing' in args and '--vcl-task' in args:
             worker_calls.append(args)
-            stem = Path(args[-3])
+            stem = Path(args[args.index('backing')+2])
             if weak:
                 sf.write(stem, np.zeros(44100), 44100)
             else:
@@ -221,10 +221,12 @@ def test_separation_tool_direct_beat_modes(client, monkeypatch, mode, weak):
     monkeypatch.setattr(engine, 'command', command_with_model)
     monkeypatch.setattr(engine.hardware, 'select_ai', lambda **_: {'demucs': engine.hardware.cpu_backend()})
     result = wait(client, client.post(url + '/separate', data={'file': (wave_bytes(), 'song.wav'),
-                                                              'mode': mode}))['result']
+                                                              'mode': mode, 'backing_model': model}))['result']
     beat = client.get(result['beat']).data
     assert beat == wave_bytes(440).getvalue()
     assert len(worker_calls) == int(mode == 'backing')
+    if model == 'uvr-lite':
+        assert worker_calls[0][-1] == 'uvr-lite'
     if mode == 'backing' and not weak:
         assert result['backing_status'] == 'ready'
         mix = client.get(result['backing_mix'])
@@ -304,3 +306,37 @@ def test_export_uses_only_original_beat_and_mapped_lyrics(client,tmp_path):
     main=freq[int(np.argmax(spec))]
     assert abs(main-660)<2  # Rendered audio is the original beat, not a stem or reference.
     assert client.get(result['result']['video']).status_code==200
+
+
+def test_switching_backing_models_rebuilds_the_stem_and_keeps_legacy_cache(tmp_path, monkeypatch):
+    (tmp_path / 'reference.wav').write_bytes(wave_bytes(1200).getvalue())
+    (tmp_path / 'vocals.wav').write_bytes(wave_bytes(1200).getvalue())
+    (tmp_path / 'beat.wav').write_bytes(wave_bytes(440).getvalue())
+    original_command = engine.command
+    calls = []
+    def command(args, *extra, **kwargs):
+        if '--vcl-task' in args and 'backing' in args:
+            calls.append(args)
+            Path(args[args.index('backing') + 2]).write_bytes(wave_bytes(880).getvalue())
+        else:
+            return original_command(args, *extra, **kwargs)
+    monkeypatch.setattr(engine, 'command', command)
+    monkeypatch.setattr(engine.hardware, 'select_ai', lambda **_: {'demucs': engine.hardware.cpu_backend()})
+    job = engine.Job('model-cache', 'test', 'backing')
+    high = backing_vocals.prepare({}, tmp_path, job, 'auto')
+    legacy = {k: v for k, v in high.items() if k != 'model'}
+    assert backing_vocals.status({'backing_vocals': legacy}, tmp_path) == 'review'
+    assert backing_vocals.prepare({'backing_vocals': legacy}, tmp_path, job, 'auto') == legacy
+    light = backing_vocals.prepare({'backing_vocals': high}, tmp_path, job, 'auto', model='uvr-lite')
+    assert light['source'] != high['source'] and light['mix'] != high['mix']
+    assert len(calls) == 2 and calls[-1][-1] == 'uvr-lite'
+    assert backing_vocals.status({'backing_vocals': light}, tmp_path) == 'review'
+    assert backing_vocals.prepare({'backing_vocals': light}, tmp_path, job, 'auto', model='uvr-lite') == light
+    backing_vocals.prepare({'backing_vocals': light}, tmp_path, job, 'auto')
+    assert len(calls) == 3
+
+
+def test_separation_rejects_unknown_backing_model(client):
+    pid = client.post('/api/projects', json={}).get_json()['id']
+    response = client.post(f'/api/projects/{pid}/separate', data={'file': (wave_bytes(), 'song.wav'), 'mode': 'backing', 'backing_model': '../model'})
+    assert response.status_code == 400

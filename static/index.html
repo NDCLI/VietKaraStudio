@@ -5,7 +5,7 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg?v=2026.11-brand">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1-brand">
-  <link rel="stylesheet" href="/static/style.css?v=1.1.14">
+  <link rel="stylesheet" href="/static/style.css?v=1.1.15">
 </head>
 <body>
 <nav class="app-rail" aria-label="Chức năng app"><div class="rail-brand" aria-hidden="true"><img class="brand-mark" src="/static/vietkara.svg?v=2026.11-brand" alt=""></div><button type="button" data-page="karaoke" class="on" aria-current="page" title="Karaoke" aria-label="Karaoke">▤</button><button id="separationPageBtn" type="button" data-page="separation" title="Tách nhạc lấy beat" aria-label="Tách nhạc lấy beat">♫</button><button type="button" data-page="settings" class="rail-settings" title="Cài đặt model" aria-label="Cài đặt model">⚙</button></nav>
@@ -214,28 +214,34 @@
 
 </main>
 <section id="separationPage" class="utility-page" data-app-page="separation" hidden>
-  <div class="utility-card">
-    <h1>Tách nhạc lấy beat</h1>
-    <p>Chọn nguồn rồi tách beat không bè hoặc giữ giọng bè trong bản WAV.</p>
-    <label>Chọn bài nhạc hoặc video<input id="separationInput" type="file" accept="audio/*,video/*"></label>
-    <label>Hoặc URL YouTube<input id="separationYoutubeUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=..."></label>
-    <p class="hint">Chỉ hỗ trợ link một video. Hãy dùng nguồn bạn có quyền sử dụng.</p>
-    <button id="separationRun" type="button" class="primary">Tách beat không bè</button>
-    <button id="separationWithBackingRun" type="button" class="secondary">Tách beat có bè</button>
-    <p id="separationStatus" class="hint" role="status"></p>
-    <div id="separationResult" hidden>
-      <h2>Kết quả</h2>
-      <label><span id="separatedBeatLabel">Beat</span><audio id="separatedBeatPreview" controls preload="metadata"></audio></label>
-      <div class="separation-downloads">
-        <a id="separatedBeatDownload" class="secondary" download>Tải beat không bè</a>
-        <a id="separatedBeatBackingDownload" class="secondary" aria-disabled="true" download>Tải beat có bè</a>
+  <div class="separation-shell">
+    <header class="separation-heading"><span class="separation-eyebrow">VIETKARA · AUDIO TOOLS</span><h1>Tách nhạc, giữ chất riêng.</h1><p>Tạo beat để hát, giữ giọng bè hoặc lấy vocal để phối lại.</p><span class="separation-badge">Xử lý AI trên máy · Xuất WAV</span></header>
+    <div class="utility-card separation-source">
+      <div class="separation-section-title"><span>01</span><div><h2>Chọn nguồn nhạc</h2><p>Thêm file hoặc dán link video YouTube bạn muốn tách.</p></div></div>
+      <div class="separation-sources">
+        <label class="separation-file" for="separationInput"><span class="separation-source-icon" aria-hidden="true">↑</span><strong>Chọn nhạc hoặc video</strong><span id="separationFileName">MP3, WAV, FLAC, M4A, MP4 và nhiều định dạng khác</span><input id="separationInput" type="file" accept="audio/*,video/*"></label>
+        <span class="separation-or">hoặc</span>
+        <div class="separation-url"><label for="separationYoutubeUrl">Link YouTube</label><input id="separationYoutubeUrl" type="url" inputmode="url" placeholder="Dán link video tại đây…"><p>Link có kèm playlist vẫn dùng được. App chỉ tải video đang chọn.</p></div>
       </div>
+      <div class="separation-section-title"><span>02</span><div><h2>Chọn cách tách</h2><p>Cả hai chế độ đều có file vocal riêng để tải về.</p></div></div>
+      <label class="separation-model" for="separationBackingModel"><span>Model tách bè</span><select id="separationBackingModel"><option value="roformer">Chất lượng cao · Mel-RoFormer (hiện tại)</option><option value="uvr-lite">Nhẹ · UVR Karaoke</option></select><small>Áp dụng khi tách beat có bè. Lựa chọn nhẹ dùng ít bộ nhớ hơn; chất lượng phụ thuộc bản thu.</small></label>
+      <div class="separation-modes"><button id="separationRun" type="button" class="primary"><span aria-hidden="true">♫</span><strong>Tách beat không bè</strong><small>Nhạc nền sạch để hát karaoke</small><b aria-hidden="true">→</b></button><button id="separationWithBackingRun" type="button" class="secondary"><span aria-hidden="true">♬</span><strong>Tách beat có bè</strong><small>Giữ giọng bè, loại giọng hát chính</small><b aria-hidden="true">→</b></button></div>
+      <div id="separationActivity" class="separation-activity" data-state="idle"><p id="separationStatus" role="status" aria-live="polite">Sẵn sàng tách nhạc. Chọn nguồn để bắt đầu.</p><progress id="separationProgress" max="100" value="0" aria-label="Tiến độ tách nhạc" hidden></progress></div>
+      <p class="separation-footnote">Hãy dùng nguồn bạn có quyền sử dụng. Độ rõ của vocal và giọng bè phụ thuộc bản thu gốc.</p>
     </div>
+    <section id="separationResult" class="separation-result" hidden>
+      <div class="separation-result-heading"><div><span class="separation-eyebrow">ĐÃ XỬ LÝ</span><h2>Nghe thử & tải về</h2></div><span>WAV · Âm thanh riêng từng bản</span></div>
+      <div class="separation-tracks">
+        <article class="separation-track"><span class="separation-track-icon" aria-hidden="true">♫</span><h3>Beat không bè</h3><p>Nhạc nền đã loại giọng hát.</p><audio id="separatedBeatPreview" aria-label="Nghe beat không bè" controls preload="metadata"></audio><a id="separatedBeatDownload" class="secondary" download>Tải beat không bè <span>↓ WAV</span></a></article>
+        <article class="separation-track" id="separatedBackingCard"><span class="separation-track-icon" aria-hidden="true">♬</span><h3>Beat có bè</h3><p id="separatedBackingNote">Chọn “Tách beat có bè” để tạo bản này.</p><audio id="separatedBeatBackingPreview" aria-label="Nghe beat có bè" controls preload="metadata" hidden></audio><a id="separatedBeatBackingDownload" class="secondary" aria-disabled="true" download>Tải beat có bè <span>↓ WAV</span></a></article>
+        <article class="separation-track"><span class="separation-track-icon" aria-hidden="true">◎</span><h3>Vocal riêng</h3><p>Giọng hát tách khỏi nhạc nền.</p><audio id="separatedVocalPreview" aria-label="Nghe vocal riêng" controls preload="metadata"></audio><a id="separatedVocalDownload" class="secondary" download>Tải vocal <span>↓ WAV</span></a></article>
+      </div>
+    </section>
   </div>
 </section>
-<section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div><div class="utility-card update-card"><h2>Cập nhật VietKara Studio</h2><p>App kiểm tra bản vá nhỏ trên GitHub và chỉ tải phần chương trình thay đổi. Project, nhạc và model của bạn được giữ nguyên.</p><label class="update-auto"><input id="autoUpdateEnabled" type="checkbox" checked><span>Tự động kiểm tra và tải bản vá khi mở app</span></label><p id="updateStatus" class="hint" role="status">Đang kiểm tra trạng thái cập nhật…</p><div class="update-actions"><button id="checkUpdates" class="secondary">↻ Kiểm tra ngay</button><button id="updateAction" class="primary" hidden></button></div></div></section>
+<section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị. Hai model tách bè có nút tải trước và link tải file ngoài tại từng thẻ. Mel-RoFormer cần đủ file trọng số và file cấu hình; UVR Karaoke cần file .pth. App kiểm tra file trước khi dùng.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div><div class="utility-card update-card"><h2>Cập nhật VietKara Studio</h2><p>App kiểm tra bản vá nhỏ trên GitHub và chỉ tải phần chương trình thay đổi. Project, nhạc và model của bạn được giữ nguyên.</p><label class="update-auto"><input id="autoUpdateEnabled" type="checkbox" checked><span>Tự động kiểm tra và tải bản vá khi mở app</span></label><p id="updateStatus" class="hint" role="status">Đang kiểm tra trạng thái cập nhật…</p><div class="update-actions"><button id="checkUpdates" class="secondary">↻ Kiểm tra ngay</button><button id="updateAction" class="primary" hidden></button></div></div></section>
 <div hidden><button id="alignLyricsBtn"></button><button id="estimateBtn"></button></div>
-<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.14</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
+<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.15</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
 <div id="jobBar" class="job-bar" hidden><div class="spinner"></div><div class="job-copy"><strong id="jobTitle">Đang xử lý…</strong><div class="progress-track"><div id="jobProgress"></div></div></div><span id="jobPercent">0%</span><button id="cancelJobBtn" class="ghost">Hủy</button></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <dialog id="tapDialog" class="tap-dialog">
@@ -272,12 +278,12 @@
 <script src="/static/layout_resize.js?v=1.1.5-playback"></script>
 <script src="/static/timeline_edit.js"></script>
 <script src="/static/bundled_assets.js?v=source-1"></script>
-<script src="/static/studio.js?v=1.1.14"></script>
+<script src="/static/studio.js?v=1.1.15"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
 <script src="/static/song_title.js?v=source-1"></script>
-<script src="/static/workspace_tools.js?v=1.1.12"></script>
+<script src="/static/workspace_tools.js?v=1.1.15"></script>
 <script src="/static/updates.js"></script>
 <script src="/static/backing_vocals.js"></script>
-<script src="/static/app.js?v=1.1.14"></script>
+<script src="/static/app.js?v=1.1.15"></script>
 </body></html>

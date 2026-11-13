@@ -27,7 +27,7 @@ YOUTUBE_TOOLS = {
 
 
 def youtube_video_id(value):
-    """Return a single YouTube video id, rejecting playlists and non-video URLs."""
+    """Return the selected video id, ignoring optional playlist context."""
     try:
         parsed = urlparse(str(value).strip())
     except ValueError:
@@ -35,8 +35,6 @@ def youtube_video_id(value):
     if parsed.scheme not in ('http', 'https') or parsed.hostname not in YOUTUBE_HOSTS:
         return None
     query = parse_qs(parsed.query)
-    if 'list' in query:
-        return None
     if parsed.hostname == 'youtu.be':
         video_id = parsed.path.strip('/').split('/')[0]
     else:
@@ -123,7 +121,7 @@ def download_youtube(url, destination, job):
     """Download one user-authorized YouTube video into a temporary job folder."""
     video_id = youtube_video_id(url)
     if not video_id:
-        raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+        raise ValueError('Không tìm thấy video trong URL YouTube. Hãy dán link có mã video, thay vì link danh sách phát.')
     url = f'https://www.youtube.com/watch?v={video_id}'
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
@@ -136,6 +134,8 @@ def download_youtube(url, destination, job):
     except Exception as exc:
         if job.cancelled.is_set():
             raise
+        if re.search(r'sign in to confirm|not a bot', str(exc), re.IGNORECASE):
+            raise RuntimeError('YouTube đang yêu cầu xác minh truy cập. Hãy tải video bằng trình duyệt rồi chọn file trong app để tách nhạc.') from exc
         raise RuntimeError('Không tải được video YouTube: ' + str(exc).strip()[-600:]) from exc
     candidates = [path for path in destination.glob('youtube_source.*')
                   if path.is_file() and path.suffix not in ('.part', '.ytdl', '.tmp')]

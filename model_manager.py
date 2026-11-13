@@ -9,9 +9,12 @@ import os
 from pathlib import Path
 import sys
 import time
+import tempfile
 import urllib.request
 
-MODELS = ('small', 'medium', 'large-v3-turbo', 'demucs')
+WHISPER_MODELS = ('small', 'medium', 'large-v3-turbo')
+BACKING_MODELS = {'backing-roformer': 'roformer', 'backing-uvr-lite': 'uvr-lite'}
+MODELS = (*WHISPER_MODELS, 'demucs', *BACKING_MODELS)
 DEMUCS_FILE = '955717e8-8726e21a.th'
 # Pinned upstream HTDemucs checkpoint, also listed in demucs/remote/files.txt.
 DEMUCS_URL = 'https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/' + DEMUCS_FILE
@@ -55,7 +58,7 @@ def cached_whisper(root, name):
 
 
 def resolve_whisper(root, name):
-    if name not in MODELS[:-1]:
+    if name not in WHISPER_MODELS:
         raise ValueError('Model không hợp lệ.')
     path = local_whisper(root, name) or cached_whisper(root, name)
     if path:
@@ -144,7 +147,7 @@ def download_demucs(root, force_download=False):
 
 def status(root):
     items = []
-    for name in MODELS[:-1]:
+    for name in WHISPER_MODELS:
         path = local_whisper(root, name) or cached_whisper(root, name)
         target = Path(root) / 'models/whisper' / name
         items.append({'id': name, 'ready': bool(path), 'path': str(path or target),
@@ -155,6 +158,15 @@ def status(root):
     items.append({'id': 'demucs', 'ready': bool(ready), 'path': str(ready or local),
                   'download_path': str(local),
                   'location': 'app' if ready == local else 'cache' if ready else 'missing'})
+    import backing_vocals
+    folder = Path(root) / 'models' / 'backing'
+    for identifier, model in BACKING_MODELS.items():
+        files = backing_vocals.model_files(model)
+        ready = all(backing_vocals.fingerprint(folder / filename) == checksum for filename, checksum, _ in files)
+        items.append({'id': identifier, 'label': 'Tách bè · ' + ('Chất lượng cao · Mel-RoFormer' if model == 'roformer' else 'Nhẹ · UVR Karaoke'),
+                      'ready': ready, 'path': str(folder), 'download_path': str(folder),
+                      'location': 'app' if ready else 'missing',
+                      'files': [{'name': filename, 'sha256': checksum, 'url': f'https://github.com/{repository}/{filename}'} for filename, checksum, repository in files]})
     return items
 
 
@@ -164,6 +176,13 @@ def download(root, name, force_download=False):
     print('Đang chuẩn bị model ' + name, flush=True)
     if name == 'demucs':
         path = download_demucs(root, force_download)
+    elif name in BACKING_MODELS:
+        import backing_vocals
+        path = Path(root) / 'models' / 'backing'
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='download-', dir=path) as staging:
+            backing_vocals.ensure_model(path, Path(staging), BACKING_MODELS[name], progress)
+        progress(100, 'Model tách bè đã sẵn sàng.')
     else:
         path = resolve_whisper(root, name)
     print('Sử dụng model: ' + str(path), flush=True)

@@ -23,6 +23,10 @@ MODEL = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
 MODEL_CONFIG = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956_config.yaml"
 MODEL_SHA256 = "1de20d459332fe8869aeb01327a31df0032262706e1365114e852dc271779813"
 CONFIG_SHA256 = "b35077d94861f068097cce1a5e54633c055e7dcc2613eade4e4dc7c7c9c3f48b"
+DEFAULT_MODEL = "roformer"
+LITE_MODEL = "5_HP-Karaoke-UVR.pth"
+LITE_SHA256 = "fe00891defbb61f4261500af22f7624f1a3df8dc75fa3998d1aece02e6be4537"
+BACKING_MODELS = (DEFAULT_MODEL, "uvr-lite")
 STEM_FILE = "backing.wav"
 MIX_PATTERN = r"bb_[0-9a-f]{24}\.wav"
 SAMPLE_RATE = 44100
@@ -42,11 +46,34 @@ def fingerprint(path: Path) -> str | None:
         return None
 
 
-def source_key(directory: Path) -> str | None:
+def validate_model(model):
+    if model not in BACKING_MODELS:
+        raise ValueError("Lựa chọn model tách bè không hợp lệ.")
+    return model
+
+
+def model_files(model):
+    validate_model(model)
+    repository = "TRvlvr/model_repo/releases/download/all_public_uvr_models"
+    if model == "uvr-lite":
+        return [(LITE_MODEL, LITE_SHA256, repository)]
+    return [(MODEL, MODEL_SHA256, repository),
+            (MODEL_CONFIG, CONFIG_SHA256, "nomadkaraoke/python-audio-separator/releases/download/model-configs")]
+
+
+def ensure_model(models: Path, staging: Path, model: str, progress):
+    models.mkdir(parents=True, exist_ok=True)
+    for filename, checksum, repository in model_files(model):
+        _download_model_file(models / filename, staging, repository, checksum, progress)
+
+
+def source_key(directory: Path, model: str = DEFAULT_MODEL) -> str | None:
+    validate_model(model)
     vocals = fingerprint(directory / "vocals.wav")
     if not vocals:
         return None
-    return f"{MODEL_SHA256}:{fingerprint(directory / 'reference.wav')}:{vocals}"
+    checksum = MODEL_SHA256 if model == DEFAULT_MODEL else LITE_SHA256
+    return f"{checksum}:{fingerprint(directory / 'reference.wav')}:{vocals}"
 
 
 def mix_key(project: dict, beat_path: Path, source: str | None) -> str | None:
@@ -69,7 +96,10 @@ def status(project: dict, directory: Path, *, beat_name: str = "beat.wav") -> st
     saved = project.get("backing_vocals")
     if not isinstance(saved, dict):
         return "missing"
-    source = source_key(directory)
+    model = saved.get("model", DEFAULT_MODEL)
+    if model not in BACKING_MODELS:
+        return "missing"
+    source = source_key(directory, model)
     if not source or source != saved.get("source"):
         return "missing"
     if saved.get("weak"):
@@ -111,7 +141,8 @@ def _download_model_file(target: Path, staging: Path, repository: str, expected_
             raise
 
 
-def run_separator(vocals: Path, destination: Path, models: Path, device: str):
+def run_separator(vocals: Path, destination: Path, models: Path, device: str, model: str = DEFAULT_MODEL):
+    validate_model(model)
     from worker import progress
 
     hardware.prepare_cuda()
@@ -126,11 +157,9 @@ def run_separator(vocals: Path, destination: Path, models: Path, device: str):
 
     if device == "cpu":
         torch.set_num_threads(min(4, torch.get_num_threads()))
-    models.mkdir(parents=True, exist_ok=True)
-    _download_model_file(models / MODEL, destination.parent, "TRvlvr/model_repo/releases/download/all_public_uvr_models",
-                         MODEL_SHA256, progress)
-    _download_model_file(models / MODEL_CONFIG, destination.parent, "nomadkaraoke/python-audio-separator/releases/download/model-configs",
-                         CONFIG_SHA256, progress)
+    lite = model == "uvr-lite"
+    filename = LITE_MODEL if lite else MODEL
+    ensure_model(models, destination.parent, model, progress)
 
     class KaraokeSeparator(Separator):
         def check_ffmpeg_installed(self):
@@ -138,14 +167,24 @@ def run_separator(vocals: Path, destination: Path, models: Path, device: str):
             pass
 
         def download_model_files(self, model_filename):
+            if lite:
+                return filename, "VR", "UVR Karaoke", str(models / filename), None
             return MODEL, "MDXC", "Mel-RoFormer Karaoke", str(models / MODEL), MODEL_CONFIG
+
+        def load_model_data_using_hash(self, model_path):
+            if lite:
+                # Parameters for the SHA-256-pinned official 5_HP karaoke weights.
+                return {"vr_model_param": "4band_v2_sn", "primary_stem": "Instrumental", "is_karaoke": True}
+            return super().load_model_data_using_hash(model_path)
 
     progress(26, "Đang nạp model tách giọng bè…")
     separator = KaraokeSeparator(model_file_dir=str(models), output_dir=str(destination.parent),
                                   output_format="WAV", output_single_stem="Instrumental",
-                                  normalization_threshold=1.0, use_soundfile=True)
+                                  normalization_threshold=1.0, use_soundfile=True,
+                                  vr_params={"batch_size": 1, "window_size": 320, "aggression": 5,
+                                             "enable_tta": False, "enable_post_process": False})
     separator.torch_device = torch.device(device)
-    separator.load_model(MODEL)
+    separator.load_model(filename)
     progress(30, "Đang phân tách giọng chính và giọng bè…")
     files = separator.separate(str(vocals))
     if len(files) != 1:
@@ -225,8 +264,12 @@ def prepare_mix(beat: Path, stem: Path, anchors: list[dict], destination: Path, 
                     "-ac", 2, "-c:a", "pcm_s16le", destination], job)
 
 
-def prepare(project: dict, directory: Path, job, preference: str, *, beat_name: str = "beat.wav") -> dict:
+def prepare(project: dict, directory: Path, job, preference: str, *, beat_name: str = "beat.wav", model: str = DEFAULT_MODEL) -> dict:
+    validate_model(model)
     current = status(project, directory, beat_name=beat_name)
+    saved = project.get("backing_vocals")
+    if isinstance(saved, dict) and saved.get("model", DEFAULT_MODEL) != model:
+        current = "missing"
     if current in ("ready", "review", "weak"):
         return project["backing_vocals"]
     beat = directory / beat_name
@@ -238,14 +281,14 @@ def prepare(project: dict, directory: Path, job, preference: str, *, beat_name: 
             raise ValueError("Cần bản hát tham chiếu hoặc vocal đã tách.")
         device = hardware.select_ai(preference=preference)["demucs"]
         vocals = engine.separate(reference, directory, job, device)
-    source = source_key(directory)
+    source = source_key(directory, model)
     key = mix_key(project, beat, source)
     if not key:
         raise ValueError("Cần nạp beat và bản hát để tách giọng bè.")
     if current != "stale" and not _audible(vocals):
-        return {"source": source, "weak": True}
+        return {"source": source, "model": model, "weak": True}
     stem = directory / STEM_FILE
-    result = {"source": source, "mix": key, "confirmed": False}
+    result = {"source": source, "model": model, "mix": key, "confirmed": False}
     target = mix_file({"backing_vocals": result}, directory)
     with tempfile.TemporaryDirectory(prefix="backing-", dir=directory) as staging:
         stage = Path(staging)
@@ -264,17 +307,19 @@ def prepare(project: dict, directory: Path, job, preference: str, *, beat_name: 
                     model_progress(line)
 
             job.record_device("backing", device)
+            def worker_args(device_name):
+                return engine.task_command("backing", *args, device_name, *([model] if model != DEFAULT_MODEL else []))
             try:
-                engine.command(engine.task_command("backing", *args, device["device"]), job,
+                engine.command(worker_args(device["device"]), job,
                                progress=progress)
             except RuntimeError as exc:
                 if not device["device"].startswith("cuda") or not hardware.gpu_error(exc):
                     raise
                 job.record_device("backing", hardware.cpu_backend(), str(exc))
-                engine.command(engine.task_command("backing", *args, "cpu"), job,
+                engine.command(worker_args("cpu"), job,
                                progress=progress)
             if not _audible(stem):
-                return {"source": source, "weak": True}
+                return {"source": source, "model": model, "weak": True}
         job.update(90, "Đang căn giọng bè với beat…")
         if not target.is_file():
             mix = stage / target.name
