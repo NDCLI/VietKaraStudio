@@ -5,7 +5,7 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg?v=2026.11-brand">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1-brand">
-  <link rel="stylesheet" href="/static/style.css?v=1.1.16">
+  <link rel="stylesheet" href="/static/style.css?v=1.1.17">
 </head>
 <body>
 <nav class="app-rail" aria-label="Chức năng app"><div class="rail-brand" aria-hidden="true"><img class="brand-mark" src="/static/vietkara.svg?v=2026.11-brand" alt=""></div><button type="button" data-page="karaoke" class="on" aria-current="page" title="Karaoke" aria-label="Karaoke">▤</button><button id="separationPageBtn" type="button" data-page="separation" title="Tách nhạc lấy beat" aria-label="Tách nhạc lấy beat">♫</button><button type="button" data-page="settings" class="rail-settings" title="Cài đặt model" aria-label="Cài đặt model">⚙</button></nav>
@@ -239,9 +239,9 @@
     </section>
   </div>
 </section>
-<section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị. Hai model tách bè có nút tải trước và link tải file ngoài tại từng thẻ. Mel-RoFormer cần đủ file trọng số và file cấu hình; UVR Karaoke cần file .pth. App kiểm tra file trước khi dùng.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div><div class="utility-card update-card"><h2>Cập nhật VietKara Studio</h2><p>App kiểm tra bản vá nhỏ trên GitHub và chỉ tải phần chương trình thay đổi. Project, nhạc và model của bạn được giữ nguyên.</p><label class="update-auto"><input id="autoUpdateEnabled" type="checkbox" checked><span>Tự động kiểm tra và tải bản vá khi mở app</span></label><p id="updateStatus" class="hint" role="status">Đang kiểm tra trạng thái cập nhật…</p><div class="update-actions"><button id="checkUpdates" class="secondary">↻ Kiểm tra ngay</button><button id="updateAction" class="primary" hidden></button></div></div></section>
+<section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p class="storage-location">Project, model, cache và bản vá được lưu tại:<code id="dataStoragePath">Đang kiểm tra…</code></p><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị. Hai model tách bè có nút tải trước và link tải file ngoài tại từng thẻ. Mel-RoFormer cần đủ file trọng số và file cấu hình; UVR Karaoke cần file .pth. App kiểm tra file trước khi dùng.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div><div class="utility-card update-card"><h2>Cập nhật VietKara Studio</h2><p>App kiểm tra bản vá nhỏ trên GitHub và chỉ tải phần chương trình thay đổi. Project, nhạc và model của bạn được giữ nguyên.</p><label class="update-auto"><input id="autoUpdateEnabled" type="checkbox" checked><span>Thông báo khi có bản mới lúc mở app</span></label><p id="updateStatus" class="hint" role="status">Đang kiểm tra trạng thái cập nhật…</p><div class="update-actions"><button id="checkUpdates" class="secondary">↻ Kiểm tra ngay</button><button id="updateAction" class="primary" hidden></button></div></div></section>
 <div hidden><button id="alignLyricsBtn"></button><button id="estimateBtn"></button></div>
-<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.16</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
+<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.17</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
 <div id="jobBar" class="job-bar" hidden><div class="spinner"></div><div class="job-copy"><strong id="jobTitle">Đang xử lý…</strong><div class="progress-track"><div id="jobProgress"></div></div></div><span id="jobPercent">0%</span><button id="cancelJobBtn" class="ghost">Hủy</button></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <dialog id="tapDialog" class="tap-dialog">
@@ -272,18 +272,19 @@
 <dialog id="aiModelDialog" class="ai-model-dialog"><div class="dialog-heading"><h2>Thiết lập AI</h2><button data-close class="icon-btn" aria-label="Đóng thiết lập AI">✕</button></div><p class="hint">Chọn model nhận lời. VietKara tự động chọn GPU/CPU khỏe hơn và tự chuyển sang CPU nếu GPU gặp lỗi.</p><label>Model Whisper<select id="aiModel"><option value="small">Whisper small · nhanh, nhẹ</option><option value="medium">Whisper medium · cân bằng</option><option value="large-v3-turbo">Whisper large-v3-turbo · chính xác hơn</option></select></label><label>Ngôn ngữ<select id="aiLanguage"><option value="vi">Tiếng Việt</option><option value="en">English</option><option value="auto">Tự nhận</option></select></label><div id="aiHardwareStatus" class="hardware-status" role="status">Đang kiểm tra thiết bị…</div><button id="saveAiModel" class="primary full">Lưu thiết lập</button></dialog>
 <dialog id="backingReviewDialog"><div class="dialog-heading"><h2>Nghe thử Beat + bè</h2><button data-close class="icon-btn" aria-label="Đóng nghe thử">✕</button></div><p class="hint">Kiểm tra bè vào đúng nhịp và nghe xem còn lẫn giọng chính hay không, nhất là với bản song ca.</p><audio id="backingReviewAudio" controls preload="metadata"></audio><div class="dialog-footer"><button id="rejectBackingBtn" class="ghost">Bè chưa rõ</button><button id="acceptBackingBtn" class="primary">Dùng bản bè này</button></div></dialog>
 <input id="srtInput" type="file" accept=".srt" hidden>
+<dialog id="updateDialog" class="update-dialog" aria-labelledby="updateDialogTitle"><div class="dialog-heading"><div><p class="hint">CẬP NHẬT ỨNG DỤNG</p><h2 id="updateDialogTitle">Có phiên bản mới</h2></div></div><h3 id="updateDialogVersion"></h3><p id="updateDialogNotes" class="update-release-notes"></p><p id="updateDialogStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="updateDialogLater" type="button" class="secondary">Để sau</button><button id="updateDialogInstall" type="button" class="primary">Cập nhật</button></div></dialog>
 <audio id="audio" preload="metadata"></audio>
 <script src="/static/export_menu.js?v=backing-vocals-1"></script>
 <script src="/static/branding.js?v=2026.11-brand"></script>
-<script src="/static/layout_resize.js?v=1.1.16"></script>
+<script src="/static/layout_resize.js?v=1.1.17"></script>
 <script src="/static/timeline_edit.js"></script>
 <script src="/static/bundled_assets.js?v=source-1"></script>
-<script src="/static/studio.js?v=1.1.16"></script>
+<script src="/static/studio.js?v=1.1.17"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
-<script src="/static/song_title.js?v=1.1.16"></script>
-<script src="/static/workspace_tools.js?v=1.1.16"></script>
-<script src="/static/updates.js"></script>
+<script src="/static/song_title.js?v=1.1.17"></script>
+<script src="/static/workspace_tools.js?v=1.1.17"></script>
+<script src="/static/updates.js?v=1.1.17"></script>
 <script src="/static/backing_vocals.js"></script>
-<script src="/static/app.js?v=1.1.16"></script>
+<script src="/static/app.js?v=1.1.17"></script>
 </body></html>

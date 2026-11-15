@@ -2,11 +2,13 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Video xuất dùng **beat gốc** mặc định. Có thể chọn thêm giọng bè đã duyệt hoặc vocal hướng dẫn.
 
-## Setup 1.1.1 và bản vá 1.1.16
+## Setup 1.1.1 và bản vá 1.1.17
 
 Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để nhận bản vá tự động. Mở **Cài đặt → Cập nhật VietKara Studio** để tải và cài bản vá.
 
 Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model AI tải riêng trong Cài đặt. Setup kiểm tra và cài Edge WebView2 Runtime nếu thiếu (cần Internet). Bản phát hành chưa ký số.
+
+Ứng dụng lưu project, model, cache và bản vá trong thư mục `data` cạnh file chạy. Khi nâng cấp từ bản dùng `%LOCALAPPDATA%/VietKaraStudio`, lần mở đầu sẽ sao chép, xác minh và chuyển dữ liệu; chỉ dọn bản gốc sau khi kiểm tra xong. Thư mục cài đặt cần có quyền ghi và đủ dung lượng trống. Nếu hai thư mục có file khác nội dung trùng tên, app giữ cả hai bản và yêu cầu hợp nhất trước. `OBS_DATA_DIR` vẫn có thể chỉ định nơi lưu riêng.
 
 ## Tính năng
 
@@ -24,7 +26,7 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Lần đầu dùng link YouTube trên Windows, app tự tải và kiểm tra `yt-dlp` cùng QuickJS từ GitHub. Công cụ đã tải được lưu trong thư mục dữ liệu của app.
 - Trong **Cài đặt model**, tải trước hai model tách bè hoặc mở link tải file ngoài, chép vào đường dẫn hiển thị rồi kiểm tra lại. App kiểm tra SHA-256 và dùng chung model với trang tách nhạc.
 - Chỉnh bố cục nhiều tính năng, chọn video làm nguồn, tiêu đề căn trái có nền ôm sát chữ; cập nhật trạng thái tác vụ bằng câu dễ hiểu.
-- Tự kiểm tra và tải bản vá từ GitHub Releases; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
+- Khi mở app có bản mới trên GitHub Releases, hiển thị thông báo với **Cập nhật** và **Để sau**. Cập nhật sẽ tải bản vá, lưu project rồi khởi động lại; khi đổi runtime AI/Python thì vẫn cần Setup đầy đủ.
 - Icon nam, nữ, song ca và 315 font trong `SOURCE/`; tự chuyển mã VNI/TCVN3 khi xem trước và xuất video.
 
 ## Chạy từ mã nguồn
