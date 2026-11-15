@@ -80,12 +80,12 @@ function studioWaveforms(){
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
   const playhead=beatNow();
   ctx.fillStyle='#121416';ctx.fillRect(0,0,W,H);
-  for(const [slot,lane,color,title] of [['beat',0,'#ef9039','Beat'],['reference',1,'#20c89c','Có vocal'],['vocals',2,'#bfa0ff','Vocal riêng']]){
-    const top=lane*H/3,mid=top+H/6,amplitude=Math.max(4,H/6-5),m=state.project[slot];
-    ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/3);
+  for(const [slot,lane,color] of [['beat',0,'#ef9039'],['reference',1,'#20c89c']]){
+    const top=lane*H/2,mid=top+H/4,amplitude=Math.max(4,H/4-5),m=state.project[slot];
+    ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/2);
     ctx.strokeStyle='#30373b';ctx.beginPath();ctx.moveTo(G,mid);ctx.lineTo(W,mid);ctx.moveTo(0,top);ctx.lineTo(W,top);ctx.stroke();
     if(!m?.peaks?.length)continue;
-    ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/3);ctx.clip();
+    ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/2);ctx.clip();
     for(let pixel=0;pixel<P;pixel+=2){
       const t=range.start+pixel/P*range.span,source=slot!=='beat'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
       if(index<0||index>=m.peaks.length)continue;

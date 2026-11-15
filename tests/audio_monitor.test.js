@@ -18,12 +18,13 @@ function monitor(){
   return {ctx,audio,elements,click:slot=>elements.waveTrackControls.onclick({target:{closest:()=>({dataset:{monitorTrack:slot}})}})};
 }
 
-test('switch to isolated vocal preserves mapped position and resumes playback',async()=>{
-  const m=monitor();await m.click('vocals');
-  assert.equal(m.ctx.state.track,'vocals');assert.match(m.audio.src,/audio\/vocals/);
+test('switch to reference preserves mapped position and resumes playback',async()=>{
+  const m=monitor();await m.click('reference');
+  assert.equal(m.ctx.state.track,'reference');assert.match(m.audio.src,/audio\/reference/);
   m.audio.onloadedmetadata();assert.equal(m.audio.currentTime,15);assert.equal(m.audio.played,1);
   assert.match(m.elements.waveTrackControls.innerHTML,/Nghe Beat/);
-  assert.match(m.elements.waveTrackControls.innerHTML,/Tắt tiếng Vocal riêng/);
+  assert.match(m.elements.waveTrackControls.innerHTML,/Tắt tiếng Có vocal/);
+  assert.doesNotMatch(m.elements.waveTrackControls.innerHTML,/Vocal riêng|data-monitor-track="vocals"/);
 });
 test('speaker button mutes without losing playback clock, then unmutes',async()=>{
   const m=monitor();await m.click('beat');assert.equal(m.audio.muted,true);assert.equal(m.audio.currentTime,12);
@@ -31,6 +32,6 @@ test('speaker button mutes without losing playback clock, then unmutes',async()=
 });
 test('rapid track changes replace pending metadata callback',async()=>{
   const m=monitor();await m.click('reference');const first=m.audio.onloadedmetadata;
-  await m.click('vocals');assert.notEqual(m.audio.onloadedmetadata,first);
-  m.audio.onloadedmetadata();assert.equal(m.ctx.state.track,'vocals');assert.equal(m.audio.currentTime,15);
+  await m.click('beat');assert.notEqual(m.audio.onloadedmetadata,first);
+  m.audio.onloadedmetadata();assert.equal(m.ctx.state.track,'beat');assert.equal(m.audio.currentTime,12);
 });

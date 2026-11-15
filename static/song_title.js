@@ -48,9 +48,9 @@ function drawSongTitle(t){
 
 function renderWaveTrackControls(){
   const root=$('waveTrackControls');if(!root||!state.project)return;
-  const enabled=slot=>slot==='vocals'?state.project.vocals_ready:!!state.project[slot];
+  const enabled=slot=>!!state.project[slot];
   const icon=active=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3Z"/>${active?'<path d="M16 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>':'<path d="m16 9 6 6m0-6-6 6"/>'}</svg>`;
-  root.innerHTML=[['beat','Beat'],['reference','Có vocal'],['vocals','Vocal riêng']].map(([slot,label])=>{
+  root.innerHTML=[['beat','Beat'],['reference','Có vocal']].map(([slot,label])=>{
     const active=state.track===slot&&!audio.muted;
     return `<button data-monitor-track="${slot}" aria-label="${active?'Tắt tiếng':'Nghe'} ${label}" aria-pressed="${active}" title="${enabled(slot)?'Bấm để nghe hoặc tắt tiếng':'Chưa có '+label}" ${!enabled(slot)||state.manualTiming?'disabled':''}>${icon(active)}<span>${label}</span></button>`;
   }).join('');
