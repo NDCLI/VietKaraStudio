@@ -296,10 +296,13 @@ def _render_pitch_r3(src_wav: Path, dst_wav: Path, pitch: int):
     with lock:
         if dst_wav.is_file() and dst_wav.stat().st_mtime >= src_wav.stat().st_mtime:
             return
-        r3_exe = engine.ROOT / "tools" / "rubberband" / "rubberband-4.0.0-gpl-executable-windows" / "rubberband-r3.exe"
+        r3_exe = next((p for p in (
+            engine.ROOT / "resources" / "rubberband" / "rubberband-r3.exe",
+            engine.ROOT / "tools" / "rubberband" / "rubberband-4.0.0-gpl-executable-windows" / "rubberband-r3.exe",
+        ) if p.is_file()), None)
         tmp_out = dst_wav.with_name(f"{dst_wav.stem}.{uuid.uuid4().hex[:8]}.tmp.wav")
         try:
-            if r3_exe.is_file():
+            if r3_exe:
                 subprocess.run([str(r3_exe), "-q", "-p", str(pitch), "--formant", str(src_wav), str(tmp_out)],
                                check=True, creationflags=engine.CREATE_NO_WINDOW)
             else:
