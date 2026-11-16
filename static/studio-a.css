@@ -458,3 +458,6 @@ button.icon-btn:hover:not(:disabled){background:#232834!important;border-color:#
   background:linear-gradient(180deg,#f7c970 0%,#e7a83c 100%)!important;transform:scale(1.04);
 }
 .play-btn svg,.map-play svg,.qs-play-btn svg{width:14px;height:14px;display:block;fill:currentColor}
+
+/* 23. Đảm bảo #karaokePage / .workspace ẩn hoàn toàn khi chuyển sang tab Tách nhạc hoặc Cài đặt */
+.workspace[hidden],#karaokePage[hidden],.utility-page[hidden]{display:none!important}
