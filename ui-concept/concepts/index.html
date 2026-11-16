@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<title>VietKaraStudio – So sánh hướng thiết kế</title>
+<style>
+:root{
+  --bg:#111318;--panel:#181b22;--panel2:#1f232c;--line:#2a2f3a;--text:#e6e8ee;--mute:#8b93a5;
+  --accent:#e8b04a;--accent2:#4aa3e8;--ok:#4cc38a;--warn:#e8a24a;--err:#e5605b;
+  --male:#4aa3e8;--female:#e86fa8;--duet:#b58cf0;
+  --r:6px;--f:13px;--font:"Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box}body{margin:0;background:#0b0c10;color:var(--text);font:var(--f)/1.4 var(--font)}
+.chooser{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#000;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:9}
+.chooser b{margin-right:12px}.chooser button{background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:6px 12px;border-radius:var(--r);cursor:pointer}
+.chooser button.on{background:var(--accent);color:#111;border-color:var(--accent);font-weight:600}
+.wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px}
+.note{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;align-self:start;position:sticky;top:60px}
+.note h2{margin:0 0 4px;font-size:16px}.note h3{margin:14px 0 4px;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.note ul{margin:0;padding-left:18px}.note li{margin:3px 0}.pro li::marker{content:"✓  ";color:var(--ok)}.con li::marker{content:"✕  ";color:var(--err)}
+.badge{display:inline-block;background:var(--accent);color:#111;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px}
+/* frame = mô phỏng cửa sổ 1440x860 */
+.frame{width:100%;aspect-ratio:1440/860;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;font-size:12px}
+.win{height:28px;background:#0d0f13;display:flex;align-items:center;padding:0 10px;gap:14px;color:var(--mute);border-bottom:1px solid var(--line);flex:none}
+.win .logo{color:var(--accent);font-weight:700}.win .menu span{margin-right:12px}
+.top{height:42px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line);flex:none}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:5px;padding:4px 10px;font-size:12px;white-space:nowrap}
+.btn.p{background:var(--accent);color:#111;border-color:var(--accent);font-weight:600}.btn.g{background:none}
+.seg{display:flex;background:#0d0f13;border:1px solid var(--line);border-radius:6px;padding:2px}.seg span{padding:4px 12px;border-radius:4px;color:var(--mute)}.seg span.on{background:var(--panel2);color:var(--text)}
+.sp{flex:1}.mute{color:var(--mute)}.sm{font-size:11px}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.ph{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);font-weight:600;flex:none}
+.ph .mute{font-weight:400}
+.body{padding:8px;overflow:hidden;flex:1;min-height:0}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;background:#07080b;min-height:0}
+.video{aspect-ratio:16/9;height:92%;max-width:96%;background:linear-gradient(160deg,#2b2140,#0f1d33 60%,#122a2a);border-radius:4px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:8%}
+.video .t1{font-size:2.1em;font-weight:700;text-shadow:0 2px 0 #000}.video .t1 i{font-style:normal;color:var(--accent)}
+.video .t2{font-size:1.6em;opacity:.85;text-shadow:0 2px 0 #000}
+.video .title{position:absolute;left:5%;top:7%;background:#0008;padding:4px 10px;border-radius:3px}
+.transport{height:36px;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid var(--line);flex:none}
+.play{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#111;display:grid;place-items:center;font-size:10px}
+.line{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:4px}
+.line.cur{background:#e8b04a1f;outline:1px solid #e8b04a55}.line .n{width:18px;color:var(--mute);text-align:right}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.tl{display:flex;flex-direction:column;min-height:0}
+.ruler{height:18px;border-bottom:1px solid var(--line);background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 60px);flex:none}
+.track{display:flex;align-items:center;border-bottom:1px solid var(--line);position:relative;flex:none}
+.track .lab{width:110px;padding:0 8px;color:var(--mute);border-right:1px solid var(--line);height:100%;display:flex;align-items:center;flex:none;font-size:11px}
+.track .lane{flex:1;height:100%;position:relative;overflow:hidden}
+.wave{position:absolute;inset:4px 0;background:repeating-linear-gradient(90deg,var(--c) 0 2px,transparent 2px 4px);mask:linear-gradient(transparent,#000 30%,#000 70%,transparent);opacity:.55}
+.word{position:absolute;top:5px;bottom:5px;border-radius:3px;font-size:10px;padding:2px 4px;overflow:hidden;white-space:nowrap;color:#111}
+.playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--err);left:38%;z-index:2}
+.field{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}.field label{color:var(--mute);font-size:11px}
+.inp{background:#0d0f13;border:1px solid var(--line);border-radius:4px;padding:4px 7px;height:24px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sw{display:inline-block;width:18px;height:18px;border-radius:4px;vertical-align:middle;border:1px solid #fff3}
+.grp{border-top:1px solid var(--line);padding:8px 0 2px}.grp b{display:block;margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.vtabs{width:38px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:4px;flex:none}
+.vtabs span{width:28px;height:28px;border-radius:5px;display:grid;place-items:center;color:var(--mute);font-size:13px}.vtabs span.on{background:var(--panel2);color:var(--accent)}
+.status{height:24px;display:flex;align-items:center;gap:14px;padding:0 12px;background:#0d0f13;border-top:1px solid var(--line);color:var(--mute);font-size:11px;flex:none}
+.prog{width:120px;height:5px;background:var(--line);border-radius:3px;overflow:hidden}.prog i{display:block;height:100%;width:62%;background:var(--accent2)}
+.chk{display:flex;gap:6px;align-items:center}.chk .ok{color:var(--ok)}.chk .w{color:var(--warn)}
+.steps{display:flex;gap:4px;align-items:center}
+.step{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;color:var(--mute);border:1px solid var(--line)}
+.step i{font-style:normal;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--line);font-size:10px;color:var(--text)}
+.step.done i{background:var(--ok);color:#111}.step.on{border-color:var(--accent);color:var(--text)}.step.on i{background:var(--accent);color:#111}
+.arrow{color:var(--line)}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px}
+.mini{display:flex;height:16px;gap:2px;flex:1}.mini span{border-radius:2px;background:var(--c);font-size:9px;color:#111;padding:0 3px;overflow:hidden;white-space:nowrap}
+.lock{color:var(--mute)}
+.hidden{display:none!important}
+</style></head><body>
+<div class="chooser"><b>VietKaraStudio · Hướng thiết kế</b>
+<button data-v="A">A · Studio Editor</button><button data-v="B">B · Quy trình theo bước</button><button data-v="C">C · Lời là trung tâm</button><button data-v="R" class="on">⭐ Đề xuất · A + Chế độ</button>
+<span class="sp"></span><span class="mute sm">Mockup tĩnh, dữ liệu giả · khung mô phỏng cửa sổ 1440×860</span></div>
+
+<!-- ============ A ============ -->
+<section id="A" class="wrap hidden">
+<div class="frame">
+ <div class="win"><span class="logo">VietKara</span><span class="menu"><span>Tệp</span><span>Chỉnh sửa</span><span>Đồng bộ</span><span>Công cụ</span><span>Hiển thị</span><span>Trợ giúp</span></span></div>
+ <div class="top"><div class="seg"><span class="on">Karaoke</span><span>Tách nhạc</span><span>Model</span></div><b style="margin-left:8px">Hạ Trắng – Trịnh Công Sơn</b><span class="mute sm">· Đã lưu</span><span class="sp"></span><span class="btn g">✦ Nhận lời & căn từ</span><span class="btn g">Gõ nhịp</span><span class="btn p">Xuất video</span></div>
+ <div style="flex:1;display:grid;grid-template-columns:240px 1fr 280px;grid-template-rows:1fr 38%;gap:6px;padding:6px;min-height:0">
+  <div class="pane"><div class="ph">Lời bài hát <span class="mute">24 câu</span><span class="sp"></span><span class="mute">Media</span></div><div class="body lyr"></div></div>
+  <div class="pane"><div class="ph">Preview <span class="mute">16:9 · 1080p · Beat gốc</span></div><div class="stage"><div class="video"><div class="title">HẠ TRẮNG · Trịnh Công Sơn</div><div class="t1"><i>Gọi nắng trên</i> vai em gầy</div><div class="t2">đường xa áo bay</div></div></div>
+   <div class="transport"><span class="play">▶</span><span>01:12.40 / 04:31.00</span><span class="sp"></span><span class="btn g">Nghe: Beat ▾</span><span class="btn g">1× ▾</span><span class="btn g">Bè · Tắt</span></div></div>
+  <div class="pane" style="flex-direction:row"><div class="vtabs"><span class="on">Aa</span><span>♪♪</span><span>T</span><span>▣</span><span>◎</span><span>3</span><span>★</span></div><div style="flex:1;display:flex;flex-direction:column;min-width:0"><div class="ph">Kiểu lời</div><div class="body insp"></div></div></div>
+  <div class="pane tl" style="grid-column:1/4"><div class="ph">Timeline <span class="mute">kéo khối để dời · kéo mép để giãn</span><span class="sp"></span><span class="btn g">Theo nhạc</span><span class="btn g">Liên kết</span><span class="btn g">↶</span><span class="btn g">− ＋</span></div><div class="tlbody" style="flex:1;display:flex;flex-direction:column;min-height:0"></div></div>
+ </div>
+ <div class="status"><span>VIETKARA 1.1.15</span><span>GPU · RTX 3060</span><span class="sp"></span><span>Đang nhận lời… </span><span class="prog"><i></i></span><span>62%</span></div>
+</div>
+<div class="note"><h2>A · Studio Editor</h2><p class="mute">Khung 4 vùng cố định như phần mềm dựng phim. Timeline chạy toàn chiều rộng, inspector dùng tab dọc dạng icon.</p>
+<h3>Ưu điểm</h3><ul class="pro"><li>Gần cấu trúc hiện tại nhất → tái sử dụng nhiều mã</li><li>Timeline rộng, hợp căn từ lâu</li><li>Thấy preview + lời + thuộc tính cùng lúc</li></ul>
+<h3>Nhược điểm</h3><ul class="con"><li>Vẫn dày đặc với người mới</li><li>Không thể hiện luồng làm việc / trạng thái sẵn sàng xuất</li><li>Inspector vẫn chứa 7 nhóm thuộc tính</li></ul>
+<h3>Hợp với</h3><p>Người làm karaoke thường xuyên, màn hình ≥ 1600px.</p></div>
+</section>
+
+<!-- ============ B ============ -->
+<section id="B" class="wrap hidden">
+<div class="frame">
+ <div class="win"><span class="logo">VietKara</span><span class="mute">Hạ Trắng – Trịnh Công Sơn · Đã lưu</span></div>
+ <div class="top"><div class="steps"><span class="step done"><i>✓</i>Nguồn</span><span class="arrow">—</span><span class="step done"><i>✓</i>Lời</span><span class="arrow">—</span><span class="step on"><i>3</i>Đồng bộ</span><span class="arrow">—</span><span class="step"><i>4</i>Thiết kế</span><span class="arrow">—</span><span class="step"><i>5</i>Xuất</span></div><span class="sp"></span><span class="btn g">☰ Project</span><span class="btn g">Công cụ ▾</span></div>
+ <div style="flex:1;display:grid;grid-template-columns:1fr 300px;gap:6px;padding:6px;min-height:0">
+  <div style="display:grid;grid-template-rows:auto 1fr;gap:6px;min-height:0">
+   <div class="card" style="display:flex;gap:16px;align-items:center"><div><b style="font-size:14px">Bước 3 · Đồng bộ lời với beat</b><div class="mute">Kiểm tra từng câu. Câu khóa 🔒 sẽ không bị căn lại.</div></div><span class="sp"></span><div style="text-align:right"><b>18 / 24</b> câu đã duyệt<div class="prog" style="width:160px;margin-top:4px"><i style="width:75%;background:var(--ok)"></i></div></div><span class="btn">✦ Tự căn lại</span><span class="btn">⌨ Gõ nhịp Space</span></div>
+   <div style="display:grid;grid-template-columns:260px 1fr;gap:6px;min-height:0">
+    <div class="pane"><div class="ph">Câu</div><div class="body lyr"></div></div>
+    <div style="display:grid;grid-template-rows:1fr 46%;gap:6px;min-height:0">
+     <div class="pane"><div class="stage"><div class="video" style="height:88%"><div class="t1"><i>Gọi nắng trên</i> vai em gầy</div><div class="t2">đường xa áo bay</div></div></div><div class="transport"><span class="play">▶</span><span>01:12.40 / 04:31.00</span><span class="sp"></span><span class="btn g">Nghe từ câu này</span><span class="btn g">0.75×</span></div></div>
+     <div class="pane tl"><div class="ph">Câu 7 · từng từ</div><div class="tlbody" style="flex:1;display:flex;flex-direction:column;min-height:0"></div></div>
+    </div>
+   </div>
+  </div>
+  <div class="pane"><div class="ph">Từ đang chọn · “nắng”</div><div class="body">
+   <div class="row2"><div class="field"><label>Bắt đầu</label><div class="inp">01:12.48</div></div><div class="field"><label>Kết thúc</label><div class="inp">01:12.91</div></div></div>
+   <div class="field"><label>Vai</label><div class="inp">● Nữ</div></div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="btn">Căn lại câu</span><span class="btn">Khóa câu</span><span class="btn">Tách</span><span class="btn">Gộp</span></div>
+   <div class="grp" style="margin-top:12px"><b>Trước khi sang bước 4</b><div class="chk"><span class="ok">✓</span>Có beat gốc</div><div class="chk"><span class="ok">✓</span>Có lời 24 câu</div><div class="chk"><span class="w">!</span>6 câu chưa duyệt</div><div class="chk"><span class="w">!</span>Chưa phân vai song ca</div></div>
+   <div style="margin-top:14px;display:flex;gap:6px"><span class="btn">← Lời</span><span class="sp"></span><span class="btn p">Tiếp: Thiết kế →</span></div>
+  </div></div>
+ </div>
+ <div class="status"><span>GPU · RTX 3060</span><span class="sp"></span><span>Sẵn sàng</span></div>
+</div>
+<div class="note"><h2>B · Quy trình theo bước</h2><p class="mute">Thanh bước Nguồn → Lời → Đồng bộ → Thiết kế → Xuất. Mỗi bước có bố cục riêng và checklist.</p>
+<h3>Ưu điểm</h3><ul class="pro"><li>Dễ học nhất, ít control mỗi màn</li><li>Luôn biết còn thiếu gì trước khi xuất</li><li>Hợp người dùng thỉnh thoảng</li></ul>
+<h3>Nhược điểm</h3><ul class="con"><li>Chuyển bước liên tục khi vừa căn vừa chỉnh kiểu</li><li>Timeline toàn bài bị thu hẹp</li><li>Phải viết lại nhiều bố cục, ít tái sử dụng</li><li>Dựng theo lô / nhiều bài kém hiệu quả</li></ul></div>
+</section>
+
+<!-- ============ C ============ -->
+<section id="C" class="wrap hidden">
+<div class="frame">
+ <div class="win"><span class="logo">VietKara</span><span class="menu"><span>Tệp</span><span>Chỉnh sửa</span><span>Đồng bộ</span><span>Công cụ</span></span></div>
+ <div class="top"><b>Hạ Trắng</b><span class="mute">Trịnh Công Sơn · 04:31 · Song ca</span><span class="sp"></span><span class="btn g">Lọc: Tất cả ▾</span><span class="btn g">✦ Căn tự động</span><span class="btn g">⌨ Gõ nhịp</span><span class="btn p">Xuất video</span></div>
+ <div style="flex:1;display:grid;grid-template-columns:1fr 360px;gap:6px;padding:6px;min-height:0">
+  <div style="display:grid;grid-template-rows:1fr 130px;gap:6px;min-height:0">
+   <div class="pane"><div class="ph">Lời & thời gian <span class="mute">mỗi hàng = 1 câu · khối = từ</span></div><div class="body clines"></div></div>
+   <div class="pane tl"><div class="ph">Sóng nhạc · câu 7 <span class="mute">01:11.8 – 01:15.2</span></div><div class="tlbody" style="flex:1;display:flex;flex-direction:column;min-height:0"></div></div>
+  </div>
+  <div style="display:grid;grid-template-rows:auto 1fr;gap:6px;min-height:0">
+   <div class="pane"><div class="stage" style="padding:8px"><div class="video" style="width:100%;height:auto;font-size:7px"><div class="t1"><i>Gọi nắng trên</i> vai em gầy</div><div class="t2">đường xa áo bay</div></div></div><div class="transport"><span class="play">▶</span><span>01:12.40</span><span class="sp"></span><span class="btn g">⛶</span></div></div>
+   <div class="pane"><div class="ph">Thuộc tính <span class="sp"></span><span class="mute">Kiểu · Nền · Tiêu đề ▾</span></div><div class="body insp"></div></div>
+  </div>
+ </div>
+ <div class="status"><span>24 câu · 18 khóa</span><span class="sp"></span><span>Sẵn sàng</span></div>
+</div>
+<div class="note"><h2>C · Lời là trung tâm</h2><p class="mute">Danh sách lời như trình soạn thảo, mỗi câu có mini-timeline từng từ. Preview nhỏ ở góc.</p>
+<h3>Ưu điểm</h3><ul class="pro"><li>Thấy toàn bài, đọc tiếng Việt rõ</li><li>Sửa lời, vai, khóa câu rất nhanh</li><li>Phát hiện câu lệch nhịp bằng mắt</li></ul>
+<h3>Nhược điểm</h3><ul class="con"><li>Preview nhỏ, thiết kế hình ảnh bị lép vế</li><li>Mất timeline liền mạch toàn bài</li><li>Mini-timeline nhiều dòng tốn hiệu năng DOM</li><li>Khác xa UI hiện tại</li></ul></div>
+</section>
+
+<!-- ============ R ============ -->
+<section id="R" class="wrap">
+<div class="frame">
+ <div class="win"><span class="logo">VietKara</span><span class="menu"><span>Tệp</span><span>Chỉnh sửa</span><span>Đồng bộ</span><span>Công cụ</span><span>Hiển thị</span><span>Trợ giúp</span></span><span class="sp"></span><span>Ctrl+K · Tìm lệnh</span></div>
+ <div class="top"><b>Hạ Trắng – Trịnh Công Sơn</b><span class="mute sm">· Đã lưu</span><span class="sp"></span>
+  <div class="seg"><span class="on">① Đồng bộ</span><span>② Thiết kế</span><span>③ Xuất</span></div><span class="sp"></span>
+  <div class="chk sm"><span class="ok">●</span>Nguồn <span class="ok">●</span>Lời <span class="w">●</span>Đồng bộ 75%</div><span class="btn">⧉ Tác vụ (1)</span><span class="btn p">Xuất video</span></div>
+ <div style="flex:1;display:grid;grid-template-columns:44px 240px 1fr 280px;grid-template-rows:1fr 40%;gap:6px;padding:6px;min-height:0">
+  <div class="pane" style="grid-row:1/3;align-items:center;padding-top:6px;gap:6px"><span class="vt on" title="Project">▤</span><span class="vt">♫</span><span class="vt">⚙</span></div>
+  <div class="pane"><div class="ph"><span>Lời</span><span class="mute">· Media</span><span class="sp"></span><span class="mute">24</span></div><div class="body lyr"></div></div>
+  <div class="pane"><div class="stage"><div class="video"><div class="title">HẠ TRẮNG · Trịnh Công Sơn</div><div class="t1"><i>Gọi nắng trên</i> vai em gầy</div><div class="t2">đường xa áo bay</div></div></div>
+   <div class="transport"><span class="play">▶</span><span>01:12.40 / 04:31.00</span><span class="sp"></span><span class="btn g">Nghe: Beat ▾</span><span class="btn g">1×</span><span class="btn g">Bè</span><span class="btn g">⛶</span></div></div>
+  <div class="pane"><div class="ph">Từ “nắng” · câu 7 <span class="sp"></span><span class="mute">Đồng bộ</span></div><div class="body">
+   <div class="row2"><div class="field"><label>Bắt đầu</label><div class="inp">01:12.48</div></div><div class="field"><label>Kết thúc</label><div class="inp">01:12.91</div></div></div>
+   <div class="row2"><div class="field"><label>Vai</label><div class="inp">● Nữ</div></div><div class="field"><label>Track</label><div class="inp">Tự động</div></div></div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="btn">Căn lại câu</span><span class="btn">🔒 Khóa</span><span class="btn">Tách</span><span class="btn">Gộp</span></div>
+   <div class="grp" style="margin-top:10px"><b>Mốc bản hát ↔ beat</b><div class="mute">2 mốc · co giãn theo đoạn</div></div>
+   <div class="grp"><b>Câu cần kiểm tra</b><div class="chk"><span class="w">!</span>Câu 12 – từ quá ngắn</div><div class="chk"><span class="w">!</span>Câu 19 – chưa có vai</div></div>
+  </div></div>
+  <div class="pane tl" style="grid-column:2/5"><div class="ph">Timeline <span class="mute">toàn bài</span><span class="sp"></span><span class="btn g">✦ Tự căn</span><span class="btn g">⌨ Gõ nhịp</span><span class="btn g">Theo nhạc</span><span class="btn g">Liên kết</span><span class="btn g">↶ ↷</span><span class="btn g">− ＋</span></div><div class="tlbody" style="flex:1;display:flex;flex-direction:column;min-height:0"></div></div>
+ </div>
+ <div class="status"><span>VIETKARA 1.1.15</span><span>GPU · RTX 3060 · CUDA</span><span>Whisper large-v3-turbo</span><span class="sp"></span><span>Tách giọng bè · Mel-RoFormer</span><span class="prog"><i></i></span><span>62%</span></div>
+</div>
+<div class="note"><span class="badge">ĐỀ XUẤT</span><h2 style="margin-top:6px">A + Chế độ làm việc</h2><p class="mute">Khung Studio Editor, thêm 3 chế độ ở topbar. Đổi chế độ chỉ thay bảng phải và chiều cao timeline – không đổi trang.</p>
+<h3>Ba chế độ</h3><ul><li><b>Đồng bộ</b>: timeline cao, bảng phải = từ/câu đang chọn, mốc, danh sách câu cần kiểm tra</li><li><b>Thiết kế</b>: preview lớn, timeline thấp, bảng phải = Kiểu lời · Song ca · Tiêu đề · Nền · Logo · Đếm ngược · Preset</li><li><b>Xuất</b>: thiết lập xuất thành bảng (không phải dialog), checklist, hàng đợi / lô</li></ul>
+<h3>Ưu điểm</h3><ul class="pro"><li>Tái sử dụng phần lớn JS hiện có (timeline, preview, tapping)</li><li>Mỗi lúc chỉ ~1/3 control hiện ra</li><li>Chỉ báo sẵn sàng + bảng Tác vụ cho AI/tách nhạc/render</li><li>Rail chỉ còn: Project · Tách nhạc · Cài đặt</li></ul>
+<h3>Nhược điểm</h3><ul class="con"><li>Cần tách lại inspector hiện tại theo chế độ</li><li>Phải gom lệnh trùng lặp (menu/nút) – cần chốt danh sách</li></ul></div>
+</section>
+
+<script>
+const L=[["Ai cho tôi tình yêu","all"],["Hạ trắng ơi","female"],["Gọi nắng trên vai em gầy","female"],["đường xa áo bay","female"],["Nắng qua mắt buồn","male"],["lòng hoa bướm say","male"],["Lạy trời mưa phai","all"],["Hạ trắng ơi","female"],["Gọi tình xanh xao","male"],["dưới gót chân em","male"]];
+const C={all:"var(--duet)",female:"var(--female)",male:"var(--male)"};
+document.querySelectorAll(".lyr").forEach(el=>el.innerHTML=L.map((l,i)=>`<div class="line ${i==2?"cur":""}"><span class="n">${i+1}</span><span class="dot" style="background:${C[l[1]]}"></span><span style="flex:1">${l[0]}</span><span class="lock">${i<6?"🔒":""}</span></div>`).join(""));
+document.querySelectorAll(".clines").forEach(el=>el.innerHTML=L.map((l,i)=>{let x=0;const w=l[0].split(" ").map(t=>{const s=`<span style="--c:${C[l[1]]};flex:${t.length+1}">${t}</span>`;return s}).join("");return `<div class="line ${i==2?"cur":""}"><span class="n">${i+1}</span><span class="dot" style="background:${C[l[1]]}"></span><span style="width:170px">${l[0]}</span><span class="mute sm" style="width:60px">01:${(5+i*4).toString().padStart(2,"0")}.2</span><div class="mini">${w}</div><span class="lock">${i<6?"🔒":"·"}</span></div>`}).join(""));
+const insp=`<div class="grp" style="border:0;padding-top:0"><b>Chữ</b><div class="field"><label>Phông · tiếng Việt</label><div class="inp">UTM Avo · Đậm</div></div><div class="row2"><div class="field"><label>Cỡ chữ</label><div class="inp">110</div></div><div class="field"><label>Căn</label><div class="inp">Giữa</div></div></div></div>
+<div class="grp"><b>Màu</b><div class="row2"><div class="field"><label>Đã hát</label><div><span class="sw" style="background:#e8b04a"></span> #E8B04A</div></div><div class="field"><label>Chưa hát</label><div><span class="sw" style="background:#fff"></span> #FFFFFF</div></div></div></div>
+<div class="grp"><b>Viền & bóng</b><div class="row2"><div class="field"><label>Độ dày viền</label><div class="inp">6 px</div></div><div class="field"><label>Bóng</label><div class="inp">4 px</div></div></div></div>
+<div class="grp"><b>Vị trí</b><div class="row2"><div class="field"><label>Bố trí</label><div class="inp">Phía dưới</div></div><div class="field"><label>Khoảng dòng</label><div class="inp">24 px</div></div></div></div>`;
+document.querySelectorAll(".insp").forEach(el=>el.innerHTML=insp);
+const words=[];let t=1;for(const l of L)for(const w of l[0].split(" ")){const d=w.length*0.9+1.2;words.push([w,t,d,C[l[1]]]);t+=d+0.4;}t+=0;
+document.querySelectorAll(".tlbody").forEach(el=>{
+ const tot=t,blk=words.map(w=>`<span class="word" style="left:${w[1]/tot*100}%;width:${w[2]/tot*100}%;background:${w[3]}">${w[0]}</span>`).join("");
+ el.innerHTML=`<div class="ruler"></div>
+ <div class="track" style="height:30%"><span class="lab">Bản hát</span><div class="lane"><div class="wave" style="--c:#7a8bb0"></div><div class="playhead"></div></div></div>
+ <div class="track" style="height:30%"><span class="lab">Beat gốc</span><div class="lane"><div class="wave" style="--c:#4cc38a"></div><div class="playhead"></div></div></div>
+ <div class="track" style="flex:1"><span class="lab">Lời</span><div class="lane">${blk}<div class="playhead"></div></div></div>`;});
+document.querySelectorAll(".vt").forEach(s=>s.style.cssText="width:30px;height:30px;display:grid;place-items:center;border-radius:6px;color:"+(s.classList.contains("on")?"var(--accent);background:var(--panel2)":"var(--mute)"));
+document.querySelectorAll(".chooser button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".chooser button").forEach(x=>x.classList.toggle("on",x==b));document.querySelectorAll("section.wrap").forEach(s=>s.classList.toggle("hidden",s.id!=b.dataset.v));});
+</script>
+</body></html>

@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VietKara Studio · Prototype Hướng A</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+<!-- SVG Studio Icon Sprite (internal #id works offline / file://) -->
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-logo" viewBox="0 0 24 24">
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="#e8b04a22" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M7 14v-4M10.5 17V7M14 15V9M17.5 13v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-karaoke" viewBox="0 0 24 24">
+    <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/>
+    <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v3M8 21h8"/>
+  </symbol>
+  <symbol id="i-split" viewBox="0 0 24 24">
+    <path d="M4 12h3l2-5 3 10 2.5-7 2 4H20"/>
+    <circle cx="19" cy="18" r="2"/>
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24">
+    <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>
+  </symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24">
+    <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/>
+    <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>
+  </symbol>
+  <symbol id="i-tap" viewBox="0 0 24 24">
+    <rect x="3" y="6" width="18" height="12" rx="2.5"/>
+    <path d="M7 10h.01M11 10h.01M15 10h.01M17 10h.01M7 14h10"/>
+  </symbol>
+  <symbol id="i-export" viewBox="0 0 24 24">
+    <path d="M14 3h7v7M10 14L21 3"/>
+    <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>
+  </symbol>
+  <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+  <symbol id="i-aspect" viewBox="0 0 24 24">
+    <rect x="3" y="6" width="18" height="12" rx="2"/>
+    <path d="M9 6v12"/>
+  </symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24">
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+  </symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-backing" viewBox="0 0 24 24">
+    <path d="M9 18V5l12-2v13"/>
+    <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24">
+    <rect x="5" y="11" width="14" height="10" rx="2"/>
+    <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+  </symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24">
+    <rect x="5" y="11" width="14" height="10" rx="2"/>
+    <path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>
+  </symbol>
+  <symbol id="i-cursor" viewBox="0 0 24 24">
+    <path d="M5 3l14 9-6.5 1.8L9 20z"/>
+  </symbol>
+  <symbol id="i-type" viewBox="0 0 24 24">
+    <path d="M4 7V4h16v3M9 20h6M12 4v16"/>
+  </symbol>
+  <symbol id="i-duet" viewBox="0 0 24 24">
+    <circle cx="9" cy="8" r="3.2"/><path d="M3 19a6 6 0 0 1 12 0"/>
+    <circle cx="17" cy="9" r="2.5"/><path d="M16 19a4.5 4.5 0 0 1 5-4.4"/>
+  </symbol>
+  <symbol id="i-title" viewBox="0 0 24 24">
+    <rect x="3" y="4" width="18" height="16" rx="2"/>
+    <path d="M7 9h10M7 13h6"/>
+  </symbol>
+  <symbol id="i-bg" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" rx="2"/>
+    <circle cx="8.5" cy="8.5" r="1.5"/>
+    <path d="M21 15l-5-5L5 21"/>
+  </symbol>
+  <symbol id="i-logo-cd" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M12 7v5l3 2"/>
+  </symbol>
+  <symbol id="i-preset" viewBox="0 0 24 24">
+    <polygon points="12,3 14.9,8.8 21.3,9.7 16.6,14.2 17.7,20.6 12,17.6 6.3,20.6 7.4,14.2 2.7,9.7 9.1,8.8"/>
+  </symbol>
+  <symbol id="i-follow" viewBox="0 0 24 24">
+    <path d="M12 3v18M5 8l4 4-4 4M19 8l-4 4 4 4"/>
+  </symbol>
+  <symbol id="i-link" viewBox="0 0 24 24">
+    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>
+    <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>
+  </symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24">
+    <path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0"/>
+  </symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24">
+    <path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>
+  </symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24">
+    <path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>
+  </symbol>
+  <symbol id="i-zoom-out" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-zoom-in" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24">
+    <path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24">
+    <path d="M12 15V4M8 8l4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+  </symbol>
+  <symbol id="i-video" viewBox="0 0 24 24">
+    <rect x="2" y="5" width="15" height="14" rx="2"/><polygon points="17,10 22,7 22,17 17,14"/>
+  </symbol>
+</svg>
+
+<div class="app-shell">
+
+  <!-- 1. MENUBAR + DEMO STATE SWITCHER -->
+  <header class="menubar">
+    <div class="brand-mark"><svg class="ico ico-lg"><use href="#i-logo"/></svg> VietKara Studio</div>
+    <nav class="menu-bar-items" aria-label="Menu chính">
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="file">Tệp</button>
+        <div class="menu-dropdown hidden" id="menu-file">
+          <button class="menu-item" data-cmd="open-projects">Project & Dựng theo lô…</button>
+          <button class="menu-item" data-cmd="new-project">Bài mới (trạng thái trống)</button>
+          <button class="menu-item" data-cmd="load-sample">Mở bài mẫu Hạ Trắng</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item" data-cmd="import-srt">Nhập SRT… <span class="sim-tag">mô phỏng</span></button>
+          <button class="menu-item" data-cmd="export-sub">Xuất phụ đề SRT / LRC / ASS</button>
+          <button class="menu-item" data-cmd="open-export">Xuất video… <kbd>Ctrl+E</kbd></button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="edit">Chỉnh sửa</button>
+        <div class="menu-dropdown hidden" id="menu-edit">
+          <button class="menu-item" data-cmd="undo">Hoàn tác <kbd>Ctrl+Z</kbd></button>
+          <button class="menu-item" data-cmd="redo">Làm lại <kbd>Ctrl+Y</kbd></button>
+          <div class="menu-sep"></div>
+          <button class="menu-item" data-cmd="edit-lyrics">Sửa toàn bộ lời</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="sync">Đồng bộ</button>
+        <div class="menu-dropdown hidden" id="menu-sync">
+          <button class="menu-item" data-cmd="auto-align">✦ Nhận lời & tự căn từ <span class="sim-tag">mô phỏng</span></button>
+          <button class="menu-item" data-cmd="toggle-tap">⌨ Gõ nhịp thủ công (Space)</button>
+          <button class="menu-item" data-cmd="open-sync-anchors">Mốc đồng bộ bản hát ↔ beat…</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="tools">Công cụ</button>
+        <div class="menu-dropdown hidden" id="menu-tools">
+          <button class="menu-item" data-cmd="open-ai-settings">✦ Thiết lập AI · Whisper…</button>
+          <button class="menu-item" data-cmd="open-roles">Gợi ý phân vai song ca…</button>
+          <button class="menu-item" data-cmd="go-separation">Mở trang Tách nhạc lấy beat</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="view">Hiển thị</button>
+        <div class="menu-dropdown hidden" id="menu-view">
+          <button class="menu-item" data-cmd="toggle-left">Thu gọn / mở bảng trái</button>
+          <button class="menu-item" data-cmd="toggle-right">Thu gọn / mở bảng thuộc tính</button>
+          <button class="menu-item" data-cmd="toggle-waves">Hiện / ẩn sóng nhạc</button>
+          <button class="menu-item" data-cmd="reset-layout">Khôi phục bố cục mặc định</button>
+        </div>
+      </div>
+      <div class="menu-wrap">
+        <button class="menu-trigger" data-menu="help">Trợ giúp</button>
+        <div class="menu-dropdown hidden" id="menu-help">
+          <button class="menu-item" data-cmd="show-shortcuts">Phím tắt & hướng dẫn nhanh</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="demo-state-bar" title="Thanh thử nghiệm trạng thái cho bản mẫu">
+      <span>Trạng thái mẫu:</span>
+      <button class="demo-pill on" data-demo="ready">Có dữ liệu</button>
+      <button class="demo-pill" data-demo="empty">Chưa mở dữ liệu</button>
+      <button class="demo-pill" data-demo="busy">Đang xử lý</button>
+      <button class="demo-pill" data-demo="error">Lỗi</button>
+    </div>
+  </header>
+
+  <!-- 2. TOPBAR -->
+  <div class="topbar">
+    <div class="page-switch" role="tablist" aria-label="Chức năng chính">
+      <button class="on" data-page="karaoke"><svg class="ico"><use href="#i-karaoke"/></svg> Karaoke</button>
+      <button data-page="separation"><svg class="ico"><use href="#i-split"/></svg> Tách nhạc lấy beat</button>
+      <button data-page="settings"><svg class="ico"><use href="#i-settings"/></svg> Cài đặt model</button>
+    </div>
+
+    <div class="project-meta" id="topbarProjectMeta">
+      <input class="project-title-input" id="projectTitleInput" value="Hạ Trắng – Trịnh Công Sơn" aria-label="Tên project">
+      <span class="save-badge" id="saveBadge">● Đã lưu</span>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn accent-soft" id="btnAutoAlign"><svg class="ico"><use href="#i-sparkles"/></svg> Nhận lời & căn từ</button>
+      <button class="btn" id="btnStartTap"><svg class="ico"><use href="#i-tap"/></svg> Gõ nhịp</button>
+      <button class="btn primary" id="btnOpenExport"><svg class="ico"><use href="#i-export"/></svg> Xuất video</button>
+    </div>
+  </div>
+
+  <!-- 3. TRANG KARAOKE (HƯỚNG A: STUDIO EDITOR) -->
+  <main class="page-view" id="page-karaoke">
+    <div class="studio-grid" id="studioGrid">
+
+      <!-- Bảng trái: Lời & Nguồn media -->
+      <aside class="panel" id="leftPanel">
+        <div class="panel-head">
+          <span class="panel-title-text">Lời & nguồn</span>
+          <span style="flex:1"></span>
+          <button class="icon-btn" id="btnCollapseLeft" title="Thu gọn bảng trái"><svg class="ico ico-sm"><use href="#i-chev-left"/></svg></button>
+        </div>
+        <div class="panel-tabs">
+          <button class="on" data-left-tab="lyrics">Lời bài hát</button>
+          <button data-left-tab="media">Nguồn media</button>
+        </div>
+        <div class="panel-body" id="leftTabLyrics">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span class="hint" id="lineCountLabel">8 câu · 6 đã khóa</span>
+            <button class="btn sm ghost" id="btnToggleLyricsEdit">Sửa toàn bộ</button>
+          </div>
+          <div id="lyricsEditBox" class="hidden" style="margin-bottom:10px">
+            <textarea id="lyricsTextarea" rows="7" placeholder="Mỗi câu một dòng…"></textarea>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn sm primary" id="btnApplyLyrics" style="flex:1">Áp dụng lời</button>
+              <button class="btn sm" id="btnCancelLyrics">Hủy</button>
+            </div>
+          </div>
+          <div id="lyricList"></div>
+        </div>
+
+        <div class="panel-body hidden" id="leftTabMedia">
+          <div class="media-card" id="refMediaCard">
+            <div class="media-card-head">
+              <span class="media-card-title"><svg class="ico"><use href="#i-karaoke"/></svg> Bản có vocal / Video</span>
+              <span class="badge ok" id="refBadge">Đã nạp</span>
+            </div>
+            <div class="media-file" id="refFileName">HaTrang_Vocal_Master.wav</div>
+            <div class="hint">Dùng để AI nhận lời và căn thời gian.</div>
+            <button class="btn sm full" id="btnPickRef" style="margin-top:6px"><svg class="ico ico-sm"><use href="#i-upload"/></svg> Chọn file khác… <span class="sim-tag">mô phỏng</span></button>
+          </div>
+
+          <div class="media-card" id="beatMediaCard">
+            <div class="media-card-head">
+              <span class="media-card-title"><svg class="ico"><use href="#i-wave"/></svg> Beat gốc</span>
+              <span class="badge ok" id="beatBadge">Đã nạp</span>
+            </div>
+            <div class="media-file" id="beatFileName">HaTrang_BeatGoc_24bit.wav</div>
+            <div class="hint">Âm thanh nền mặc định khi nghe và xuất video.</div>
+            <button class="btn sm full" id="btnPickBeat" style="margin-top:6px"><svg class="ico ico-sm"><use href="#i-upload"/></svg> Chọn file beat… <span class="sim-tag">mô phỏng</span></button>
+          </div>
+
+          <div class="section-label">Giọng bè</div>
+          <p class="hint" id="backingStatusText">Đã duyệt bản Beat + bè. Bật nút Bè ở thanh phát để nghe thử.</p>
+          <button class="btn sm full" id="btnRunBacking"><svg class="ico ico-sm"><use href="#i-backing"/></svg> Tách giọng bè từ bản hát <span class="sim-tag">mô phỏng</span></button>
+        </div>
+      </aside>
+
+      <!-- Giữa: Preview + Transport -->
+      <section class="panel">
+        <div class="panel-head">
+          <span>Preview</span>
+          <span class="hint" id="previewMetaLabel" style="margin:0">16:9 · 1080p · Beat gốc</span>
+          <span style="flex:1"></span>
+          <button class="btn sm" id="btnToggleAspect"><svg class="ico ico-sm"><use href="#i-aspect"/></svg> 16:9 ↔ 9:16</button>
+          <button class="icon-btn" id="btnFullscreenMock" title="Xem lớn"><svg class="ico ico-sm"><use href="#i-expand"/></svg></button>
+        </div>
+
+        <div id="globalErrorBanner" class="banner err hidden" style="margin:8px 8px 0">
+          <span>✕ Lỗi mô phỏng: Không đọc được đường dẫn beat hoặc GPU thiếu bộ nhớ. Đã chuyển sang chế độ an toàn.</span>
+          <button class="btn sm" id="btnDismissError" style="margin-left:auto">Đóng</button>
+        </div>
+
+        <div class="stage-wrap">
+          <div class="stage-frame" id="stageFrame">
+            <div class="stage-title-box" id="stageTitleBox">
+              <div class="t-song" id="stageSongTitle">HẠ TRẮNG</div>
+              <div class="t-artist" id="stageSongArtist">Trịnh Công Sơn</div>
+            </div>
+            <div class="stage-logo" id="stageLogo">VIETKARA</div>
+            <div class="stage-countdown hidden" id="stageCountdown">● ● ● Chuẩn bị vào câu 1</div>
+            <div class="stage-lyrics" id="stageLyrics"></div>
+
+            <!-- Trạng thái chưa mở dữ liệu -->
+            <div class="stage-empty hidden" id="stageEmpty">
+              <h3 style="margin:0">Chưa mở bài karaoke</h3>
+              <p class="hint" style="max-width:340px">Nạp bản hát có vocal và beat gốc ở bảng Nguồn media, hoặc nhập lời bài hát để bắt đầu.</p>
+              <div style="display:flex;gap:8px;margin-top:6px">
+                <button class="btn primary" id="btnEmptyLoadSample">Nạp bài mẫu Hạ Trắng</button>
+                <button class="btn" id="btnEmptyOpenMedia">Mở tab Nguồn media</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button class="play-circle" id="btnPlay" title="Phát / Dừng (Space)"><svg class="ico"><use href="#i-play"/></svg></button>
+          <span class="timecode" id="timecode">00:02.60 / 00:42.00</span>
+          <span style="flex:1"></span>
+          <select id="audioSourceSelect" style="width:auto" aria-label="Nguồn âm thanh">
+            <option value="beat">Nghe: Beat gốc</option>
+            <option value="reference">Nghe: Bản có giọng</option>
+            <option value="vocals">Nghe: Vocal đã tách</option>
+          </select>
+          <select id="speedSelect" style="width:auto" aria-label="Tốc độ phát">
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option>
+          </select>
+          <button class="btn sm on" id="btnBackingToggle"><svg class="ico ico-sm"><use href="#i-backing"/></svg> <span id="btnBackingLabel">Bè · Bật</span></button>
+        </div>
+      </section>
+
+      <!-- Bảng phải: Inspector theo ngữ cảnh (tab dọc icon + nhãn) -->
+      <aside class="panel" id="rightPanel">
+        <div class="panel-head">
+          <span class="panel-title-text" id="inspectorHeadTitle">Từ đang chọn</span>
+          <span style="flex:1"></span>
+          <button class="icon-btn" id="btnCollapseRight" title="Thu gọn bảng thuộc tính"><svg class="ico ico-sm"><use href="#i-chev-right"/></svg></button>
+        </div>
+        <div class="inspector-wrap">
+          <nav class="inspector-rail" aria-label="Nhóm thuộc tính">
+            <button class="insp-tab on" data-insp="selection" title="Từ & câu đang chọn">
+              <svg class="ico"><use href="#i-cursor"/></svg><span class="insp-lbl">Chọn</span>
+            </button>
+            <button class="insp-tab" data-insp="style" title="Kiểu lời">
+              <svg class="ico"><use href="#i-type"/></svg><span class="insp-lbl">Chữ</span>
+            </button>
+            <button class="insp-tab" data-insp="duet" title="Song ca & phân vai">
+              <svg class="ico"><use href="#i-duet"/></svg><span class="insp-lbl">Song ca</span>
+            </button>
+            <button class="insp-tab" data-insp="title" title="Tiêu đề bài hát">
+              <svg class="ico"><use href="#i-title"/></svg><span class="insp-lbl">Tiêu đề</span>
+            </button>
+            <button class="insp-tab" data-insp="bg" title="Nền & tỉ lệ khung">
+              <svg class="ico"><use href="#i-bg"/></svg><span class="insp-lbl">Nền</span>
+            </button>
+            <button class="insp-tab" data-insp="logo" title="Logo & Đếm ngược">
+              <svg class="ico"><use href="#i-logo-cd"/></svg><span class="insp-lbl">Logo</span>
+            </button>
+            <button class="insp-tab" data-insp="preset" title="Thư viện Preset">
+              <svg class="ico"><use href="#i-preset"/></svg><span class="insp-lbl">Preset</span>
+            </button>
+          </nav>
+
+          <div class="inspector-content">
+            <!-- Tab 1: Từ đang chọn -->
+            <div data-insp-panel="selection">
+              <div id="noWordSelected" class="hint hidden">Bấm một khối từ trên timeline để chỉnh mốc thời gian hoặc vai hát.</div>
+              <div id="wordSelectedForm">
+                <div class="field">
+                  <label>Từ đang chọn</label>
+                  <input class="inp" id="selWordText" readonly>
+                </div>
+                <div class="row-2">
+                  <div class="field"><label>Bắt đầu (s)</label><input class="inp" id="selWordStart" type="number" step="0.05"></div>
+                  <div class="field"><label>Kết thúc (s)</label><input class="inp" id="selWordEnd" type="number" step="0.05"></div>
+                </div>
+                <div class="row-2">
+                  <div class="field">
+                    <label>Vai của câu</label>
+                    <select id="selLineRole">
+                      <option value="all">Cùng hát</option>
+                      <option value="female">Nữ</option>
+                      <option value="male">Nam</option>
+                      <option value="unknown">Chưa rõ</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Track</label>
+                    <select id="selLineTrack">
+                      <option value="auto">Tự động</option>
+                      <option value="0">Track 1</option>
+                      <option value="1">Track 2</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                  <button class="btn sm" id="btnLockLine"><svg class="ico ico-sm"><use href="#i-lock"/></svg> Khóa / Mở khóa câu</button>
+                  <button class="btn sm" id="btnRealignLine"><svg class="ico ico-sm"><use href="#i-sparkles"/></svg> Căn lại câu <span class="sim-tag">mô phỏng</span></button>
+                </div>
+                <div class="section-label">Đồng bộ bản hát ↔ beat</div>
+                <p class="hint">2 cặp mốc · đang co giãn theo đoạn.</p>
+                <button class="btn sm full" id="btnOpenAnchorsFromInsp">Sửa mốc đồng bộ…</button>
+              </div>
+            </div>
+
+            <!-- Tab 2: Kiểu lời -->
+            <div data-insp-panel="style" class="hidden">
+              <div class="field">
+                <label>Phông chữ tiếng Việt</label>
+                <select id="propFont">
+                  <option>Segoe UI</option>
+                  <option>Arial</option>
+                  <option>Tahoma</option>
+                  <option>Verdana</option>
+                  <option>Times New Roman</option>
+                </select>
+              </div>
+              <div class="row-2">
+                <div class="field"><label>Cỡ chữ <span id="lblFontSize">34</span></label><input id="propFontSize" type="range" min="20" max="48" value="34"></div>
+                <div class="field">
+                  <label>Căn lề</label>
+                  <select id="propAlign">
+                    <option value="center">Giữa</option>
+                    <option value="left">Trái</option>
+                    <option value="right">Phải</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row-2">
+                <div class="field"><label>Chữ đã hát</label><input id="propSungColor" type="color" value="#e8b04a"></div>
+                <div class="field"><label>Chữ chưa hát</label><input id="propUnsungColor" type="color" value="#ffffff"></div>
+              </div>
+              <div class="field"><label>Khoảng cách 2 dòng (px)</label><input id="propLineGap" type="number" min="0" max="40" value="10" class="inp"></div>
+            </div>
+
+            <!-- Tab 3: Song ca -->
+            <div data-insp-panel="duet" class="hidden">
+              <div class="field">
+                <label>Chế độ hát</label>
+                <select id="propSingingMode">
+                  <option value="duet">Song ca (phân màu theo vai)</option>
+                  <option value="solo">Đơn ca</option>
+                </select>
+              </div>
+              <div class="row-2">
+                <div class="field"><label>Vai Nữ</label><input class="inp" value="Nữ" readonly></div>
+                <div class="field"><label>Vai Nam</label><input class="inp" value="Nam" readonly></div>
+              </div>
+              <button class="btn sm full" id="btnAutoRolesInsp" style="margin-top:6px">Nghe vocal & gợi ý vai <span class="sim-tag">mô phỏng</span></button>
+              <button class="btn sm ghost full" id="btnSwapRoles" style="margin-top:4px">Đảo vai Nam ↔ Nữ toàn bài</button>
+            </div>
+
+            <!-- Tab 4: Tiêu đề -->
+            <div data-insp-panel="title" class="hidden">
+              <label class="check-row"><input type="checkbox" id="propShowTitle" checked> Hiện tiêu đề trong video</label>
+              <div class="field"><label>Tên bài hát</label><input class="inp" id="propTitleText" value="HẠ TRẮNG"></div>
+              <div class="field"><label>Ca sĩ / tác giả</label><input class="inp" id="propTitleArtist" value="Trịnh Công Sơn"></div>
+            </div>
+
+            <!-- Tab 5: Nền & Tỉ lệ -->
+            <div data-insp-panel="bg" class="hidden">
+              <div class="field">
+                <label>Loại nền</label>
+                <select id="propBgType">
+                  <option value="gradient">Gradient mặc định</option>
+                  <option value="color">Màu đơn sắc</option>
+                </select>
+              </div>
+              <div class="field"><label>Màu nền</label><input id="propBgColor" type="color" value="#141b2d"></div>
+              <div class="section-label">Khung hình</div>
+              <div class="field">
+                <label>Tỉ lệ</label>
+                <select id="propAspect">
+                  <option value="landscape">16:9 · Ngang</option>
+                  <option value="portrait">9:16 · Dọc</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Tab 6: Logo & Đếm ngược -->
+            <div data-insp-panel="logo" class="hidden">
+              <label class="check-row"><input type="checkbox" id="propShowLogo" checked> Hiện logo góc phải</label>
+              <div class="field"><label>Chữ / tên logo mẫu</label><input class="inp" id="propLogoText" value="VIETKARA"></div>
+              <div class="section-label">Đếm ngược vào câu</div>
+              <div class="field">
+                <label>Biểu tượng</label>
+                <select id="propCountdown">
+                  <option value="mic">Micro</option>
+                  <option value="star">Sao vàng</option>
+                  <option value="none">Không dùng</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Tab 7: Preset -->
+            <div data-insp-panel="preset" class="hidden">
+              <p class="hint">Bấm để áp dụng nhanh kiểu chữ lên bài hát.</p>
+              <div class="preset-grid" id="presetGrid"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Đáy: Timeline toàn chiều rộng -->
+      <section class="panel timeline-panel">
+        <div class="tl-toolbar">
+          <span style="font-weight:600;font-size:var(--fs-sm)">Timeline</span>
+          <span class="hint" style="margin:0">Bấm từ để chọn · bấm thước để nhảy playhead</span>
+          <span style="flex:1"></span>
+          <div class="btn-group">
+            <button class="btn sm on" id="btnFollowPlayhead"><svg class="ico ico-sm"><use href="#i-follow"/></svg> Theo nhạc</button>
+            <button class="btn sm on" id="btnLinkEdges"><svg class="ico ico-sm"><use href="#i-link"/></svg> Liên kết mép</button>
+            <button class="btn sm on" id="btnToggleWaves"><svg class="ico ico-sm"><use href="#i-wave"/></svg> Sóng nhạc</button>
+          </div>
+          <div class="btn-group">
+            <button class="btn sm" id="btnUndo" title="Hoàn tác (Ctrl+Z)"><svg class="ico ico-sm"><use href="#i-undo"/></svg></button>
+            <button class="btn sm" id="btnRedo" title="Làm lại (Ctrl+Y)" disabled><svg class="ico ico-sm"><use href="#i-redo"/></svg></button>
+          </div>
+          <div class="btn-group">
+            <button class="btn sm" id="btnZoomOut" title="Thu nhỏ"><svg class="ico ico-sm"><use href="#i-zoom-out"/></svg></button>
+            <span class="btn-group-label" id="zoomLabel">100%</span>
+            <button class="btn sm" id="btnZoomIn" title="Phóng to"><svg class="ico ico-sm"><use href="#i-zoom-in"/></svg></button>
+          </div>
+        </div>
+
+        <!-- Thanh gõ nhịp Space (ẩn mặc định) -->
+        <div class="tl-tap-bar hidden" id="tapBar">
+          <strong>Đang gõ nhịp thủ công</strong>
+          <span>Bấm <kbd>Space</kbd> hoặc nút bên cạnh để chốt từ tiếp theo: <b id="tapNextWord" style="color:var(--c-accent)">—</b></span>
+          <button class="btn sm primary" id="btnTapStep">Gõ chốt từ (Space)</button>
+          <button class="btn sm" id="btnTapFinish" style="margin-left:auto">Xong</button>
+        </div>
+
+        <div class="tl-scroll" id="tlScroll">
+          <div class="tl-canvas" id="tlCanvas"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- 4. TRANG TÁCH NHẠC LẤY BEAT -->
+  <main class="page-view hidden" id="page-separation">
+    <div class="utility-scroll">
+      <div class="utility-container">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="margin:0;font-size:var(--fs-xl)">Tách nhạc lấy beat <span class="sim-tag">mô phỏng</span></h1>
+            <p class="hint">Tạo beat không bè, beat có bè hoặc vocal riêng (WAV) từ file máy hoặc link YouTube.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card-box">
+            <div class="section-label">1. Nguồn nhạc</div>
+            <div class="field"><label>File nhạc / video từ máy</label><input class="inp" id="sepFileName" value="ConMuaNgangQua_Master.mp3"></div>
+            <div class="field"><label>Hoặc dán link YouTube (hỗ trợ link kèm playlist)</label><input class="inp" id="sepYoutubeUrl" placeholder="https://www.youtube.com/watch?v=..."></div>
+          </div>
+
+          <div class="card-box">
+            <div class="section-label">2. Cách tách & model</div>
+            <div class="field">
+              <label>Model tách bè</label>
+              <select id="sepModel">
+                <option value="roformer">Chất lượng cao · Mel-RoFormer</option>
+                <option value="uvr-lite">Nhẹ · UVR Karaoke (ít RAM)</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button class="btn primary" id="btnSepNoBacking" style="flex:1"><svg class="ico"><use href="#i-wave"/></svg> Tách beat không bè</button>
+              <button class="btn" id="btnSepWithBacking" style="flex:1"><svg class="ico"><use href="#i-backing"/></svg> Tách beat có bè</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-box hidden" id="sepResultBox">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <strong>Kết quả đã tách · WAV <span class="sim-tag">mô phỏng</span></strong>
+            <span class="badge ok" id="sepDoneBadge">Hoàn tất</span>
+          </div>
+          <div class="grid-3">
+            <div class="card-box" style="background:var(--c-inset)">
+              <strong style="display:flex;align-items:center;gap:6px"><svg class="ico ico-sm"><use href="#i-wave"/></svg> Beat không bè</strong>
+              <p class="hint">Nhạc nền sạch để hát karaoke.</p>
+              <button class="btn sm full" data-sep-play="beat"><svg class="ico ico-sm"><use href="#i-play"/></svg> Nghe thử (mô phỏng)</button>
+            </div>
+            <div class="card-box" style="background:var(--c-inset)" id="sepBackingCard">
+              <strong style="display:flex;align-items:center;gap:6px"><svg class="ico ico-sm"><use href="#i-backing"/></svg> Beat có bè</strong>
+              <p class="hint">Giữ giọng bè, loại giọng chính.</p>
+              <button class="btn sm full" data-sep-play="backing"><svg class="ico ico-sm"><use href="#i-play"/></svg> Nghe thử (mô phỏng)</button>
+            </div>
+            <div class="card-box" style="background:var(--c-inset)">
+              <strong style="display:flex;align-items:center;gap:6px"><svg class="ico ico-sm"><use href="#i-karaoke"/></svg> Vocal riêng</strong>
+              <p class="hint">Giọng hát tách khỏi nhạc nền.</p>
+              <button class="btn sm full" data-sep-play="vocal"><svg class="ico ico-sm"><use href="#i-play"/></svg> Nghe thử (mô phỏng)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 5. TRANG CÀI ĐẶT MODEL & CẬP NHẬT -->
+  <main class="page-view hidden" id="page-settings">
+    <div class="utility-scroll">
+      <div class="utility-container">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="margin:0;font-size:var(--fs-xl)">Cài đặt model & Cập nhật</h1>
+            <p class="hint">Quản lý model AI cục bộ trong <code>data/models/</code> và bản vá ứng dụng.</p>
+          </div>
+          <button class="btn" id="btnRefreshModels"><svg class="ico"><use href="#i-refresh"/></svg> Kiểm tra lại model</button>
+        </div>
+
+        <div class="card-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <strong>Danh sách model</strong>
+            <span class="badge ok">GPU khả dụng · NVIDIA RTX 3060 (CUDA)</span>
+          </div>
+          <div id="modelList"></div>
+        </div>
+
+        <div class="card-box">
+          <strong>Cập nhật VietKara Studio</strong>
+          <p class="hint">Bản hiện tại: 1.1.15 · Tự kiểm tra bản vá từ GitHub Releases.</p>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="btn" id="btnCheckUpdate"><svg class="ico"><use href="#i-refresh"/></svg> Kiểm tra bản vá <span class="sim-tag">mô phỏng</span></button>
+            <span class="hint" id="updateStatusText" style="margin:0">Đang dùng phiên bản mới nhất.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 6. STATUSBAR -->
+  <footer class="statusbar">
+    <span>VIETKARA STUDIO 1.1.15</span>
+    <span>GPU · RTX 3060</span>
+    <span id="statusModeHint">Bố cục: Studio Editor (Hướng A)</span>
+    <div class="status-job" id="statusJob">
+      <span id="statusJobText">Sẵn sàng</span>
+      <div class="status-bar-track hidden" id="statusBarTrack"><div class="status-bar-fill" id="statusBarFill" style="width:0%"></div></div>
+      <span id="statusJobPct"></span>
+    </div>
+  </footer>
+</div>
+
+<!-- ================= DIALOGS ================= -->
+<dialog class="vk-dialog" id="dlgExport">
+  <div class="dlg-head">
+    <h2>Xuất bài karaoke <span class="sim-tag">mô phỏng</span></h2>
+    <button class="icon-btn" data-close aria-label="Đóng"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <div class="banner info">Kiểm tra sẵn sàng: Beat gốc ✓ · Lời 8 câu ✓ · Chế độ Song ca ✓</div>
+    <div class="row-2">
+      <div class="field">
+        <label>Âm thanh xuất</label>
+        <select id="expAudio"><option>Beat gốc</option><option>Beat + bè (đã duyệt)</option><option>Beat + vocal hướng dẫn</option></select>
+      </div>
+      <div class="field">
+        <label>Định dạng</label>
+        <select id="expFormat"><option>MP4 · H.264 / AAC</option><option>MOV · H.264 / AAC</option><option>MKV · Matroska</option></select>
+      </div>
+    </div>
+    <div class="row-2">
+      <div class="field"><label>Chất lượng</label><select><option>Cao · khuyên dùng</option><option>Tiêu chuẩn · nhanh</option><option>Rất cao</option></select></div>
+      <div class="field"><label>Độ phân giải</label><select><option>Full HD · 1080p</option><option>4K · 2160p</option></select></div>
+    </div>
+    <label class="check-row"><input type="checkbox" checked> Chuẩn hóa âm lượng gần −16 LUFS</label>
+    <div class="banner ok hidden" id="expResultOk">✓ Đã dựng xong video mẫu: <code>exports/HaTrang_1080p.mp4</code></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="btnPreviewRender"><svg class="ico ico-sm"><use href="#i-video"/></svg> Render thử 8s</button>
+    <button class="btn primary" id="btnRunRender"><svg class="ico ico-sm"><use href="#i-export"/></svg> Dựng video</button>
+  </div>
+</dialog>
+
+<dialog class="vk-dialog wide" id="dlgProjects">
+  <div class="dlg-head">
+    <h2>Project & Dựng theo lô <span class="sim-tag">mô phỏng</span></h2>
+    <button class="icon-btn" data-close aria-label="Đóng"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <p class="hint">Chọn project để mở hoặc đánh dấu để dựng hàng loạt.</p>
+    <div id="projectListContainer" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" data-close>Đóng</button>
+    <button class="btn primary" id="btnRunBatch">Dựng các project đã chọn</button>
+  </div>
+</dialog>
+
+<dialog class="vk-dialog" id="dlgAi">
+  <div class="dlg-head">
+    <h2>Thiết lập AI · Whisper</h2>
+    <button class="icon-btn" data-close aria-label="Đóng"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <div class="field"><label>Model Whisper</label><select><option>Whisper large-v3-turbo · chính xác hơn</option><option>Whisper medium</option><option>Whisper small · nhanh</option></select></div>
+    <div class="field"><label>Ngôn ngữ</label><select><option>Tiếng Việt</option><option>English</option><option>Tự nhận</option></select></div>
+    <div class="banner info">Thiết bị: NVIDIA RTX 3060 (tự chuyển CPU nếu thiếu VRAM).</div>
+  </div>
+  <div class="dlg-foot"><button class="btn primary" data-close>Lưu thiết lập</button></div>
+</dialog>
+
+<dialog class="vk-dialog" id="dlgAnchors">
+  <div class="dlg-head">
+    <h2>Mốc đồng bộ bản hát ↔ beat</h2>
+    <button class="icon-btn" data-close aria-label="Đóng"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="dlg-body">
+    <p class="hint">Một mốc: dịch thời gian. Hai mốc trở lên: co giãn theo từng đoạn.</p>
+    <div class="card-box" style="background:var(--c-inset)">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--c-line)"><span>Mốc 1</span><span>Bản hát 00:02.00 ↔ Beat 00:02.00</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Mốc 2</span><span>Bản hát 00:20.15 ↔ Beat 00:20.20</span></div>
+    </div>
+  </div>
+  <div class="dlg-foot"><button class="btn primary" data-close>Đóng</button></div>
+</dialog>
+
+<dialog class="vk-dialog" id="dlgShortcuts">
+  <div class="dlg-head"><h2>Phím tắt</h2><button class="icon-btn" data-close aria-label="Đóng"><svg class="ico ico-sm"><use href="#i-close"/></svg></button></div>
+  <div class="dlg-body">
+    <p><kbd>Space</kbd> — Phát / dừng (hoặc gõ chốt từ khi đang ở chế độ Gõ nhịp)</p>
+    <p><kbd>Ctrl + Z</kbd> / <kbd>Ctrl + Y</kbd> — Hoàn tác / Làm lại</p>
+    <p><kbd>Ctrl + E</kbd> — Mở hộp thoại Xuất video</p>
+  </div>
+  <div class="dlg-foot"><button class="btn primary" data-close>Đóng</button></div>
+</dialog>
+
+<script src="data/mock-data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
