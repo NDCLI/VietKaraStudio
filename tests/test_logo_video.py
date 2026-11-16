@@ -34,7 +34,7 @@ def test_logo_export_transparency_effect_and_original_audio(client,tmp_path,effe
     client.patch(url,json={'words':[{'text':'Hát','start':1,'end':1.4,'line':0}],
         'settings':{'logo_size':20,'logo_x':0,'logo_y':0,'logo_effect':effect,'background_type':'color','background':'#000000'}})
     result=wait(client,client.post(url+'/render',json={}))
-    output=engine.DATA/'projects'/pid/'exports'/result['id']/'karaoke.mp4'
+    output=Path(result['result']['output_path'])
     frame=tmp_path/'frame.png'
     engine.command([engine.binary('ffmpeg'),'-y','-v','error','-ss','0.5','-i',output,'-frames:v','1',frame])
     pixels=Image.open(frame).convert('RGB')

@@ -21,7 +21,7 @@ def convert_vcl(data):
               "italic": bool(s.get("italic", 0)),
               "shadow": number("shadow", 0),
               "shadow_color": s.get("shsc", "#000000"), "position": "bottom",
-              "line_height": number("lh", 1.4), "line_animation": s.get("lineAnim", "none"),
+              "line_height": number("lh", 1.4), "line_gap": None, "line_animation": s.get("lineAnim", "none"),
               "align":s.get('align','justify'), 'vertical_offset':number('pos',0),
               'sweep_feather':number('sweepFx',0), 'sweep_glow':number('sweepGlow',0),
               'countdown':s.get('cdStyle','none'), 'sung_gradient':bool(s.get('sungGradOn',False)),
@@ -44,9 +44,12 @@ def decode(data):
     if data.get("format") != "original-beat-preset" or data.get("version") != 1:
         raise ValueError("Hỗ trợ preset JSON của VCL hoặc VietKara Studio phiên bản 1.")
     values = validate_settings(data["settings"])
+    keys = set(data["settings"])
+    if "line_height" in keys:
+        keys.add("line_gap")
     return {"name": str(data.get("name", "Preset riêng")).strip()[:100] or "Preset riêng",
             "description": str(data.get("description", ""))[:1500],
-            "settings": {**{key: values[key] for key in data["settings"] if key in values}, "font_size": 110},
+            "settings": {**{key: values[key] for key in keys if key in values}, "font_size": 110},
             "source": "Riêng", "notes": [str(x)[:300] for x in data.get("notes", [])[:10]]}
 
 

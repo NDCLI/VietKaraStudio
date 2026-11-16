@@ -38,3 +38,37 @@ def test_automatic_download_writes_to_app_models_and_cache(tmp_path,monkeypatch)
     monkeypatch.setattr(faster_whisper.utils,'download_model',fake)
     assert model_manager.resolve_whisper(tmp_path,'medium')==tmp_path/'models/whisper/medium'
     assert downloads==[{'output_dir':str(tmp_path/'models/whisper/medium'),'cache_dir':str(tmp_path/'cache/huggingface/hub')}]
+
+
+def test_manual_backing_model_download_and_file_detection(tmp_path, monkeypatch):
+    import hashlib
+    import backing_vocals
+    contents = {'quality.ckpt': b'quality model', 'quality.yaml': b'config', 'light.pth': b'light model'}
+    def files(model):
+        names = ['quality.ckpt', 'quality.yaml'] if model == 'roformer' else ['light.pth']
+        return [(name, hashlib.sha256(contents[name]).hexdigest(), 'example/models') for name in names]
+    monkeypatch.setattr(backing_vocals, 'model_files', files)
+    monkeypatch.setattr(model_manager, 'cached_whisper', lambda *args: None)
+    monkeypatch.setattr(model_manager, 'cached_demucs', lambda *args: None)
+    folder = tmp_path / 'models/backing'
+    folder.mkdir(parents=True)
+    (folder / 'quality.ckpt').write_bytes(contents['quality.ckpt'])
+    items = {item['id']: item for item in model_manager.status(tmp_path)}
+    assert not items['backing-roformer']['ready']
+    assert not items['backing-uvr-lite']['ready']
+    calls = []
+    def download(target, staging, repository, checksum, progress):
+        if backing_vocals.fingerprint(target) != checksum:
+            calls.append(target.name)
+            target.write_bytes(contents[target.name])
+    monkeypatch.setattr(backing_vocals, '_download_model_file', download)
+    model_manager.download(tmp_path, 'backing-roformer')
+    model_manager.download(tmp_path, 'backing-uvr-lite')
+    model_manager.download(tmp_path, 'backing-uvr-lite')
+    assert calls == ['quality.yaml', 'light.pth']
+    items = {item['id']: item for item in model_manager.status(tmp_path)}
+    assert items['backing-roformer']['ready'] and items['backing-uvr-lite']['ready']
+    assert len(items['backing-roformer']['files']) == 2
+    # Manually copied, corrupted weights must not appear ready.
+    (folder / 'light.pth').write_bytes(b'broken')
+    assert not {item['id']: item for item in model_manager.status(tmp_path)}['backing-uvr-lite']['ready']

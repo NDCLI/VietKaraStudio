@@ -1,0 +1,460 @@
+/* =========================================================
+   Studio Editor (Hướng A) – Giai đoạn 1: chuẩn hóa tokens.
+   Lớp ghi đè cuối cùng, nạp SAU style.css. Chỉ đổi giao diện,
+   không đổi id/DOM nên app.js / studio.js giữ nguyên.
+   Giá trị gốc nằm trong tokens.css.
+   ========================================================= */
+
+/* 1. Cầu nối biến cũ -> token mới */
+:root{
+  color-scheme:dark;
+  --bg:var(--c-bg);
+  --panel:var(--c-surface-1);
+  --panel-raised:var(--c-surface-2);
+  --line:var(--c-line);
+  --muted:var(--c-text-2);
+  --text:var(--c-text);
+  --accent:var(--c-accent);
+  --green:var(--c-ok);
+  --purple:var(--c-role-all);
+  --focus:var(--c-info);
+  --font:var(--font-ui);
+}
+
+/* 2. Nền chung */
+[hidden]{display:none!important}
+html{background:var(--c-bg);scrollbar-color:var(--c-line-strong) transparent;scrollbar-width:thin}
+body{background:var(--c-bg);color:var(--c-text);font-family:var(--font-ui);font-size:var(--fs-md)}
+*{scrollbar-color:var(--c-line-strong) transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--c-line-strong);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background-color:#4b5468}
+
+/* 3. Bề mặt khung & Giai đoạn 2: bỏ rail trái, điều hướng lên Topbar, sửa cuộn/tràn */
+.topbar{background:var(--c-surface-1);border-color:var(--c-line);padding:0 16px;height:48px;min-height:48px;max-height:48px;gap:14px}
+.top-nav{display:flex;align-items:center;gap:4px;margin-left:8px}
+.top-nav button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 12px;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;box-shadow:none;color:var(--c-text-2);font-size:var(--fs-sm);font-weight:500}
+.top-nav button:hover:not(:disabled){background:var(--c-surface-2);color:var(--c-text);border-color:var(--c-line)}
+.top-nav button.on{background:var(--c-surface-3);border-color:var(--c-accent);color:var(--c-text);font-weight:600}
+.workspace-menu{margin-left:0;background:var(--c-surface-1);border-bottom-color:var(--c-line);color:var(--c-text-2)}
+.workspace{margin-left:0;width:100%;max-width:100vw;box-sizing:border-box;height:calc(100dvh - 104px)}
+.studio-top>.inspector-column{overflow-y:auto;overflow-x:hidden;min-height:0}
+.left-tab-panel{overflow-y:auto;min-height:0}
+#lyricsText{min-height:96px;max-height:38vh;resize:vertical}
+.panel,
+.studio-top>.source-panel,
+.studio-top>.inspector-column,
+.workspace>.transport,
+.workspace>.timeline-panel{background:var(--c-surface-1);border-color:var(--c-line)}
+.studio-top .preview{border-color:var(--c-line-strong)}
+.app-footer{margin-left:0;color:var(--c-text-3)}
+
+/* 4. Nút */
+button{
+  border-color:var(--c-line-strong);border-radius:var(--radius-sm);
+  background:linear-gradient(180deg,#252a36 0%,#1b1f28 100%);color:var(--c-text);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 2px rgba(0,0,0,.35);
+  transition:background .14s ease,border-color .14s ease,transform .08s ease;
+}
+button:hover:not(:disabled){background:linear-gradient(180deg,#2d3341 0%,#222733 100%);border-color:#4b5468}
+button:active:not(:disabled){transform:translateY(.5px)}
+button:disabled{opacity:.42;box-shadow:none}
+button.primary,.primary{
+  background:linear-gradient(180deg,#f2be5c 0%,#df9f32 100%);border-color:#f6cb75;color:var(--c-accent-ink);font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 6px rgba(232,176,74,.22);
+}
+button.primary:hover:not(:disabled),.primary:hover{background:linear-gradient(180deg,#f7c970 0%,#e7a83c 100%);border-color:#fad892;color:var(--c-accent-ink)}
+button.secondary,.secondary{background:linear-gradient(180deg,#252a36 0%,#1b1f28 100%);border-color:var(--c-line-strong);color:var(--c-text)}
+button.ghost,.ghost,button.icon-btn,button.text-button{background:transparent;border-color:transparent;box-shadow:none;color:var(--c-text-2)}
+button.ghost:hover:not(:disabled),button.icon-btn:hover:not(:disabled){background:var(--c-surface-2);border-color:var(--c-line);color:var(--c-text)}
+button.text-button{color:var(--c-info)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--c-info);outline-offset:2px}
+
+/* 5. Ô nhập */
+input:not([type=range]):not([type=checkbox]):not([type=color]),select,textarea{
+  background:var(--c-inset);border-color:var(--c-line);border-radius:var(--radius-sm);color:var(--c-text);
+}
+input:not([type=range]):not([type=checkbox]):not([type=color]):hover,select:hover,textarea:hover{border-color:var(--c-line-strong)}
+input::placeholder,textarea::placeholder{color:var(--c-text-3)}
+input[type=checkbox],input[type=range]{accent-color:var(--c-accent)}
+input[type=color]{border:1px solid var(--c-line-strong);border-radius:var(--radius-sm);background:var(--c-inset);cursor:pointer}
+label{color:var(--c-text-2)}
+output{font-family:var(--font-mono);color:var(--c-text);font-variant-numeric:tabular-nums}
+
+/* 6. Giai đoạn 3: Inspector tab dọc bên trái + nhóm gập gọn */
+.studio-top>.inspector-column{
+  display:grid!important;
+  grid-template-columns:56px minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr);
+  overflow:hidden!important;
+}
+.inspector-heading{grid-column:1 / -1;grid-row:1;border-bottom:1px solid var(--c-line)}
+.inspector-tabs{
+  grid-column:1;grid-row:2;
+  display:flex;flex-direction:column;gap:4px;padding:6px 4px;
+  border-right:1px solid var(--c-line);background:var(--c-inset);
+  overflow-y:auto;overflow-x:hidden;
+}
+.workspace.right-collapsed .inspector-column{display:flex!important;flex-direction:column}
+.workspace.right-collapsed .inspector-column>.inspector-tabs,
+.workspace.right-collapsed .inspector-column>[data-inspector-pane="design"],
+.workspace.right-collapsed .inspector-column>#wordTools{display:none}
+.inspector-tabs button{
+  min-height:38px;padding:6px 2px;border:1px solid transparent;border-radius:var(--radius-sm);
+  background:transparent;color:var(--c-text-2);box-shadow:none;
+  font-size:9.5px;line-height:1.2;white-space:normal;text-align:center;
+}
+.inspector-tabs button:hover:not(:disabled){background:var(--c-surface-2);color:var(--c-text)}
+.inspector-tabs button.on{
+  background:var(--c-surface-2);border-color:var(--c-line-strong);color:var(--c-text);font-weight:600;
+  box-shadow:inset 3px 0 0 var(--c-accent);
+}
+.inspector-column>[data-inspector-pane="design"],
+.inspector-column>#wordTools{
+  grid-column:2;grid-row:2;overflow-y:auto;overflow-x:hidden;min-height:0;
+}
+.tool-group,.word-tools{background:var(--c-surface-2)!important;border-color:var(--c-line)!important;border-radius:var(--radius)!important}
+.style-panel>details.tool-group[data-tone]{--accent:var(--c-accent)}
+.tool-group>summary::after{color:var(--c-text-3)}
+
+/* 7. Giai đoạn 4: Đồng bộ trang Tách nhạc & Cài đặt */
+.utility-page{background:var(--c-bg);color:var(--c-text)}
+.utility-card,.separation-card,.model-row{
+  background:var(--c-surface-1);border-color:var(--c-line);border-radius:var(--radius);color:var(--c-text);
+}
+.utility-card h1,.utility-card h2{color:var(--c-text)}
+.utility-card p,.utility-card .muted{color:var(--c-text-2)}
+
+/* 8. Hộp thoại */
+dialog{background:var(--c-surface-1);color:var(--c-text);border-color:var(--c-line-strong);box-shadow:var(--shadow-pop)}
+dialog::backdrop{background:rgba(5,6,9,.62)}
+
+/* 9. Quick controls căn giữa trên thanh phát + ẩn seek & nút Sóng nhạc cũ + Wave Track Controls 3 dòng */
+#seek,#toggleWavesBtn,#followTimelineBtn{display:none!important}
+.workspace>.transport{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 10px}
+.transport-left,.transport-right{display:flex;align-items:center;gap:8px;flex:none}
+.transport-right .zoom-label{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--c-text-2)}
+.transport-right #zoom{width:76px}
+.workspace>.transport .transport-main{flex:0 1 auto}
+.transport-quick{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 auto;flex:none}
+.workspace>.timeline-panel{padding:4px 6px!important;display:flex!important;flex-direction:column!important;gap:2px!important}
+.workspace>.timeline-panel .timeline-view{flex:1!important;min-height:66px!important;height:68px!important}
+.workspace>.timeline-panel #timeline{height:100%!important;width:100%!important}
+.tq-item{display:flex;flex-direction:column;align-items:center;gap:2px}
+.tq-item>span{font-size:9px;font-weight:600;letter-spacing:.4px;color:var(--c-text-3)}
+.tq-step{display:flex;align-items:center;gap:4px;background:var(--c-inset);border:1px solid var(--c-line);border-radius:var(--radius-sm);padding:2px 4px}
+.tq-step button{min-height:20px;min-width:20px;padding:0 4px;border:0;background:transparent;box-shadow:none;color:var(--c-text-2);font-size:11px}
+.tq-step button:hover:not(:disabled){background:var(--c-surface-2);color:var(--c-text)}
+.tq-step b{font-family:var(--font-mono);font-size:11px;min-width:46px;text-align:center;color:var(--c-text);font-weight:600}
+#waveTrackControls{display:grid!important;grid-template-rows:1fr 1fr 1fr;padding:0!important;gap:0!important;background:#16191e;border-right:1px solid var(--c-line)}
+.wtc-lane{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:3px 8px;border-bottom:1px solid var(--c-line);min-height:0}
+.wtc-lane:last-child{border-bottom:0}
+.wtc-head{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.wtc-head strong{font-size:9px;font-weight:700;letter-spacing:.3px;color:var(--c-text-2)}
+.wtc-lane.on .wtc-head strong{color:var(--c-text)}
+.wtc-eye,.wtc-solo,.wtc-mute{min-height:16px!important;height:16px!important;width:16px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--c-text-3)!important;display:inline-grid;place-items:center}
+.wtc-eye.off{opacity:.45}
+.wtc-eye svg,.wtc-mute svg{width:12px;height:12px}
+.wtc-eye:hover,.wtc-solo:hover:not(:disabled),.wtc-mute:hover:not(:disabled){color:var(--c-text)!important}
+.wtc-solo{font-size:9.5px;font-weight:700}
+.wtc-solo.on,.wtc-mute.on{color:#10b981!important}
+.wtc-controls{display:flex;align-items:center;gap:5px}
+.wtc-vol{flex:1;min-width:0;height:4px!important;accent-color:#10b981!important;cursor:pointer}
+@media(max-width:1150px){.transport-quick{display:none}}
+
+/* 10. Cố định chiều cao Dòng trên/Dòng dưới + thanh kéo ngang #pan kiểu thanh cuộn mảnh */
+#waveformHeightGrip,#studioHeightGrip{display:none!important}
+#pan{
+  -webkit-appearance:none;appearance:none;
+  width:calc(100% - 96px)!important;margin:4px 12px 4px auto!important;display:block;
+  height:7px!important;background:#14181f!important;border-radius:999px!important;padding:0!important;border:0!important;
+}
+#pan::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:180px;height:7px;border-radius:999px;background:#363e4c;border:0;cursor:ew-resize;
+}
+#pan::-webkit-slider-thumb:hover{background:#4a5568}
+#pan::-moz-range-thumb{
+  width:180px;height:7px;border-radius:999px;background:#363e4c;border:0;cursor:ew-resize;
+}
+
+/* 11. Hộp thoại Xuất & Chia sẻ gọn (ảnh 2) */
+.compact-export-dialog{width:min(760px,94vw)!important;max-width:94vw!important;padding:18px 20px!important;border-radius:12px!important;background:#181b20!important}
+.compact-export-dialog .dialog-heading{margin-bottom:14px}
+.ce-grid{display:grid;grid-template-columns:1fr 195px;gap:18px;align-items:stretch}
+.ce-left{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ce-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ce-row-2 label{font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--c-text-3)}
+.ce-row-2 select{margin-top:5px;height:36px;background:#20242c;border-color:#2f3642;border-radius:7px;font-size:12.5px}
+.ce-path-bar{display:flex;align-items:center;background:#20242c;border:1px solid #2f3642;border-radius:7px;overflow:hidden;height:36px}
+.ce-path-tag{padding:0 12px;font-size:10px;font-weight:700;color:var(--c-text-2);background:#262b35;height:100%;display:inline-flex;align-items:center;border-right:1px solid #2f3642;white-space:nowrap}
+.ce-path-bar input{border:0!important;background:transparent!important;height:100%;padding:0 10px;font-size:12px;flex:1}
+.ce-folder-btn{min-height:36px!important;height:36px!important;width:38px!important;border:0!important;border-left:1px solid #2f3642!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+.ce-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
+.ce-actions{display:flex;align-items:center;gap:8px}
+.ce-submit-btn{background:#10b981!important;border-color:#10b981!important;color:#06281e!important;font-weight:700!important;min-width:110px;min-height:36px;border-radius:7px!important;box-shadow:none!important}
+.ce-submit-btn:hover:not(:disabled){background:#34d399!important;border-color:#34d399!important}
+.ce-right{border-left:1px solid #2a2f3a;padding-left:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.ce-qr-title{font-size:10px;letter-spacing:.5px;color:var(--c-text-2)}
+.ce-qr-box{width:136px;height:136px;border-radius:10px;background:repeating-linear-gradient(45deg,#eef2f6 0,#eef2f6 8px,#dce3ec 8px,#dce3ec 16px);display:grid;place-items:center;padding:8px;text-align:center;color:#111827;font-size:11px;font-weight:600}
+
+/* 12. Màn hình bắt đầu nhanh tab Karaoke (ảnh 3 & 4) */
+#karaokePage.qs-active>.studio-top,
+#karaokePage.qs-active>.transport,
+#karaokePage.qs-active>#manualTimingBar,
+#karaokePage.qs-active>#waveformPanel,
+#karaokePage.qs-active>.timeline-panel,
+#karaokePage.qs-active>.layout-grip{display:none!important}
+.qs-screen{grid-column:1 / -1;grid-row:1 / -1;display:flex;align-items:center;justify-content:center;padding:24px;height:100%}
+.qs-box{width:min(760px,94vw);display:flex;flex-direction:column;gap:14px}
+.qs-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qs-tab{min-height:38px;border-radius:7px!important;background:#161920!important;border:1px solid #2a2f3a!important;color:var(--c-text-2)!important;font-weight:600;box-shadow:none!important}
+.qs-tab.on{background:#10b981!important;border-color:#10b981!important;color:#05291d!important;box-shadow:0 0 18px rgba(16,185,129,.28)!important}
+.qs-input-bar{display:flex;align-items:center;gap:10px}
+.qs-input-bar input{flex:1;height:38px;background:#14171e!important;border:1px solid #2a2f3a!important;border-radius:7px!important;padding:0 12px}
+.qs-browse-btn{min-height:38px;padding:0 18px;border-radius:7px!important;background:#181c26!important;border:1px solid #4338ca!important;color:var(--c-text)!important}
+.qs-preview-card{background:#161920;border:1px solid #2a2f3a;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.qs-file-head{display:flex;align-items:center;gap:10px}
+.qs-music-ico{width:28px;height:28px;border-radius:6px;background:rgba(16,185,129,.15);color:#10b981;display:grid;place-items:center;font-weight:700}
+.qs-file-head strong{display:block;font-size:12.5px}
+.qs-file-head small{color:var(--c-text-3);font-size:11px}
+#qsWaveCanvas{width:100%;height:54px;background:#0d1015;border-radius:6px;cursor:pointer}
+.qs-player-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qs-play-btn{width:34px;height:34px;min-height:34px;border-radius:50%!important;background:#10b981!important;border-color:#10b981!important;color:#05291d!important;padding:0!important;display:grid;place-items:center}
+.qs-vol-wrap{display:flex;align-items:center;gap:8px;color:var(--c-text-2);font-size:11px}
+.qs-vol-wrap input{width:96px;accent-color:#10b981!important}
+.qs-options{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:4px}
+.qs-radios{display:flex;align-items:center;gap:18px}
+.qs-radios label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--c-text);cursor:pointer}
+.qs-radios input[type=radio]{accent-color:#10b981}
+.qs-start-btn{background:#10b981!important;border-color:#10b981!important;color:#05291d!important;font-weight:700!important;padding:0 22px!important;min-height:38px!important;border-radius:8px!important;box-shadow:0 4px 14px rgba(16,185,129,.25)!important}
+
+/* 13. Danh sách model MDX-NET (ảnh 5 model) */
+.mdx-group{background:#12151b;border:1px solid #262c36;border-radius:10px;padding:12px 14px;margin-bottom:14px;grid-column:1 / -1}
+.mdx-group-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none;margin-bottom:10px}
+.mdx-cards{display:flex;flex-direction:column;gap:10px}
+.mdx-card{background:#161a22;border:1px solid #262c36;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.mdx-card.active{border-color:#10b981;background:linear-gradient(180deg,rgba(16,185,129,.08),#161a22)}
+.mdx-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mdx-title-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mdx-title-row strong{font-size:13.5px;color:#fff}
+.mdx-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.3px}
+.mdx-badge.active{background:#10b981;color:#05291d}
+.mdx-badge.stems{background:rgba(16,185,129,.14);color:#34d399}
+.mdx-badge.ready{background:rgba(16,185,129,.14);color:#34d399}
+.mdx-badge.missing{background:#262c36;color:var(--c-text-3)}
+.mdx-desc{font-size:11.5px;color:var(--c-text-2);margin:0}
+.mdx-specs{list-style:none;padding:0;margin:2px 0 0;display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--c-text-2)}
+.mdx-specs b{color:var(--c-text)}
+.mdx-select-btn{min-height:28px!important;padding:0 12px!important;border-radius:6px!important;border:1px solid rgba(16,185,129,.45)!important;background:transparent!important;color:#34d399!important;font-size:11.5px!important;font-weight:600!important;box-shadow:none!important}
+.mdx-select-btn.on{background:#10b981!important;border-color:#10b981!important;color:#05291d!important}
+
+/* 14. Thanh workspace-menu gọn: Tệp + Thiết bị AI + Chọn nhanh Model */
+.workspace-menu{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;height:34px}
+.wm-bar-controls{display:flex;align-items:center;gap:12px;margin-left:auto}
+.wm-select-group{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:11px;color:var(--c-text-2)}
+.wm-select-group>span{font-size:10px;font-weight:600;color:var(--c-text-3);white-space:nowrap}
+.wm-select-group select{width:auto;min-width:118px;height:24px;padding:0 8px;font-size:11px;background:var(--c-inset);border:1px solid var(--c-line);border-radius:5px;color:var(--c-text);margin:0}
+@media(max-width:1100px){.wm-select-group>span{display:none}}
+
+/* 15. Đồng bộ Menu Tệp, Trình phát hiện đại & Thanh chỉnh Tone sau khi tách */
+.menu-pop>summary{
+  list-style:none;padding:4px 12px;border-radius:6px;background:var(--c-surface-2);border:1px solid var(--c-line);
+  color:var(--c-text);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;
+}
+.menu-pop>summary::-webkit-details-marker{display:none}
+.menu-pop[open]>summary,.menu-pop>summary:hover{background:var(--c-surface-3);border-color:var(--c-accent);color:#fff}
+.menu-drop{
+  background:#161a22!important;border:1px solid #2e3646!important;border-radius:10px!important;
+  padding:6px!important;box-shadow:0 14px 36px rgba(0,0,0,.65)!important;min-width:210px!important;
+}
+.menu-drop button{
+  width:100%;justify-content:flex-start;background:transparent!important;border:0!important;box-shadow:none!important;
+  padding:7px 10px!important;min-height:30px!important;border-radius:6px!important;color:var(--c-text)!important;font-size:12px!important;font-weight:500!important;
+}
+.menu-drop button:hover:not(:disabled){background:#232936!important;color:#10b981!important}
+.menu-separator{display:block;height:1px;background:#262d3a;margin:5px 4px}
+.menu-group-label{display:block;padding:4px 10px 2px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--c-text-3)}
+
+/* Nâng cấp thanh Transport hiện đại */
+.workspace>.transport{
+  background:linear-gradient(180deg,#181c24 0%,#12151c 100%)!important;
+  border:1px solid #28303e!important;border-radius:9px!important;box-shadow:0 4px 16px rgba(0,0,0,.35)!important;
+}
+.workspace>.transport .play-btn{
+  background:linear-gradient(135deg,#10b981 0%,#059669 100%)!important;border-color:#34d399!important;
+  color:#042419!important;border-radius:50%!important;box-shadow:0 0 14px rgba(16,185,129,.35)!important;font-size:13px!important;
+}
+.workspace>.transport .play-btn:hover:not(:disabled){transform:scale(1.05)}
+.workspace>.transport .clock{font-family:var(--font-mono);font-size:12px;background:#0d1016;padding:4px 9px;border-radius:6px;border:1px solid #232936}
+
+/* Thanh chỉnh Tone sau khi tách (Pitch Shift) */
+.sep-pitch-bar{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;
+  background:linear-gradient(180deg,#171c26 0%,#131720 100%);border:1px solid #2b3342;border-radius:10px;padding:12px 16px;margin-bottom:14px;
+}
+.sep-pitch-info{display:flex;flex-direction:column;gap:3px}
+.sep-pitch-info strong{font-size:13px;color:#fff}
+.sep-pitch-info small{font-size:11.5px;color:var(--c-text-2)}
+.sep-pitch-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sep-pitch-step{width:30px;height:30px;min-height:30px!important;padding:0!important;border-radius:7px!important;font-size:15px!important;font-weight:700!important}
+.sep-pitch-val{font-family:var(--font-mono);font-size:12.5px;min-width:86px;text-align:center;background:#0d1016;border:1px solid #28303e;padding:5px 10px;border-radius:7px;color:#10b981}
+.sep-pitch-presets{display:flex;align-items:center;gap:4px;margin-left:6px}
+.sep-pitch-presets button{min-height:26px!important;padding:0 8px!important;font-size:11px!important;border-radius:5px!important;background:#1a202c!important;border:1px solid #2d3545!important;color:var(--c-text-2)!important;box-shadow:none!important}
+.sep-pitch-presets button.on{background:#10b981!important;border-color:#10b981!important;color:#042419!important;font-weight:700!important}
+
+/* Giao diện trình phát hiện đại (Modern Audio Player) */
+.separation-track{background:#151921!important;border:1px solid #262d3a!important;border-radius:11px!important;padding:14px!important;display:flex;flex-direction:column;gap:12px}
+.sep-track-top{display:flex;align-items:center;gap:10px}
+.sep-track-top h3{margin:0;font-size:13.5px;color:#fff}
+.sep-track-top p{margin:2px 0 0;font-size:11.5px;color:var(--c-text-2)}
+.modern-audio-player{
+  display:flex;align-items:center;gap:10px;background:#0d1016;border:1px solid #242b38;border-radius:9px;padding:8px 10px;
+}
+.map-play{
+  width:34px;height:34px;min-height:34px!important;padding:0!important;border-radius:50%!important;
+  background:linear-gradient(135deg,#10b981 0%,#059669 100%)!important;border-color:#34d399!important;color:#042419!important;
+  display:grid;place-items:center;flex:none;box-shadow:0 0 10px rgba(16,185,129,.25)!important;
+}
+.map-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.map-seek{width:100%;height:5px!important;accent-color:#10b981!important;cursor:pointer}
+.map-meta{display:flex;align-items:center;justify-content:space-between;font-family:var(--font-mono);font-size:10.5px;color:var(--c-text-2)}
+.map-pitch-tag{color:#f59e0b;font-weight:600}
+.map-vol{width:64px!important;height:4px!important;accent-color:#10b981!important;flex:none}
+.sep-dl-btn{justify-content:center;width:100%;min-height:34px;border-radius:7px;font-weight:600}
+
+/* 16. Thanh tiến trình nằm ngay dưới 2 nút Chọn cách tách (kèm nút Hủy), ẩn #jobBar lơ lửng khi ở trang Tách nhạc */
+body:has(#separationPage:not([hidden])) #jobBar{display:none!important}
+#separationActivity{
+  display:flex!important;align-items:center;gap:12px;
+  background:#161a22!important;border:1px solid #2b3545!important;border-radius:10px!important;
+  padding:12px 16px!important;margin-top:6px!important;
+}
+#separationActivity[data-state="idle"],#separationActivity[data-state="done"]{display:none!important}
+#separationActivity .sep-prog-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+#separationActivity #separationStatus{margin:0;font-size:12.5px;font-weight:600;color:#fff}
+#separationActivity #separationProgress{display:block!important;width:100%;height:5px;accent-color:#10b981;border-radius:999px;overflow:hidden}
+#separationActivity .sep-pct{font-family:var(--font-mono);font-size:12px;color:#10b981;font-weight:700;min-width:36px;text-align:right}
+
+/* 17. Tỉ lệ & Độ phân giải gọn trên thanh điều khiển dưới preview */
+.tq-select-wrap{padding:1px 4px}
+.tq-select-wrap select{width:auto;min-width:58px;height:20px;border:0!important;background:transparent!important;color:var(--c-text);font-size:11px;font-weight:600;padding:0 2px;cursor:pointer;margin:0}
+
+/* 18. Gộp thanh công cụ lên cùng 1 hàng với Topbar (tăng diện tích vùng làm việc) */
+.topbar{gap:10px!important}
+.top-file-menu>summary{min-height:30px;display:inline-flex;align-items:center;gap:4px;padding:0 11px!important}
+.topbar .project-name{margin-left:4px;max-width:210px}
+.topbar .project-name input{width:140px}
+.topbar .wm-bar-controls{margin-left:auto;gap:8px}
+.topbar .wm-select-group select{min-width:88px;max-width:130px;height:26px}
+.workspace{height:calc(100dvh - 70px)!important}
+@media(max-width:1320px){.topbar .wm-select-group>span{display:none}}
+
+/* 19. Ép Topbar 1 hàng duy nhất + đảm bảo DÒNG TRÊN / DÒNG DƯỚI / thanh kéo #pan hiện trọn vẹn */
+.topbar{height:48px!important;min-height:48px!important;max-height:48px!important;flex-wrap:nowrap!important;padding:0 12px!important;gap:8px!important;overflow:visible!important}
+.topbar .brand{font-size:14px!important;gap:6px!important;flex:none}
+.topbar .brand small{display:none!important}
+.topbar .top-nav{margin-left:2px!important;gap:2px!important;flex:none}
+.topbar .top-nav button{padding:4px 9px!important;font-size:11.5px!important}
+.topbar .project-name{min-width:90px;max-width:155px!important;margin-left:2px!important;flex:0 1 155px}
+.topbar .project-name input{width:95px!important;font-size:12px!important}
+.topbar .wm-bar-controls{margin-left:auto!important;gap:6px!important;flex:0 1 auto}
+.topbar .wm-select-group select{min-width:74px!important;max-width:112px!important;font-size:10.5px!important;padding:0 5px!important}
+.topbar .top-actions{flex:none}
+.topbar .top-actions .primary{min-height:30px!important;padding:0 12px!important;font-size:12px!important}
+
+.workspace{
+  height:calc(100dvh - 76px)!important;min-height:0!important;padding:6px 10px!important;gap:5px!important;
+  grid-template-rows:minmax(220px,1fr) 0 auto 0 96px 0 114px!important;
+}
+.workspace>.timeline-panel .timeline-view{min-height:84px!important;height:86px!important}
+.app-footer{height:24px!important;padding:2px 12px!important}
+@media(max-width:1460px){.topbar .wm-select-group>span{display:none!important}}
+
+/* 20. Sửa grid-template-rows của .workspace cho đúng 4 hàng hiển thị (vì grip đã display:none) -> hết đè .transport & hiện đủ DÒNG DƯỚI */
+.workspace{
+  grid-template-rows:minmax(180px,1fr) auto 96px 116px!important;
+}
+.workspace>.transport{position:relative;z-index:5;min-height:46px!important}
+.workspace>.timeline-panel{min-height:116px!important}
+
+/* 21. Chuyển .workspace sang flex column cố định chiều cao sóng nhạc & timeline -> Preview lớn tối đa, Timeline vừa đủ gọn */
+.workspace{
+  display:flex!important;flex-direction:column!important;
+  height:calc(100dvh - 76px)!important;padding:6px 10px!important;gap:5px!important;
+}
+.workspace>.studio-top{
+  display:grid!important;
+  grid-template-columns:minmax(220px,var(--layout-left,265px)) 8px minmax(300px,1fr) 8px minmax(260px,var(--layout-right,285px))!important;
+  flex:1 1 auto!important;min-height:240px!important;height:auto!important;overflow:hidden!important;
+}
+.workspace>.studio-top>.source-panel{grid-column:1!important;height:100%!important}
+.workspace>.studio-top>#leftColumnGrip{grid-column:2!important}
+.workspace>.studio-top>.editor-column{grid-column:3!important;height:100%!important}
+.workspace>.studio-top>#rightColumnGrip{grid-column:4!important}
+.workspace>.studio-top>.inspector-column{grid-column:5!important;height:100%!important}
+.workspace>.transport{flex:0 0 auto!important;min-height:44px!important}
+.workspace>#waveformPanel{flex:0 0 96px!important;height:96px!important;min-height:96px!important}
+.workspace>.timeline-panel{flex:0 0 112px!important;height:112px!important;min-height:112px!important;max-height:112px!important}
+.workspace>.timeline-panel .timeline-view{flex:1 1 auto!important;min-height:82px!important;height:auto!important}
+
+/* 22. Chuẩn hóa đồng bộ toàn bộ Button + cân chỉnh thanh Transport & nút Play/Pause SVG */
+button,
+.secondary,
+button.secondary{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:30px;padding:0 11px;border-radius:6px;
+  background:linear-gradient(180deg,#232834 0%,#1a1e28 100%);
+  border:1px solid #323a4a;color:var(--c-text);font-size:12px;font-weight:500;line-height:1;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(0,0,0,.3);
+  transition:background .14s ease,border-color .14s ease,transform .08s ease;
+}
+button:hover:not(:disabled),
+.secondary:hover:not(:disabled){
+  background:linear-gradient(180deg,#2b3140 0%,#212633 100%);border-color:#49546b;
+}
+button.small,.small{min-height:26px!important;padding:0 9px!important;font-size:11.5px!important}
+button.icon-btn{
+  width:28px!important;height:28px!important;min-height:28px!important;padding:0!important;
+  border-radius:6px!important;background:transparent!important;border:1px solid transparent!important;box-shadow:none!important;
+}
+button.icon-btn:hover:not(:disabled){background:#232834!important;border-color:#323a4a!important}
+
+/* Cân hàng tuyệt đối thanh Transport */
+.workspace>.transport{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  height:48px!important;min-height:48px!important;padding:0 12px!important;gap:12px!important;
+}
+.transport-left,.transport-right,.transport-quick{display:flex;align-items:center;height:100%}
+.transport-left{gap:10px}
+.transport-right{gap:6px}
+.transport-quick{gap:8px;margin:0 auto}
+.tq-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.tq-item>span{font-size:8.5px;line-height:1;letter-spacing:.4px;color:var(--c-text-3)}
+.tq-step{height:24px!important;padding:0 4px!important;display:inline-flex;align-items:center;gap:2px;box-sizing:border-box}
+.tq-step button{min-height:18px!important;height:18px!important;width:18px!important;min-width:18px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;border-radius:4px!important}
+.tq-step button:hover:not(:disabled){background:#2a3140!important}
+.tq-step b{font-size:11px;line-height:1}
+.tq-select-wrap{height:24px!important;padding:0 4px!important}
+.tq-select-wrap select{height:22px!important;line-height:22px!important}
+.transport-right button.small{height:28px!important;min-height:28px!important;border-radius:6px!important}
+.transport-right .speed{height:28px!important;min-height:28px!important;padding:0 8px!important;border-radius:6px!important;background:#1a1e28!important;border:1px solid #323a4a!important;width:auto!important}
+
+/* Nút Play/Pause tròn cân tâm chuẩn bằng SVG (khớp màu vàng VietKara) */
+.workspace>.transport .play-btn,
+.map-play,
+.qs-play-btn{
+  width:32px!important;height:32px!important;min-height:32px!important;min-width:32px!important;
+  padding:0!important;border-radius:50%!important;flex:none;
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  background:linear-gradient(180deg,#f2be5c 0%,#df9f32 100%)!important;
+  border:1px solid #f6cb75!important;color:#1a1408!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 8px rgba(232,176,74,.28)!important;
+}
+.workspace>.transport .play-btn:hover:not(:disabled),
+.map-play:hover:not(:disabled),
+.qs-play-btn:hover:not(:disabled){
+  background:linear-gradient(180deg,#f7c970 0%,#e7a83c 100%)!important;transform:scale(1.04);
+}
+.play-btn svg,.map-play svg,.qs-play-btn svg{width:14px;height:14px;display:block;fill:currentColor}

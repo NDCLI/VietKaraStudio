@@ -6,6 +6,7 @@ __pycache__/
 .gpu-wheels/
 build-tools/
 releases/
+resources/source/
 bin/
 .env
 .env.*

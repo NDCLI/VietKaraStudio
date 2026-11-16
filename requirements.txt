@@ -7,6 +7,9 @@ librosa>=1.0,<2
 torch==2.5.1
 torchaudio==2.5.1
 demucs==4.1.0
+audio-separator[cpu]==0.48.0
+audioread==3.1.0
+torchvision==0.20.1
 faster-whisper==1.2.1
 stable-ts==2.19.1
 pywebview>=5,<7

@@ -9,19 +9,27 @@ from pathlib import Path
 import re
 import shutil
 import threading
+import tempfile
 import time
 import uuid
 from urllib.parse import urlparse
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
+from bundled_assets import ASSET_ROOT, bundled_fonts, asset_url, ICON_CHOICES, vni_table, tcvn_table
 from werkzeug.exceptions import HTTPException
 
 import engine
+import analysis_cache
+import backing_vocals
 from app_runtime import task_command
 import hardware
 import presets
 import layout
 import media_tools
+import audio_sync
+import batch_render
+import project_archive
+import scene_tools
 import updater
 from styles import DEFAULT_SETTINGS, validate_settings
 from timing import (beat_words, estimate_words, finite, validate_anchors,
@@ -30,8 +38,50 @@ from timing import (beat_words, estimate_words, finite, validate_anchors,
 app = Flask(__name__, static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 ** 3
 LOCK = threading.RLock()
+JOB_STORE_LOCK = threading.RLock()
 POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="original-beat")
 JOBS = {}
+
+
+def persist_job(job):
+    payload = job.public()
+    payload["updated_at"] = time.time()
+    path = engine.DATA / "jobs" / (job.id + ".json")
+    temporary = path.with_suffix(".tmp")
+    with JOB_STORE_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+        job.updated_at = payload["updated_at"]
+
+
+def recover_jobs():
+    root = engine.DATA / "jobs"
+    if not root.is_dir():
+        return
+    for path in root.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            jid = payload.get("id")
+            if not isinstance(jid, str) or not re.fullmatch(r"[0-9a-f]{32}", jid):
+                continue
+            job = engine.Job(jid, str(payload.get("project_id", "")),
+                             str(payload.get("kind", "unknown")), on_change=persist_job)
+            with job._lock:
+                job.state = str(payload.get("state", "error"))
+                job.message = str(payload.get("message", ""))[:4500]
+                job.progress = max(0, min(100, float(payload.get("progress", 0))))
+                job.result = payload.get("result")
+                job.devices = payload.get("devices", {}) if isinstance(payload.get("devices"), dict) else {}
+                job.fallbacks = payload.get("fallbacks", []) if isinstance(payload.get("fallbacks"), list) else []
+            job.updated_at = float(payload.get("updated_at", path.stat().st_mtime))
+            if job.state in ("queued", "running"):
+                job.state = "interrupted"
+                job.message = "Ứng dụng đã đóng giữa tác vụ. Bước này cần chạy lại; project vẫn được giữ nguyên."
+                persist_job(job)
+            JOBS[jid] = job
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            app.logger.exception("Unable to recover job record %s", path)
 
 
 @app.get('/api/models')
@@ -79,12 +129,18 @@ def separate_tool(pid):
     from_video = payload.get('source') == 'background'
     from_youtube = payload.get('source') == 'youtube'
     apply_project = from_video and payload.get('apply_to_project') is True
+    mode = payload.get('mode', 'beat') if from_youtube or from_video else request.form.get('mode', 'beat')
+    if mode not in ('beat', 'backing') or (from_video and mode != 'beat'):
+        raise ValueError('Chọn tách beat không bè hoặc beat có bè.')
+    backing_model = backing_vocals.validate_model((payload if from_youtube or from_video else request.form).get('backing_model', backing_vocals.DEFAULT_MODEL))
+    if apply_project:
+        project_archive.create_version(project_path, load(pid), "Trước khi thay media bằng kết quả tách vocal/beat")
     source = media_tools.local_asset(project_path, load(pid).get('background_video', {}).get('source_file')) if from_video else None
     youtube_url = str(payload.get('url', '')).strip() if from_youtube else ''
     if from_video and not source:
         raise ValueError('Hãy nạp video trong File nguồn trước.')
     if from_youtube and not media_tools.youtube_video_id(youtube_url):
-        raise ValueError('URL YouTube không hợp lệ hoặc có playlist. Hãy dán link một video đơn.')
+        raise ValueError('Không tìm thấy video trong URL YouTube. Hãy dán link có mã video, thay vì link danh sách phát.')
     if not from_video and not from_youtube and (not file or not file.filename):
         raise ValueError('Chọn bài nhạc hoặc dán URL YouTube cần tách.')
     ext = source.suffix.lower() if from_video else Path(file.filename).suffix.lower() if file else '.m4a'
@@ -120,26 +176,179 @@ def separate_tool(pid):
                     current = load(pid)
                     for original, target in (('reference.wav', 'reference.wav'), ('reference_instrumental.wav', 'beat.wav'),
                                              ('vocals.wav', 'vocals.wav'), ('reference_instrumental.wav', 'reference_instrumental.wav')):
-                        shutil.copy2(folder / original, project_path / target)
+                        staged = project_path / (target + '.next')
+                        shutil.copy2(folder / original, staged)
+                        staged.replace(project_path / target)
                     current.update(metadata)
                     current['reference']['name'] = current['background_video']['name']
                     current['words'] = []; current['anchors'] = []; current['alignment'] = None
                     current.pop('processing', None); current.pop('role_analysis', None)
                     current['settings'] = validate_settings({'background_type': 'video'}, current['settings'])
                     save(current)
-            return {'beat': f'/api/tools/{identifier}/beat', 'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+            result = {'id': identifier, 'beat': f'/api/tools/{identifier}/beat',
+                      'vocals': f'/api/tools/{identifier}/vocals', 'project_id': pid, 'applied': apply_project}
+            if mode == 'backing':
+                job.update(42, 'Đang chuẩn bị tách giọng bè để trộn vào beat…')
+                backing = backing_vocals.prepare({}, folder, job, preference, beat_name=TOOL_BEAT, model=backing_model)
+                job.check()
+                if backing.get('weak'):
+                    result['backing_status'] = 'weak'
+                else:
+                    backing['confirmed'] = True
+                    save_tool_backing(folder, backing)
+                    result.update(backing_status='ready', backing_mix=f'/api/tools/{identifier}/beat_backing',
+                                  backing_stem=f'/api/tools/{identifier}/backing')
+            return result
         finally:
             if downloaded:
                 downloaded.unlink(missing_ok=True)
     return task(pid, 'separate', work)
 
 
+TOOL_BEAT = 'reference_instrumental.wav'
+
+
+def separation_folder(identifier):
+    if not re.fullmatch(r'[0-9a-f]{32}', identifier):
+        raise ValueError('File không hợp lệ.')
+    return engine.DATA / 'tools' / identifier
+
+
+def load_tool_backing(folder):
+    path = folder / 'backing.json'
+    return {'backing_vocals': json.loads(path.read_text(encoding='utf-8'))} if path.is_file() else {}
+
+
+def save_tool_backing(folder, result):
+    path = folder / 'backing.tmp'
+    path.write_text(json.dumps(result), encoding='utf-8')
+    path.replace(folder / 'backing.json')
+
+
+@app.post('/api/projects/<pid>/separate/<identifier>/backing')
+def separate_tool_backing(pid, identifier):
+    directory(pid)
+    folder = separation_folder(identifier)
+    if not all((folder / filename).is_file() for filename in (TOOL_BEAT, 'vocals.wav')):
+        raise FileNotFoundError('Hãy tách beat và vocal trước.')
+
+    def work(job):
+        with LOCK:
+            current = load_tool_backing(folder)
+        result = backing_vocals.prepare(current, folder, job, 'auto', beat_name=TOOL_BEAT)
+        with LOCK:
+            job.check()
+            save_tool_backing(folder, result)
+            status = backing_vocals.status({'backing_vocals': result}, folder, beat_name=TOOL_BEAT)
+        return {'status': status, 'mix': f'/api/tools/{identifier}/beat_backing'}
+
+    with LOCK:
+        if any(j.kind == 'tool-backing' and getattr(j, 'tool_id', None) == identifier and
+               j.state in ('queued', 'running') for j in JOBS.values()):
+            raise ValueError('Bản tách này đang được xử lý.')
+        return task(pid, 'tool-backing', work, tool_id=identifier)
+
+
+@app.post('/api/tools/<identifier>/backing-review')
+def review_tool_backing(identifier):
+    accepted = (request.get_json(silent=True) or {}).get('accepted')
+    if type(accepted) is not bool:
+        raise ValueError('Lựa chọn xác nhận giọng bè không hợp lệ.')
+    folder = separation_folder(identifier)
+    with LOCK:
+        current = load_tool_backing(folder)
+        if backing_vocals.status(current, folder, beat_name=TOOL_BEAT) != 'review':
+            raise ValueError('Hãy tách và nghe thử giọng bè trước.')
+        result = current['backing_vocals']
+        result.update(confirmed=accepted, rejected=not accepted)
+        save_tool_backing(folder, result)
+    return jsonify({'status': 'ready' if accepted else 'weak'})
+
+
+_PITCH_LOCKS_GUARD = threading.Lock()
+_PITCH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _render_pitch_fast(src_wav: Path, dst_wav: Path, pitch: int):
+    import subprocess
+    with _PITCH_LOCKS_GUARD:
+        lock = _PITCH_LOCKS.setdefault(str(dst_wav), threading.Lock())
+    with lock:
+        if dst_wav.is_file() and dst_wav.stat().st_mtime >= src_wav.stat().st_mtime:
+            return
+        factor = 2.0 ** (pitch / 12.0)
+        af = (f"rubberband=pitch={factor:.6f}:transients=crisp:phase=laminar:"
+              f"formant=preserved:pitchq=quality:smoothing=on:channels=together")
+        tmp_out = dst_wav.with_name(f"{dst_wav.stem}.{uuid.uuid4().hex[:8]}.tmp.wav")
+        try:
+            subprocess.run([engine.binary("ffmpeg"), "-y", "-v", "error", "-i", str(src_wav),
+                            "-af", af, "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", str(tmp_out)],
+                           check=True, creationflags=engine.CREATE_NO_WINDOW)
+            tmp_out.replace(dst_wav)
+        finally:
+            tmp_out.unlink(missing_ok=True)
+
+
+def _render_pitch_r3(src_wav: Path, dst_wav: Path, pitch: int):
+    import subprocess
+    with _PITCH_LOCKS_GUARD:
+        lock = _PITCH_LOCKS.setdefault(str(dst_wav), threading.Lock())
+    with lock:
+        if dst_wav.is_file() and dst_wav.stat().st_mtime >= src_wav.stat().st_mtime:
+            return
+        r3_exe = engine.ROOT / "tools" / "rubberband" / "rubberband-4.0.0-gpl-executable-windows" / "rubberband-r3.exe"
+        tmp_out = dst_wav.with_name(f"{dst_wav.stem}.{uuid.uuid4().hex[:8]}.tmp.wav")
+        try:
+            if r3_exe.is_file():
+                subprocess.run([str(r3_exe), "-q", "-p", str(pitch), "--formant", str(src_wav), str(tmp_out)],
+                               check=True, creationflags=engine.CREATE_NO_WINDOW)
+            else:
+                _render_pitch_fast(src_wav, tmp_out, pitch)
+                return
+            tmp_out.replace(dst_wav)
+        finally:
+            tmp_out.unlink(missing_ok=True)
+
+
+def _get_pitched_audio(src_wav: Path, out_dir: Path, pitch: int, prefer_fast_preview: bool) -> Path:
+    r3_path = out_dir / f"{src_wav.stem}_r3_pitch_{pitch:+d}.wav"
+    if r3_path.is_file() and r3_path.stat().st_mtime >= src_wav.stat().st_mtime:
+        return r3_path
+    if prefer_fast_preview:
+        fast_path = out_dir / f"{src_wav.stem}_rb_pitch_{pitch:+d}.wav"
+        _render_pitch_fast(src_wav, fast_path, pitch)
+        threading.Thread(target=lambda: _render_pitch_r3(src_wav, r3_path, pitch), daemon=True).start()
+        return fast_path
+    _render_pitch_r3(src_wav, r3_path, pitch)
+    return r3_path
+
+
 @app.get('/api/tools/<identifier>/<stem>')
 def separated_audio(identifier, stem):
-    if not re.fullmatch(r'[0-9a-f]{32}', identifier) or stem not in ('beat', 'vocals'):
+    folder = separation_folder(identifier)
+    if stem in ('beat', 'vocals'):
+        path = folder / (TOOL_BEAT if stem == 'beat' else 'vocals.wav')
+    elif stem in ('backing', 'beat_backing'):
+        with LOCK:
+            current = load_tool_backing(folder)
+            status = backing_vocals.status(current, folder, beat_name=TOOL_BEAT)
+            preview = stem == 'beat_backing' and request.args.get('preview') == '1'
+            if status != 'ready' and not (preview and status == 'review'):
+                raise FileNotFoundError('Chưa có bản bè đã xác nhận.')
+            path = folder / backing_vocals.STEM_FILE if stem == 'backing' else backing_vocals.mix_file(current, folder)
+    else:
         raise ValueError('File không hợp lệ.')
-    name = 'reference_instrumental.wav' if stem == 'beat' else 'vocals.wav'
-    return send_file(engine.DATA / 'tools' / identifier / name, as_attachment=True, download_name=stem + '.wav')
+    raw_pitch = request.args.get('pitch', '0')
+    try:
+        pitch = max(-12, min(12, int(float(raw_pitch))))
+    except (TypeError, ValueError):
+        pitch = 0
+    dl_name = stem + '.wav'
+    if pitch != 0 and path and path.is_file():
+        is_preview = request.args.get('preview') == '1'
+        path = _get_pitched_audio(path, folder, pitch, prefer_fast_preview=is_preview)
+        dl_name = f"{stem}_{pitch:+d}st.wav"
+    return send_file(path, as_attachment=request.args.get('preview') != '1', download_name=dl_name, conditional=True)
 
 
 def directory(pid):
@@ -153,11 +362,20 @@ def directory(pid):
 
 def load(pid):
     with LOCK:
-        return json.loads((directory(pid) / "project.json").read_text(encoding="utf-8"))
+        project = json.loads((directory(pid) / "project.json").read_text(encoding="utf-8"))
+        words = project.get("words", [])
+        if project.get("schema", 1) < 2 or any(not word.get("id") or not word.get("line_uid") for word in words):
+            project["words"] = validate_words(words)
+            project["schema"] = 2
+            save(project)
+        return project
 
 
 def save(project):
     with LOCK:
+        project["schema"] = 2
+        project["words"] = validate_words(project.get("words", []))
+        project["scenes"] = scene_tools.validate(project.get("scenes", []))
         project["updated_at"] = time.time()
         dest = engine.DATA / "projects" / project["id"] / "project.json"
         temp = dest.with_suffix(".tmp")
@@ -168,35 +386,47 @@ def save(project):
 def public(project):
     result = deepcopy(project)
     result["settings"] = validate_settings(project.get("settings", {}))
+    project_dir = engine.DATA / "projects" / project["id"]
+    result["scenes"] = scene_tools.public(project.get("scenes", []), project_dir)
     result["beat_words"] = beat_words(project)
-    result["vocals_ready"] = (engine.DATA / "projects" / project["id"] / "vocals.wav").is_file()
+    result["vocals_ready"] = (project_dir / "vocals.wav").is_file()
+    result["backing_ready"] = (project_dir / "backing.wav").is_file()
+    result["backing_status"] = backing_vocals.status(project, project_dir)
     if result['vocals_ready'] and not result.get('vocals'):
         result['vocals']={'name':'Vocal riêng',**engine.waveform(engine.DATA/'projects'/project['id']/'vocals.wav')}
+    if result['backing_ready'] and not result.get('backing'):
+        result['backing']={'name':'Giọng bè',**engine.waveform(project_dir/'backing.wav')}
     return result
 
 
 def idle(pid):
     with LOCK:
-        if any(j.project_id == pid and j.state in ("queued", "running") for j in JOBS.values()):
+        if any(j.project_id == pid and j.state in ("queued", "running") and
+               j.kind not in ("render", "batch-render") for j in JOBS.values()):
             raise ValueError("Project đang xử lý. Hãy chờ xong hoặc hủy tác vụ trước.")
 
 
-def task(pid, kind, fn):
+def task(pid, kind, fn, *, tool_id=None):
     with LOCK:
         idle(pid)
-        job = engine.Job(uuid.uuid4().hex, pid, kind)
+        job = engine.Job(uuid.uuid4().hex, pid, kind, on_change=persist_job)
+        job.tool_id = tool_id
         JOBS[job.id] = job
+        persist_job(job)
     def work():
         try:
             job.check()
             job.state = "running"
+            persist_job(job)
             result = fn(job)
             job.check()
             with job._lock:
                 job.result = result
                 job.state, job.progress, job.message = "done", 100, "Hoàn tất"
+            persist_job(job)
         except engine.Cancelled:
             job.state, job.message = "cancelled", "Đã hủy tác vụ."
+            persist_job(job)
         except Exception as exc:
             import traceback
             traceback.print_exc()
@@ -204,8 +434,48 @@ def task(pid, kind, fn):
                 job.state, job.message = "cancelled", "Đã hủy tác vụ."
             else:
                 job.state, job.message = "error", str(exc)[-4500:]
+            persist_job(job)
     POOL.submit(work)
     return jsonify(job.public()), 202
+
+
+def start_batch_job(record):
+    owner = record["owner"]
+    single_render = record.get("mode") == "single-render"
+    job = engine.Job(record["job_id"], owner,
+                     "render" if single_render else "batch-render", on_change=persist_job)
+    with LOCK:
+        existing = JOBS.get(job.id)
+        if existing and existing.state in ("queued", "running"):
+            return existing
+        JOBS[job.id] = job
+        persist_job(job)
+    def work():
+        try:
+            job.state = "running"
+            persist_job(job)
+            result = batch_render.run(engine.DATA, record["id"], job, recognize_batch_snapshot)
+            if single_render:
+                saved = batch_render.load_record(engine.DATA, record["id"])
+                item = saved["items"][0]
+                if item.get("status") != "done":
+                    raise RuntimeError(item.get("error") or "Không dựng được video.")
+                result = item["result"]
+            with job._lock:
+                job.result = result
+                job.state, job.progress = "done", 100
+                job.message = "Dựng video hoàn tất" if single_render else "Hoàn tất hàng đợi dựng video"
+            persist_job(job)
+        except engine.Cancelled:
+            batch_render.set_status(engine.DATA, record["id"], "cancelled")
+            job.state, job.message = "cancelled", "Đã dừng hàng đợi. Có thể tiếp tục từ project chưa xong."
+            persist_job(job)
+        except Exception as error:
+            batch_render.set_status(engine.DATA, record["id"], "error")
+            job.state, job.message = "error", str(error)[-3000:]
+            persist_job(job)
+    POOL.submit(work)
+    return job
 
 
 @app.before_request
@@ -244,14 +514,20 @@ def index():
 def health():
     deps = {}
     import importlib.util
-    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "yt_dlp"):
+    for name in ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa"):
         deps[name] = importlib.util.find_spec(name) is not None
+    deps["yt_dlp"] = media_tools.youtube_available()
     for name in ("ffmpeg", "ffprobe"):
         try:
             deps[name] = bool(engine.binary(name))
         except RuntimeError:
             deps[name] = False
-    return jsonify(ok=all(deps.values()), dependencies=deps, version="0.3.0")
+    # FFmpeg verifies render output when ffprobe is unavailable; yt-dlp only
+    # enables the optional YouTube URL import path.
+    core = ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "ffmpeg")
+    optional_missing = [name for name in ("ffprobe", "yt_dlp") if not deps[name]]
+    return jsonify(ok=all(deps[name] for name in core), dependencies=deps,
+                   optional_missing=optional_missing, version="0.3.0")
 
 
 @app.get("/api/hardware")
@@ -261,9 +537,35 @@ def get_hardware():
 
 @app.get('/api/fonts')
 def fonts():
+    if request.args.get('catalog') == '1':
+        bundled = bundled_fonts()
+        families = {item['family'] for item in bundled}
+        return jsonify(bundled=bundled,
+                       system=[name for name in layout.vietnamese_fonts() if name not in families],
+                       encodings={'vni':vni_table(), 'tcvn3':tcvn_table()},
+                       icons={role:[{'file':name, 'label':label, 'url':asset_url('ICON/'+name)}
+                                    for name,label in choices] for role,choices in ICON_CHOICES.items()})
     if request.args.get('vietnamese') == '1':
         return jsonify(layout.vietnamese_fonts())
     return jsonify(sorted(set(item[0] for item in layout.font_catalog()), key=str.casefold))
+
+
+@app.get('/api/assets/source/<path:filename>')
+def source_asset(filename):
+    return send_from_directory(ASSET_ROOT, filename)
+
+
+@app.get('/api/fonts/bundled.css')
+def bundled_font_css():
+    rules = []
+    # Use the same preferred bold face as layout measurement and ASS karaoke.
+    for family in sorted({item['family'] for item in bundled_fonts()}):
+        for italic in (False, True):
+            chosen, _ = layout.resolve_font(family, italic)
+            relative = Path(chosen[2]).relative_to(ASSET_ROOT).as_posix()
+            rules.append('@font-face{font-family:'+json.dumps(family)+';src:url('+json.dumps(asset_url(relative))
+                         +');font-weight:100 900;font-style:'+('italic' if italic else 'normal')+';font-display:block;}')
+    return app.response_class('\n'.join(rules), mimetype='text/css')
 
 
 @app.post('/api/layout')
@@ -271,10 +573,25 @@ def get_layout():
     data=request.get_json()
     project={'settings':validate_settings(data.get('settings',{})),
              'words':validate_words(data.get('words',[])), 'anchors':validate_anchors(data.get('anchors',[])),
-             'beat':data.get('beat')}
+             'beat':data.get('beat'), 'scenes':scene_tools.validate(data.get('scenes',[]))}
     if project['beat']:
         project['beat']={'duration':max(0,finite(project['beat']['duration']))}
-    return jsonify(layout.display_plan(project))
+    result=layout.display_plan(project)
+    project_id=data.get('project_id')
+    if project_id:
+        path=directory(project_id)
+        scene_overlays=scene_tools.apply_readability(result,project,path)
+        version=(path/'project.json').stat().st_mtime_ns
+        result['scene_overlays']=[{key:value for key,value in scene.items()
+                                   if key not in ('image_path','decoration_path')} |
+                                  {'url':(f"/api/projects/{project_id}/scenes/{scene['id']}/image?v={version}"
+                                          if scene['image_ready'] else ''),
+                                   'decoration_url':(f"/api/projects/{project_id}/scenes/{scene['id']}/decoration?v={version}"
+                                                     if scene['decoration_ready'] else '')}
+                                  for scene in scene_overlays]
+    else:
+        result['scene_overlays']=[]
+    return jsonify(result)
 
 
 @app.post('/api/projects/<pid>/autosplit')
@@ -337,9 +654,9 @@ def new_project():
     pid = uuid.uuid4().hex
     path = engine.DATA / "projects" / pid
     path.mkdir(parents=True, exist_ok=True)
-    project = {"id": pid, "schema": 1, "name": str(data.get("name", "Bài karaoke mới"))[:150],
+    project = {"id": pid, "schema": 2, "name": str(data.get("name", "Bài karaoke mới"))[:150],
                "reference": None, "beat": None, "words": [], "anchors": [],
-               "settings": deepcopy(DEFAULT_SETTINGS), "text": "", "alignment": None}
+               "settings": deepcopy(DEFAULT_SETTINGS), "text": "", "alignment": None, "scenes": []}
     save(project)
     return jsonify(public(project)), 201
 
@@ -347,9 +664,23 @@ def new_project():
 @app.get("/api/projects/<pid>")
 def get_project(pid):
     project = public(load(pid))
-    project["job"] = next((j.public() for j in JOBS.values() if j.project_id == pid and
-                           j.state in ("queued", "running")), None)
+    active_jobs = [j for j in JOBS.values() if j.project_id == pid and
+                   j.state in ("queued", "running")]
+    project["job"] = next((j.public() for j in active_jobs if j.kind != "render"),
+                          next((j.public() for j in active_jobs), None))
+    latest_job = next(iter(sorted((item for item in JOBS.values() if item.project_id == pid),
+                                  key=lambda item: getattr(item, "updated_at", 0), reverse=True)), None)
+    project["interrupted_job"] = (latest_job.public() if latest_job and
+                                  latest_job.state == "interrupted" else None)
     return jsonify(project)
+
+
+@app.get("/api/projects/<pid>/jobs")
+def project_jobs(pid):
+    directory(pid)
+    jobs = sorted((j for j in JOBS.values() if j.project_id == pid),
+                  key=lambda item: getattr(item, "updated_at", 0), reverse=True)
+    return jsonify([j.public() for j in jobs[:50]])
 
 
 @app.patch("/api/projects/<pid>")
@@ -368,8 +699,35 @@ def update_project(pid):
             project["anchors"] = validate_anchors(data["anchors"])
         if "settings" in data:
             project["settings"] = validate_settings(data["settings"], project["settings"])
+        if "scenes" in data:
+            project["scenes"] = scene_tools.validate(data["scenes"])
         save(project)
     return jsonify(public(project))
+
+
+@app.get("/api/projects/<pid>/versions")
+def get_project_versions(pid):
+    return jsonify(project_archive.list_versions(directory(pid)))
+
+
+@app.post("/api/projects/<pid>/versions")
+def create_project_version(pid):
+    idle(pid)
+    data = request.get_json(silent=True) or {}
+    record = project_archive.create_version(directory(pid), load(pid), data.get("note", ""))
+    return jsonify(record), 201
+
+
+@app.post("/api/projects/<pid>/versions/<identifier>/restore")
+def restore_project_version(pid, identifier):
+    idle(pid)
+    path = directory(pid)
+    current = load(pid)
+    previous = project_archive.create_version(path, current, "Tự lưu trước khi khôi phục phiên bản")
+    restored = project_archive.restore_version(path, identifier)
+    restored["id"] = pid
+    save(restored)
+    return jsonify({**public(load(pid)), "previous_version_id": previous["id"]})
 
 
 @app.post("/api/projects/<pid>/media/<slot>")
@@ -391,7 +749,9 @@ def media_upload(pid, slot):
         raise ValueError("Định dạng file chưa được hỗ trợ.")
     incoming = path / ("incoming_" + uuid.uuid4().hex + ext)
     file.save(incoming)
+    previous = project_archive.create_version(path, load(pid), f"Trước khi thay nguồn {slot}")
     def work(job):
+        relinked = False
         try:
             job.update(5, "Đang chuẩn bị file âm thanh…" if slot != "background" else "Đang chuẩn bị ảnh nền…")
             if slot in ('countdown', 'logo'):
@@ -402,33 +762,39 @@ def media_upload(pid, slot):
                     image.thumbnail((2048,2048) if slot == 'logo' else (512,512))
                     image.save(destination,'PNG')
                 job.check()
-                destination.replace(path/f'{slot}.png')
                 project=load(pid)
+                relinked=_matches_missing_media(project,slot,destination)
+                destination.replace(path/f'{slot}.png')
                 project[f'{slot}_name']=filename
-                if slot == 'logo':
+                if slot == 'logo' and not relinked:
                     project['logo_version']=uuid.uuid4().hex
                     project['logo_image']={'width':image.width,'height':image.height}
-                project['settings']=validate_settings({'logo_enabled':True} if slot == 'logo' else {'countdown':'image'},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'logo_enabled':True} if slot == 'logo' else {'countdown':'image'},project['settings'])
             elif slot == 'background' and ext in media_tools.VIDEO_EXTENSIONS:
                 metadata=media_tools.probe_video(incoming)
+                project=load(pid)
+                relinked=_matches_missing_media(project,slot,incoming)
                 proxy=path/'background_preview_next.mp4'
                 media_tools.make_proxy(incoming,proxy,job)
                 job.check()
                 proxy.replace(path/'background_preview.mp4')
                 source_file='background_source'+ext
                 incoming.replace(path/source_file)
-                project=load(pid)
                 project['background_video']={'name':filename,'source_file':source_file,'preview_file':'background_preview.mp4',**metadata}
-                project['settings']=validate_settings({'background_type':'video'},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'background_type':'video'},project['settings'])
             elif slot == "background":
                 destination = path / "background_next.jpg"
                 engine.command([engine.binary("ffmpeg"), "-y", "-v", "error", "-i", incoming,
                                 "-frames:v", "1", "-update", "1", destination], job)
                 job.check()
-                destination.replace(path / "background.jpg")
                 project = load(pid)
+                relinked=_matches_missing_media(project,slot,destination)
+                destination.replace(path / "background.jpg")
                 project["background_name"] = filename
-                project['settings']=validate_settings({'background_type':'image','use_background':True},project['settings'])
+                if not relinked:
+                    project['settings']=validate_settings({'background_type':'image','use_background':True},project['settings'])
             else:
                 video=None
                 if ext in media_tools.VIDEO_EXTENSIONS:
@@ -440,28 +806,33 @@ def media_upload(pid, slot):
                 engine.convert(incoming, temporary, job)
                 metadata = {"name": filename, **engine.waveform(temporary)}
                 job.check()
+                project = load(pid)
+                relinked = _matches_missing_media(project, slot, temporary)
+                was_missing = bool((project.get("missing_media") or {}).get(slot))
+                had_reference = bool(project.get("reference") or (project.get("missing_media") or {}).get("reference"))
+                replaced_existing = bool(project.get(slot) or was_missing)
                 temporary.replace(path / f"{slot}.wav")
                 if video:
                     proxy.replace(path/video['preview_file'])
                     incoming.replace(path/video['source_file'])
                     metadata['video']=video
-                project = load(pid)
-                had_reference = bool(project.get("reference"))
-                replaced_existing = bool(project.get(slot))
                 project[slot] = metadata
-                if replaced_existing:
-                    project["anchors"] = []
-                project["alignment"] = None
-                if slot == "reference":
-                    project.pop('vocals',None)
-                    if had_reference:
-                        project["words"] = []
-                    for old in ("vocals.wav", "reference_instrumental.wav"):
-                        (path / old).unlink(missing_ok=True)
+                if not relinked:
+                    if replaced_existing:
+                        project["anchors"] = []
+                    project["alignment"] = None
+                    if slot == "reference":
+                        project.pop('vocals',None)
+                        if had_reference:
+                            project["words"] = []
+                        for old in ("vocals.wav", "reference_instrumental.wav"):
+                            (path / old).unlink(missing_ok=True)
                 if project["name"] == "Bài karaoke mới":
                     project["name"] = Path(filename).stem[:150]
+            if isinstance(project.get("missing_media"), dict):
+                project["missing_media"].pop(slot, None)
             save(project)
-            return {"project_id": pid}
+            return {"project_id": pid, "relinked": relinked, "slot": slot, "previous_version_id": previous["id"]}
         finally:
             incoming.unlink(missing_ok=True)
     try:
@@ -471,11 +842,187 @@ def media_upload(pid, slot):
         raise
 
 
+def _matches_missing_media(project, slot, media_path):
+    expected = (project.get("missing_media") or {}).get(slot, {}).get("fingerprint")
+    if not isinstance(expected, dict):
+        return False
+    try:
+        stat = media_path.stat()
+        if stat.st_size != int(expected.get("size", -1)):
+            return False
+        digest = str(expected.get("sha256", ""))
+        return bool(re.fullmatch(r"[0-9a-f]{64}", digest) and project_archive.sha256(media_path) == digest)
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 @app.get("/api/projects/<pid>/audio/<slot>")
 def audio(pid, slot):
-    if slot not in ("reference", "beat", "vocals"):
+    path_dir = directory(pid)
+    if slot == "beat_backing":
+        with LOCK:
+            project = load(pid)
+            if (backing_vocals.status(project, path_dir) not in ("review", "ready") or
+                    request.args.get("v", project["backing_vocals"]["mix"]) != project["backing_vocals"]["mix"]):
+                raise FileNotFoundError("Chưa có bản beat + bè phù hợp với nguồn và mốc hiện tại.")
+            wav_path = backing_vocals.mix_file(project, path_dir)
+    elif slot in ("reference", "beat", "vocals", "backing"):
+        wav_path = path_dir / f"{slot}.wav"
+    else:
         raise ValueError("Track không hợp lệ.")
-    return send_file(directory(pid) / f"{slot}.wav", conditional=True)
+    raw_pitch = request.args.get("pitch", "0")
+    try:
+        pitch = max(-12, min(12, int(float(raw_pitch))))
+    except (TypeError, ValueError):
+        pitch = 0
+    if pitch != 0 and wav_path and wav_path.is_file():
+        wav_path = _get_pitched_audio(wav_path, path_dir, pitch, prefer_fast_preview=True)
+    return send_file(wav_path, conditional=True)
+
+
+@app.post("/api/projects/<pid>/quick-start")
+def quick_start_project(pid):
+    idle(pid)
+    path = directory(pid)
+    payload = request.get_json(silent=True) or {}
+    youtube_url = str(payload.get("youtube_url") or request.form.get("youtube_url") or "").strip()
+    has_lyrics_raw = payload.get("has_lyrics", request.form.get("has_lyrics", "1"))
+    has_lyrics = str(has_lyrics_raw).lower() not in ("0", "false", "no")
+    model = str(payload.get("model") or request.form.get("model") or "medium")
+    language = str(payload.get("language") or request.form.get("language") or "vi")
+    raw_dev = str(payload.get("device") or request.form.get("device") or "auto").lower()
+    preference = "cpu" if raw_dev == "cpu" else "auto"
+    raw_bmodel = str(payload.get("backing_model") or request.form.get("backing_model") or backing_vocals.DEFAULT_MODEL)
+    backing_model = backing_vocals.validate_model(raw_bmodel)
+    incoming = None
+    filename = "YouTube"
+    if not youtube_url:
+        file = request.files.get("file")
+        if not file or not file.filename:
+            raise ValueError("Hãy chọn file nhạc/video hoặc nhập link YouTube.")
+        filename = Path(file.filename).name
+        ext = Path(filename).suffix.lower()
+        incoming = path / f"quickstart_in_{uuid.uuid4().hex}{ext}"
+        file.save(incoming)
+
+    def work(job):
+        downloaded = None
+        try:
+            source_path = incoming
+            source_name = filename
+            if youtube_url:
+                job.update(4, "Đang tải nhạc/video từ YouTube…")
+                downloaded = media_tools.download_youtube(youtube_url, path, job)
+                source_path = downloaded
+                source_name = downloaded.name
+            ext = source_path.suffix.lower()
+            bg_video = None
+            if ext in media_tools.VIDEO_EXTENSIONS:
+                job.update(10, "Đang chuẩn bị video nền…")
+                info = media_tools.probe_video(source_path)
+                proxy = path / "background_preview_next.mp4"
+                media_tools.make_proxy(source_path, proxy, job)
+                proxy.replace(path / "background_preview.mp4")
+                bg_src = "background_source" + ext
+                shutil.copy2(source_path, path / bg_src)
+                bg_video = {"name": source_name, "source_file": bg_src, "preview_file": "background_preview.mp4", **info}
+            job.update(18, "Đang trích xuất âm thanh gốc…")
+            engine.convert(source_path, path / "reference.wav", job)
+            ref_meta = {"name": source_name, **engine.waveform(path / "reference.wav")}
+            device = hardware.select_ai(preference=preference)["demucs"]
+            job.update(26, "Đang tách Nhạc nền (Beat) và Giọng hát (Vocal)…")
+            engine.separate(path / "reference.wav", path, job, device)
+            shutil.copy2(path / "reference_instrumental.wav", path / "beat.wav")
+            beat_meta = {"name": "Nhạc nền · " + source_name, **engine.waveform(path / "beat.wav")}
+            voc_meta = {"name": "Giọng hát · " + source_name, **engine.waveform(path / "vocals.wav")}
+            with LOCK:
+                current = load(pid)
+                if current["name"] == "Bài karaoke mới":
+                    current["name"] = Path(source_name).stem[:150]
+                current["reference"] = ref_meta
+                current["beat"] = beat_meta
+                current["vocals"] = voc_meta
+                if bg_video:
+                    current["background_video"] = bg_video
+                    current["settings"] = validate_settings({"background_type": "video"}, current["settings"])
+                current["words"] = []
+                current["anchors"] = []
+                save(current)
+            job.update(58, "Đang tách Giọng bè (Backing vocal)…")
+            try:
+                with LOCK:
+                    snap = load(pid)
+                backing_res = backing_vocals.prepare(snap, path, job, preference, model=backing_model)
+                backing_res["confirmed"] = True
+                with LOCK:
+                    current = load(pid)
+                    current["backing_vocals"] = backing_res
+                    if (path / "backing.wav").is_file():
+                        current["backing"] = {"name": "Giọng bè · " + source_name, **engine.waveform(path / "backing.wav")}
+                    save(current)
+            except Exception as exc:
+                app.logger.warning("Backing vocal separation skipped: %s", exc)
+            if has_lyrics:
+                job.update(78, "Đang nhận diện lời bài hát và tự căn từ…")
+                result, _ = recognize_cached(path, job, model, language, "", preference)
+                with LOCK:
+                    current = load(pid)
+                    current["words"] = validate_words(result["words"])
+                    current["text"] = result["text"]
+                    save(current)
+            return {"project_id": pid}
+        finally:
+            if incoming:
+                incoming.unlink(missing_ok=True)
+            if downloaded:
+                downloaded.unlink(missing_ok=True)
+
+    return task(pid, "quick-start", work)
+
+
+@app.post("/api/projects/<pid>/backing")
+def prepare_backing(pid):
+    preference = (request.get_json(silent=True) or {}).get("device", "auto")
+    if preference not in ("auto", "cpu"):
+        raise ValueError("Thiết bị phải là auto hoặc cpu.")
+    with LOCK:
+        project = load(pid)
+        path = directory(pid)
+        if not project.get("beat") or not (path / "beat.wav").is_file():
+            raise ValueError("Hãy nạp beat trước khi tách bè.")
+        if not any((path / name).is_file() for name in ("reference.wav", "vocals.wav")):
+            raise ValueError("Hãy nạp bản hát tham chiếu để tách bè.")
+
+        def work(job):
+            result = backing_vocals.prepare(project, path, job, preference)
+            with LOCK:
+                job.check()
+                current = load(pid)
+                current["backing_vocals"] = result
+                save(current)
+                backing_vocals.discard_old_mixes(current, path)
+            return {"backing_status": backing_vocals.status(current, path)}
+
+        return task(pid, "backing", work)
+
+
+@app.post("/api/projects/<pid>/backing/review")
+def review_backing(pid):
+    data = request.get_json(silent=True) or {}
+    accepted = data.get("accepted")
+    if type(accepted) is not bool:
+        raise ValueError("Lựa chọn xác nhận giọng bè không hợp lệ.")
+    with LOCK:
+        idle(pid)
+        project = load(pid)
+        if (backing_vocals.status(project, directory(pid)) != "review" or
+                data.get("mix") != project["backing_vocals"]["mix"]):
+            raise ValueError("Bản bè đã thay đổi. Hãy nghe thử bản mới.")
+        project["backing_vocals"]["confirmed"] = accepted
+        if not accepted:
+            project["backing_vocals"]["rejected"] = True
+        save(project)
+        return jsonify(public(project))
 
 
 @app.get("/api/projects/<pid>/background")
@@ -533,29 +1080,428 @@ def video_reference(pid):
     return task(pid,'upload',work)
 
 
+def _save_scene_artwork(pid, scene_id, decoration=False):
+    path = directory(pid)
+    target_name = (scene_tools.decoration_media_name(scene_id) if decoration
+                   else scene_tools.media_name(scene_id))
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        raise ValueError("Hãy chọn ảnh trang trí cho cảnh." if decoration else "Hãy chọn ảnh nền cho cảnh.")
+    extension = Path(uploaded.filename).suffix.lower()
+    if extension not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise ValueError("Ảnh cảnh chỉ nhận PNG, JPG hoặc WebP.")
+    project = load(pid)
+    scene = next((item for item in project.get("scenes", []) if item.get("id") == scene_id), None)
+    if not scene:
+        raise ValueError("Hãy tạo cảnh cho phân đoạn trước khi nạp ảnh.")
+    if uploaded.content_length and uploaded.content_length > 150 * 1024 ** 2:
+        raise ValueError("Ảnh cảnh vượt quá giới hạn 150 MB.")
+    destination = path / target_name
+    temporary = path / (target_name + ".next")
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(uploaded.stream) as source:
+            if source.width * source.height > 60_000_000:
+                raise ValueError("Ảnh cảnh vượt quá giới hạn 60 megapixel.")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+            image.thumbnail((8192, 8192))
+            image.save(temporary, "PNG", optimize=True)
+    except ValueError:
+        temporary.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        temporary.unlink(missing_ok=True)
+        raise ValueError("Không đọc được ảnh cảnh. Hãy chọn một file ảnh hợp lệ.") from exc
+    try:
+        if destination.is_file():
+            project_archive.create_version(path, project,
+                                           "Trước khi thay ảnh trang trí" if decoration else "Trước khi thay ảnh cảnh")
+        temporary.replace(destination)
+        project["scenes"] = scene_tools.validate(project.get("scenes", []))
+        save(project)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+@app.post("/api/projects/<pid>/scenes/<scene_id>/image")
+def upload_scene_image(pid, scene_id):
+    idle(pid)
+    _save_scene_artwork(pid, scene_id)
+    return jsonify(public(load(pid)))
+
+
+@app.post("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def upload_scene_decoration(pid, scene_id):
+    idle(pid)
+    _save_scene_artwork(pid, scene_id, decoration=True)
+    return jsonify(public(load(pid)))
+
+
+@app.delete("/api/projects/<pid>/scenes/<scene_id>")
+def delete_scene(pid, scene_id):
+    idle(pid)
+    path = directory(pid)
+    name = scene_tools.media_name(scene_id)
+    project = load(pid)
+    if not any(scene.get("id") == scene_id for scene in project.get("scenes", [])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    project_archive.create_version(path, project, "Trước khi bỏ cảnh nền")
+    project["scenes"] = [scene for scene in project.get("scenes", []) if scene.get("id") != scene_id]
+    save(project)
+    return jsonify(public(load(pid)))
+
+
+@app.get("/api/projects/<pid>/scenes/<scene_id>/image")
+def get_scene_image(pid, scene_id):
+    path = directory(pid)
+    name = scene_tools.media_name(scene_id)
+    if not any(scene.get("id") == scene_id for scene in load(pid).get("scenes", [])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image = path / name
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh nền.")
+    return send_file(image, mimetype="image/png", conditional=True)
+
+
+@app.delete("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def delete_scene_decoration(pid, scene_id):
+    idle(pid)
+    path=directory(pid)
+    project=load(pid)
+    if not any(item.get("id")==scene_id for item in project.get("scenes",[])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image=path/scene_tools.decoration_media_name(scene_id)
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh trang trí.")
+    project_archive.create_version(path,project,"Trước khi bỏ ảnh trang trí")
+    image.unlink()
+    return jsonify(public(load(pid)))
+
+
+@app.get("/api/projects/<pid>/scenes/<scene_id>/decoration")
+def get_scene_decoration(pid, scene_id):
+    path=directory(pid)
+    if not any(item.get("id")==scene_id for item in load(pid).get("scenes",[])):
+        raise FileNotFoundError("Không tìm thấy cảnh.")
+    image=path/scene_tools.decoration_media_name(scene_id)
+    if not image.is_file():
+        raise FileNotFoundError("Cảnh chưa có ảnh trang trí.")
+    return send_file(image,mimetype="image/png",conditional=True)
+
+
+def recognize_cached(path, job, model, language, lyrics, preference, region=None):
+    """Reuse recognition only when source content and every analysis input match."""
+    reference = path / "reference.wav"
+    key = analysis_cache.cache_key(reference, model, language, lyrics, preference, region)
+    cached = analysis_cache.load(engine.DATA, key) if key else None
+    if cached:
+        job.check()
+        temporary = path / ("vocals_cache_next_" + uuid.uuid4().hex + ".wav")
+        try:
+            shutil.copy2(cached["vocals"], temporary)
+            job.check()
+            temporary.replace(path / "vocals.wav")
+        except OSError:
+            temporary.unlink(missing_ok=True)
+            cached = None
+        if cached:
+            job.record_device("demucs", {"device": "cache", "name": "Vocal dùng lại từ cache"})
+            job.record_device("whisper", {"device": "cache", "name": "Nhận lời dùng lại từ cache"})
+            job.update(95, "Đang nạp kết quả nhận lời đã lưu theo nguồn và thiết lập…")
+            return deepcopy(cached["result"]), True
+    result = engine.recognize(path, job, model, language, lyrics, preference, region=region)
+    job.check()
+    if key:
+        analysis_cache.store(engine.DATA, key, result, path / "vocals.wav")
+    return result, False
+
+
 @app.post("/api/projects/<pid>/analyze")
 def analyze(pid):
+    idle(pid)
     project = load(pid)
     if not project.get("reference"):
         raise ValueError("Hãy nạp bản có giọng hát tham chiếu.")
+    if any(word.get('locked') for word in project.get('words', [])):
+        raise ValueError('Mở khóa các câu đã khóa trước khi nhận lời và căn lại toàn bài.')
+    project_archive.create_version(directory(pid), project, "Trước khi AI nhận lời và căn toàn bài")
     options = request.get_json(silent=True) or {}
     lyrics = str(options.get("lyrics", ""))[:300000]
+    model, language, preference = (options.get("model", "medium"),
+                                   options.get("language", "vi"), options.get("device", "auto"))
+    return task(pid, "analyze", lambda job: analyze_project(pid, job, model, language, lyrics, preference))
+
+
+@app.post('/api/lyrics/search-web')
+def search_lyrics_web():
+    import concurrent.futures
+    import html as html_lib
+    import re
+    import urllib.parse
+    import urllib.request
+
+    payload = request.get_json(silent=True) or {}
+    query = str(payload.get('query') or '').strip()
+    if not query:
+        raise ValueError('Nhập tên bài hát hoặc ca sĩ để tìm lời.')
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VietKaraStudio/1.1'}
+
+    def fetch_json(url, timeout=8):
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8', 'replace'))
+
+    def from_lrclib():
+        out = []
+        try:
+            items = fetch_json('https://lrclib.net/api/search?q=' + urllib.parse.quote(query))
+            for item in (items if isinstance(items, list) else []):
+                plain = (item.get('plainLyrics') or '').strip()
+                synced = (item.get('syncedLyrics') or '').strip()
+                if not plain and not synced:
+                    continue
+                out.append({
+                    'source': 'LRCLIB',
+                    'trackName': item.get('trackName') or '',
+                    'artistName': item.get('artistName') or '',
+                    'duration': item.get('duration') or 0,
+                    'plainLyrics': plain,
+                    'syncedLyrics': synced,
+                })
+                if len(out) >= 6:
+                    break
+        except Exception:
+            pass
+        return out
+
+    def from_genius():
+        out = []
+        try:
+            data = fetch_json('https://genius.com/api/search/multi?per_page=5&q=' + urllib.parse.quote(query))
+            sections = (data.get('response') or {}).get('sections') or []
+            hits = []
+            for sec in sections:
+                if sec.get('type') in ('song', 'top_hit'):
+                    for h in sec.get('hits') or []:
+                        if h.get('type') == 'song' and h.get('result'):
+                            hits.append(h['result'])
+            seen_urls = set()
+            for res in hits[:3]:
+                song_url = res.get('url')
+                if not song_url or song_url in seen_urls:
+                    continue
+                seen_urls.add(song_url)
+                req = urllib.request.Request(song_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    page = resp.read().decode('utf-8', 'replace')
+                blocks = re.findall(r'<div[^>]+data-lyrics-container="true"[^>]*>(.*?)</div>', page, flags=re.S)
+                if not blocks:
+                    continue
+                text = '\n'.join(blocks)
+                text = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
+                text = re.sub(r'<[^>]+>', '', text)
+                text = html_lib.unescape(text).strip()
+                if text:
+                    out.append({
+                        'source': 'Genius',
+                        'trackName': res.get('title') or '',
+                        'artistName': res.get('artist_names') or '',
+                        'duration': 0,
+                        'plainLyrics': text,
+                        'syncedLyrics': '',
+                    })
+        except Exception:
+            pass
+        return out
+
+    def from_lyrics_ovh():
+        out = []
+        try:
+            data = fetch_json('https://api.lyrics.ovh/suggest/' + urllib.parse.quote(query))
+            for item in (data.get('data') or [])[:3]:
+                artist = (item.get('artist') or {}).get('name') or ''
+                title = item.get('title') or ''
+                if not artist or not title:
+                    continue
+                try:
+                    lyr = fetch_json(f'https://api.lyrics.ovh/v1/{urllib.parse.quote(artist)}/{urllib.parse.quote(title)}', timeout=6)
+                    plain = (lyr.get('lyrics') or '').strip()
+                    if plain:
+                        out.append({
+                            'source': 'Lyrics.ovh',
+                            'trackName': title,
+                            'artistName': artist,
+                            'duration': item.get('duration') or 0,
+                            'plainLyrics': plain,
+                            'syncedLyrics': '',
+                        })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return out
+
+    def from_youtube():
+        out = []
+        try:
+            import yt_dlp
+            opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extract_flat': False, 'writesubtitles': True, 'writeautomaticsub': True}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(f'ytsearch3:{query} lyrics', download=False)
+            for entry in (info.get('entries') or [])[:3]:
+                if not entry:
+                    continue
+                subs = entry.get('subtitles') or {}
+                auto = entry.get('automatic_captions') or {}
+                tracks = subs.get('vi') or subs.get('en') or auto.get('vi') or auto.get('en') or []
+                vtt = next((t for t in tracks if t.get('ext') == 'vtt' and t.get('url')), None)
+                if not vtt:
+                    continue
+                req = urllib.request.Request(vtt['url'], headers=headers)
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    raw = resp.read().decode('utf-8', 'replace')
+                lines = []
+                for ln in raw.splitlines():
+                    ln = re.sub(r'<[^>]+>', '', ln).strip()
+                    if not ln or ln.startswith(('WEBVTT', 'Kind:', 'Language:')) or '-->' in ln or ln.isdigit():
+                        continue
+                    if not lines or lines[-1] != ln:
+                        lines.append(ln)
+                text = '\n'.join(lines).strip()
+                if text:
+                    out.append({
+                        'source': 'YouTube',
+                        'trackName': entry.get('title') or '',
+                        'artistName': entry.get('uploader') or '',
+                        'duration': entry.get('duration') or 0,
+                        'plainLyrics': text,
+                        'syncedLyrics': '',
+                    })
+        except Exception:
+            pass
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = [pool.submit(fn) for fn in (from_lrclib, from_genius, from_lyrics_ovh, from_youtube)]
+        results = []
+        for f in futs:
+            results.extend(f.result())
+
+    return jsonify({'results': results})
+
+
+def recognize_batch_snapshot(project, path, job):
+    options = project["batch_recognition"]
+    result, _ = recognize_cached(path, job, options["model"], options["language"],
+                                 project.get("text", ""), "auto")
+    return validate_words(result["words"])
+
+
+def analyze_project(pid, job, model, language, lyrics, preference):
+    result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference)
+    job.check()
+    with LOCK:
+        current = load(pid)
+        current["words"] = validate_words(result["words"])
+        current["text"] = result["text"]
+        current['vocals']={'name':'Vocal · '+current['reference']['name'],**engine.waveform(directory(pid)/'vocals.wav')}
+        current["processing"] = {"devices": job.public()["devices"], "fallbacks": job.public()["fallbacks"],
+                                  "device": result["device"], "compute_type": result["compute_type"],
+                                  'alignment_diagnostics':result.get('alignment_diagnostics',{})}
+        save(current)
+    return {"project_id": pid, "words": len(current["words"]), "device": result.get("device", "cache"),
+            "device_name": result.get("device_name", "cache"),
+            "compute_type": result.get("compute_type", "cache"), "cache_hit": cache_hit}
+
+
+@app.post('/api/projects/<pid>/align-region')
+def align_region(pid):
+    idle(pid)
+    project = load(pid)
+    if not project.get('reference'):
+        raise ValueError('Hãy nạp bản có giọng hát tham chiếu.')
+    if not project.get('words'):
+        raise ValueError('Cần có lời đã căn trước khi căn lại một câu.')
+    options = request.get_json(silent=True) or {}
+    raw_ids = options.get('line_ids')
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 8:
+        raise ValueError('Chọn từ 1 đến 8 câu để căn lại.')
+    if any(type(value) is not int or value < 0 for value in raw_ids):
+        raise ValueError('Danh sách câu không hợp lệ.')
+    line_ids = list(dict.fromkeys(raw_ids))
+    line_order = list(dict.fromkeys(word['line'] for word in project['words']))
+    selected = {line_id: [word for word in project['words'] if word['line'] == line_id] for line_id in line_ids}
+    if any(not words for words in selected.values()):
+        raise ValueError('Không tìm thấy câu cần căn lại.')
+    if any(any(word.get('locked') for word in words) for words in selected.values()):
+        raise ValueError('Câu này đang khóa. Mở khóa trước khi căn lại.')
+    lyrics = '\n'.join(' '.join(word['text'] for word in selected[line_id]) for line_id in line_ids)
+    if sum(len(words) for words in selected.values()) > 500:
+        raise ValueError('Đoạn chọn quá dài. Hãy căn lại từng phần ngắn hơn.')
+    reference_duration = float(project['reference'].get('duration') or 0)
+    start = max(0., min(word['start'] for words in selected.values() for word in words) - 1.2)
+    end = max(word['end'] for words in selected.values() for word in words) + 1.2
+    if reference_duration:
+        end = min(reference_duration, end)
+    if end - start > 120:
+        raise ValueError('Đoạn căn lại dài hơn 2 phút. Hãy chọn ít câu hơn.')
+    if end - start < 1:
+        raise ValueError('Không đủ âm thanh quanh câu để căn lại.')
+    model, language, preference = (options.get('model', 'medium'),
+                                   options.get('language', 'vi'), options.get('device', 'auto'))
+
     def work(job):
-        result = engine.recognize(directory(pid), job, options.get("model", "medium"),
-                                  options.get("language", "vi"), lyrics, options.get("device", "auto"))
+        result, cache_hit = recognize_cached(directory(pid), job, model, language, lyrics, preference,
+                                             region={'start': start, 'end': end})
         job.check()
-        with LOCK:
-            current = load(pid)
-            current["words"] = validate_words(result["words"])
-            current["text"] = result["text"]
-            current['vocals']={'name':'Vocal · '+current['reference']['name'],**engine.waveform(directory(pid)/'vocals.wav')}
-            current["processing"] = {"devices": job.public()["devices"], "fallbacks": job.public()["fallbacks"],
-                                      "device": result["device"], "compute_type": result["compute_type"],
-                                      'alignment_diagnostics':result.get('alignment_diagnostics',{})}
-            save(current)
-        return {"project_id": pid, "words": len(current["words"]), "device": result["device"],
-                "device_name": result["device_name"], "compute_type": result["compute_type"]}
-    return task(pid, "analyze", work)
+        aligned = [[] for _ in line_ids]
+        for word in result['words']:
+            index = int(word.get('line', 0))
+            if index < 0 or index >= len(line_ids):
+                continue
+            line_id = line_ids[index]
+            source = selected[line_id][0]
+            word['line'] = line_id
+            word['role'] = source.get('role', 'all')
+            if type(source.get('row')) is int and source['row'] in range(6):
+                word['row'] = source['row']
+            aligned[index].append(word)
+        if any(not words for words in aligned):
+            raise RuntimeError('AI chưa căn đủ các câu đã chọn. Chia câu ngắn hơn rồi thử lại.')
+        replacements = {line_id: aligned[index] for index, line_id in enumerate(line_ids)}
+        line_words = {line_id: [] for line_id in line_order}
+        for word in project['words']:
+            if word['line'] not in replacements:
+                line_words.setdefault(word['line'], []).append(word)
+        for line_id, words in replacements.items():
+            line_words[line_id] = words
+        candidate = []
+        for line_id in line_order:
+            candidate.extend(sorted(line_words.get(line_id, []), key=lambda word: (word['start'], word['end'])))
+        candidate = validate_words(candidate)
+        old_words = [word for line_id in line_ids for word in selected[line_id]]
+        new_words = [word for line_id in line_ids for word in replacements[line_id]]
+        text_by_line = {}
+        for word in candidate:
+            text_by_line.setdefault(word['line'], []).append(word['text'])
+        text = '\n'.join(' '.join(tokens) for tokens in text_by_line.values())
+        return {'line_ids': line_ids, 'old_words': old_words, 'new_words': new_words,
+                'cache_hit': cache_hit,
+                'words': candidate, 'text': text, 'diagnostics': result.get('alignment_diagnostics', {})}
+    return task(pid, 'align-region', work)
+
+
+@app.post('/api/projects/<pid>/sync-suggest')
+def sync_suggest(pid):
+    idle(pid)
+    project = load(pid)
+    if not project.get('reference') or not project.get('beat'):
+        raise ValueError('Hãy nạp cả bản hát tham chiếu và beat trước khi dò đồng bộ.')
+    path = directory(pid)
+    if not (path / 'reference.wav').is_file() or not (path / 'beat.wav').is_file():
+        raise ValueError('Thiếu file âm thanh gốc để dò. Hãy nạp lại nguồn của project.')
+    return task(pid, 'sync-suggest', lambda job: audio_sync.suggest(path / 'reference.wav', path / 'beat.wav', job))
 
 
 @app.post('/api/projects/<pid>/suggest-roles')
@@ -572,12 +1518,6 @@ def suggest_roles(pid):
         job.check()
         with LOCK:
             current=load(pid)
-            roles=dict(zip(result['lines'],result['roles']))
-            if result['two_registers']:
-                for word in current['words']:
-                    role=roles.get(word['line'])
-                    if role is not None:word['role']=role
-                current['settings']=validate_settings({'singing_mode':'duet'},current['settings'])
             current['role_analysis']={key:value for key,value in result.items() if key not in ('roles','lines')}
             save(current)
         return result
@@ -588,6 +1528,8 @@ def suggest_roles(pid):
 def estimate(pid):
     idle(pid)
     project = load(pid)
+    if any(word.get('locked') for word in project.get('words', [])):
+        raise ValueError('Mở khóa các câu đã khóa trước khi tạo lại mốc toàn bài.')
     duration = (project.get("reference") or project.get("beat") or {}).get("duration")
     if not duration:
         raise ValueError("Hãy nạp audio trước.")
@@ -608,8 +1550,103 @@ def job_status(jid):
 def job_cancel(jid):
     if jid not in JOBS:
         raise FileNotFoundError("Không tìm thấy tác vụ.")
-    JOBS[jid].stop()
-    return jsonify(JOBS[jid].public())
+    job = JOBS[jid]
+    if job.state in ("queued", "running"):
+        job.stop()
+    return jsonify(job.public())
+
+
+@app.post("/api/batches/render")
+def create_render_batch():
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get("project_ids")
+    if not isinstance(raw_ids, list) or not raw_ids or len(raw_ids) > 50:
+        raise ValueError("Chọn từ 1 đến 50 project để dựng theo lô.")
+    project_ids = list(dict.fromkeys(raw_ids))
+    if len(project_ids) != len(raw_ids):
+        raise ValueError("Danh sách project bị trùng.")
+    aspects = data.get("aspects", ["current"])
+    if (not isinstance(aspects, list) or not aspects or len(aspects) > 3 or
+            any(value not in ("current", "landscape", "portrait") for value in aspects)):
+        raise ValueError("Chọn tỉ lệ hiện tại, ngang hoặc dọc cho đầu ra theo lô.")
+    aspects = list(dict.fromkeys(["current", *aspects]))
+    include_guide = data.get("include_guide", False)
+    if type(include_guide) is not bool:
+        raise ValueError("Lựa chọn vocal hướng dẫn không hợp lệ.")
+    include_backing = data.get("include_backing", False)
+    if type(include_backing) is not bool:
+        raise ValueError("Lựa chọn giọng bè không hợp lệ.")
+    recognize_missing = data.get("recognize_missing", False)
+    if type(recognize_missing) is not bool:
+        raise ValueError("Lựa chọn nhận lời không hợp lệ.")
+    require_review = data.get("require_review", False)
+    if type(require_review) is not bool:
+        raise ValueError("Lựa chọn kiểm duyệt không hợp lệ.")
+    selected = []
+    for pid in project_ids:
+        idle(pid)
+        project = load(pid)
+        if not project.get("beat") or not (directory(pid) / "beat.wav").is_file():
+            raise ValueError(f"Project {project['name']} chưa có beat gốc.")
+        if not project.get("words"):
+            if not recognize_missing or require_review:
+                raise ValueError(f"Project {project['name']} chưa có lời để duyệt và xuất.")
+            if not project.get("reference") or not (directory(pid) / "reference.wav").is_file():
+                raise ValueError(f"Project {project['name']} cần bản hát để nhận lời.")
+            project["batch_recognition"] = {"model": "medium", "language": "vi"}
+        if require_review and any(not word.get("locked") for word in project["words"]):
+            raise ValueError(f"Project {project['name']} còn câu chưa khóa. Hãy rà lời trước khi dựng.")
+        selected.append((project, directory(pid)))
+    outputs = ["beat"]
+    if include_guide:
+        outputs.append("guide")
+    if include_backing:
+        outputs.append("backing")
+    record = batch_render.create(engine.DATA, selected, project_ids[0], aspects, audio_outputs=outputs)
+    job = start_batch_job(record)
+    return jsonify(job.public()), 202
+
+
+@app.get("/api/batches/<batch_id>")
+def get_render_batch(batch_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise ValueError("Mã hàng đợi không hợp lệ.")
+    return jsonify(batch_render.load_record(engine.DATA, batch_id))
+
+
+@app.get("/api/batches")
+def list_render_batches():
+    root = engine.DATA / "batch-renders"
+    records = []
+    if root.is_dir():
+        for file in root.glob("*/batch.json"):
+            try:
+                record = json.loads(file.read_text(encoding="utf-8"))
+                if record.get("mode") == "single-render":
+                    continue
+                records.append({"id": record["id"], "status": record["status"],
+                               "created_at": record["created_at"], "next_index": record.get("next_index", 0),
+                               "count": len(record.get("items", [])), "completed": record.get("completed", 0),
+                               "failed": record.get("failed", 0)})
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+    return jsonify(sorted(records, key=lambda item: item["created_at"], reverse=True)[:30])
+
+
+@app.post("/api/batches/<batch_id>/resume")
+def resume_render_batch(batch_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", batch_id):
+        raise ValueError("Mã hàng đợi không hợp lệ.")
+    record = batch_render.load_record(engine.DATA, batch_id)
+    if record.get("status") not in ("cancelled", "error", "done"):
+        raise ValueError("Chỉ có thể tiếp tục hàng đợi đã dừng hoặc hoàn tất có project lỗi.")
+    record["next_index"] = batch_render.first_pending(record)
+    if record["next_index"] >= len(record["items"]):
+        raise ValueError("Hàng đợi đã hoàn tất, không còn project cần dựng lại.")
+    record["job_id"] = uuid.uuid4().hex
+    record["status"] = "queued"
+    batch_render.save_record(engine.DATA, record)
+    return jsonify(start_batch_job(record).public()), 202
 
 
 @app.get('/api/projects/<pid>/render-info')
@@ -621,11 +1658,10 @@ def render_information(pid):
 @app.post('/api/projects/<pid>/export-folder')
 def choose_export_folder(pid):
     import subprocess
-    import sys
     idle(pid)
     data=request.get_json(silent=True) or {}
     if data.get('pick'):
-        result=subprocess.run([sys.executable,engine.ROOT/'tools/pick_export_folder.py'],stdin=subprocess.DEVNULL,
+        result=subprocess.run(task_command('pick-folder'),stdin=subprocess.DEVNULL,
                               capture_output=True,text=True,encoding='utf-8',timeout=300,
                               creationflags=engine.CREATE_NO_WINDOW)
         if result.returncode:raise ValueError('Không mở được hộp chọn thư mục. Bạn có thể nhập đường dẫn rồi bấm Lưu.')
@@ -642,13 +1678,35 @@ def choose_export_folder(pid):
 
 @app.post("/api/projects/<pid>/render")
 def render(pid):
-    snapshot = load(pid)
-    return task(pid, "render", lambda job: engine.render(snapshot, directory(pid), job))
+    with LOCK:
+        idle(pid)
+        if any(j.project_id == pid and j.kind == "render" and
+               j.state in ("queued", "running") for j in JOBS.values()):
+            raise ValueError("Video của project này đang được dựng.")
+        snapshot = load(pid)
+        data=request.get_json(silent=True) or {}
+        preview=data.get("preview") if isinstance(data.get("preview"),dict) else None
+        if preview is not None:
+            try:
+                duration=float((snapshot.get("beat") or {}).get("duration",0))
+                start=max(0,min(max(0,duration-.5),finite(preview.get("start",0))))
+                length=max(.5,min(12,finite(preview.get("duration",8)),duration-start))
+            except (TypeError,ValueError):
+                raise ValueError("Thời lượng render thử không hợp lệ.") from None
+            if duration<.5:
+                raise ValueError("Beat quá ngắn để render thử.")
+            snapshot["render_preview"]={"start":start,"duration":length}
+        audio_output = validate_settings(snapshot.get("settings", {}))["audio_output"]
+        record = batch_render.create(engine.DATA, [(snapshot, directory(pid))], pid,
+                                     aspects=["current"], audio_outputs=[audio_output],
+                                     mode="single-render")
+        job = start_batch_job(record)
+    return jsonify(job.public()), 202
 
 
 @app.get("/api/projects/<pid>/exports/<jid>/<filename>")
 def export_file(pid, jid, filename):
-    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json"):
+    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json", "qa-contact.jpg"):
         raise ValueError("File không hợp lệ.")
     return send_file(directory(pid) / "exports" / jid / filename, as_attachment=True)
 
@@ -656,11 +1714,18 @@ def export_file(pid, jid, filename):
 @app.get("/api/projects/<pid>/download/<kind>")
 def download(pid, kind):
     project = load(pid)
+    if kind in ("bundle-light", "bundle-full"):
+        output = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+        project_archive.write_bundle(output, project, directory(pid), kind == "bundle-full")
+        output.seek(0)
+        safe_name = re.sub(r'[^\w\- ]', '', project["name"])[:70] or "vietkara-project"
+        return send_file(output, mimetype="application/zip", as_attachment=True,
+                         download_name=safe_name + ("-day-du.zip" if kind == "bundle-full" else "-gon.zip"))
     if kind == "json":
         content = json.dumps({k:v for k,v in project.items() if k not in ("reference", "beat")},
                              ensure_ascii=False, indent=2)
     else:
-        content = engine.export_text(project, kind)
+        content = engine.export_text(project, kind, directory(pid))
     safe_name = re.sub(r'[^\w\- ]', '', project["name"])[:70] or "karaoke"
     return send_file(io.BytesIO(content.encode("utf-8-sig")), as_attachment=True,
                      download_name=safe_name + (".obs.json" if kind == "json" else "." + kind),
@@ -670,13 +1735,100 @@ def download(pid, kind):
 @app.post("/api/projects/import")
 def import_project():
     data = request.get_json()
-    if data.get("schema") != 1:
+    if data.get("schema") not in (1, 2):
         raise ValueError("Định dạng project chưa được hỗ trợ.")
-    project = {"id": uuid.uuid4().hex, "schema": 1, "name": str(data.get("name", "Project đã nhập"))[:150],
+    project = {"id": uuid.uuid4().hex, "schema": 2, "name": str(data.get("name", "Project đã nhập"))[:150],
                "reference": None, "beat": None, "words": validate_words(data.get("words", [])),
                "anchors": validate_anchors(data.get("anchors", [])), "text": str(data.get("text", ""))[:300000],
-               "alignment": None, "settings": deepcopy(DEFAULT_SETTINGS)}
+               "alignment": None, "settings": deepcopy(DEFAULT_SETTINGS),
+               "scenes": scene_tools.validate(data.get("scenes", []))}
     project["settings"] = validate_settings(data.get("settings", {}))
     (engine.DATA / "projects" / project["id"]).mkdir(parents=True, exist_ok=True)
     save(project)
     return jsonify(public(project)), 201
+
+
+@app.post("/api/projects/import-bundle")
+def import_project_bundle():
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        raise ValueError("Chọn file project ZIP cần nhập.")
+    pid = uuid.uuid4().hex
+    path = engine.DATA / "projects" / pid
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        data, copied, fingerprints = project_archive.read_bundle(uploaded.stream, path)
+        reference = deepcopy(data.get("reference")) if isinstance(data.get("reference"), dict) else None
+        beat = deepcopy(data.get("beat")) if isinstance(data.get("beat"), dict) else None
+        missing_media = {}
+        if reference and "reference.wav" not in copied:
+            missing_media["reference"] = {"name": reference.get("name", "Bản hát"),
+                                          "fingerprint": fingerprints.get("reference.wav")}
+            reference = None
+        if beat and "beat.wav" not in copied:
+            missing_media["beat"] = {"name": beat.get("name", "Beat"),
+                                     "fingerprint": fingerprints.get("beat.wav")}
+            beat = None
+        for item in (reference, beat):
+            video = item.get("video") if item else None
+            if video and video.get("source_file") not in copied:
+                item.pop("video", None)
+        background_video = deepcopy(data.get("background_video")) if isinstance(data.get("background_video"), dict) else None
+        if background_video and background_video.get("source_file") not in copied:
+            missing_media["background"] = {"name": background_video.get("name", "Video nền"),
+                                            "fingerprint": fingerprints.get(background_video.get("source_file"))}
+            background_video = None
+        elif data.get("background_name") and "background.jpg" not in copied:
+            missing_media["background"] = {"name": data.get("background_name"),
+                                            "fingerprint": fingerprints.get("background.jpg")}
+        project = {"id": pid, "schema": 2, "name": str(data.get("name", "Project đã nhập"))[:150],
+                   "reference": reference, "beat": beat,
+                   "words": validate_words(data.get("words", [])),
+                   "anchors": validate_anchors(data.get("anchors", [])),
+                   "text": str(data.get("text", ""))[:300000], "alignment": data.get("alignment"),
+                   "settings": validate_settings(data.get("settings", {})),
+                   "scenes": scene_tools.validate(data.get("scenes", [])),
+                   "background_video": background_video,
+                   "relink_assets": fingerprints, "missing_media": missing_media}
+        for key in ("background_name", "logo_name", "logo_image", "logo_version", "countdown_name", "processing", "backing_vocals"):
+            if key in data:
+                project[key] = data[key]
+        if data.get("logo_name") and "logo.png" not in copied:
+            project["missing_media"]["logo"] = {"name": data["logo_name"], "fingerprint": fingerprints.get("logo.png")}
+        if data.get("countdown_name") and "countdown.png" not in copied:
+            project["missing_media"]["countdown"] = {"name": data["countdown_name"], "fingerprint": fingerprints.get("countdown.png")}
+        save(project)
+    except Exception:
+        shutil.rmtree(path, ignore_errors=True)
+        raise
+    return jsonify(public(project)), 201
+
+
+def recover_render_batches():
+    root = engine.DATA / "batch-renders"
+    if not root.is_dir():
+        return
+    for file in root.glob("*/batch.json"):
+        try:
+            record = json.loads(file.read_text(encoding="utf-8"))
+            if record.get("status") not in ("queued", "running") or not record.get("items"):
+                continue
+            # Resume from the saved checkpoint. Explicit retry can revisit errors.
+            if "next_index" not in record:
+                record["next_index"] = batch_render.first_pending(record)
+            for item in record["items"]:
+                if item.get("status") == "running":
+                    item["status"] = "queued"
+            if record["next_index"] >= len(record["items"]):
+                record["status"] = "done"
+                batch_render.save_record(engine.DATA, record)
+                continue
+            record["status"] = "queued"
+            batch_render.save_record(engine.DATA, record)
+            start_batch_job(record)
+        except (OSError, ValueError, KeyError, TypeError):
+            app.logger.exception("Unable to recover a batch render queue")
+
+
+recover_jobs()
+recover_render_batches()

@@ -1,0 +1,299 @@
+/* =========================================================
+   Layout – Studio Editor (Hướng A)
+   ========================================================= */
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font: var(--fs-md)/1.45 var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* 1. Menubar */
+.menubar {
+  height: var(--h-menubar);
+  background: var(--c-inset);
+  border-bottom: 1px solid var(--c-line);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  gap: var(--sp-2);
+  flex: none;
+  font-size: var(--fs-sm);
+}
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--c-accent);
+  padding: 0 var(--sp-2);
+  letter-spacing: 0.02em;
+}
+.menu-bar-items { display: flex; gap: 2px; position: relative; }
+.menu-trigger {
+  background: none;
+  border: 0;
+  color: var(--c-text-2);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+}
+.menu-trigger:hover, .menu-trigger.open {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 220px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+  z-index: 100;
+}
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: none;
+  border: 0;
+  color: var(--c-text);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.menu-item:hover { background: var(--c-surface-3); }
+.menu-item kbd {
+  color: var(--c-text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.menu-sep { height: 1px; background: var(--c-line); margin: 4px 6px; }
+
+.demo-state-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+}
+.demo-pill {
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-line);
+  color: var(--c-text-2);
+  padding: 2px 7px;
+  border-radius: 99px;
+  cursor: pointer;
+  font-size: var(--fs-xs);
+}
+.demo-pill.on { border-color: var(--c-accent); color: var(--c-accent); }
+
+/* 2. Topbar */
+.topbar {
+  height: var(--h-topbar);
+  background: var(--c-surface-1);
+  border-bottom: 1px solid var(--c-line);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-3);
+  gap: var(--sp-3);
+  flex: none;
+}
+.page-switch {
+  display: flex;
+  background: var(--c-inset);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  padding: 2px;
+  gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.45);
+}
+.page-switch button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--c-text-2);
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.page-switch button:hover:not(.on) {
+  color: var(--c-text);
+  background: rgba(255,255,255,0.03);
+}
+.page-switch button.on {
+  background: linear-gradient(180deg, #2b313e 0%, #212631 100%);
+  border-color: var(--c-line-strong);
+  color: var(--c-text);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.35);
+}
+.page-switch button.on .ico {
+  color: var(--c-accent);
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.project-title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  width: 240px;
+}
+.project-title-input:hover { border-color: var(--c-line); }
+.project-title-input:focus {
+  outline: none;
+  background: var(--c-inset);
+  border-color: var(--c-accent);
+}
+.save-badge { font-size: var(--fs-xs); color: var(--c-ok); white-space: nowrap; }
+.save-badge.warn { color: var(--c-warn); }
+
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 3. Main workspace (Hướng A: 4 vùng cố định) */
+.page-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.page-view.hidden { display: none; }
+
+.studio-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--w-left) 1fr var(--w-right);
+  grid-template-rows: 1fr var(--h-timeline);
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+.studio-grid.left-collapsed {
+  grid-template-columns: 36px 1fr var(--w-right);
+}
+.studio-grid.right-collapsed {
+  grid-template-columns: var(--w-left) 1fr 36px;
+}
+.studio-grid.left-collapsed.right-collapsed {
+  grid-template-columns: 36px 1fr 36px;
+}
+
+.panel {
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-head {
+  height: var(--h-panel-head);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2);
+  border-bottom: 1px solid var(--c-line);
+  flex: none;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2);
+}
+.panel.is-collapsed .panel-body,
+.panel.is-collapsed .panel-tabs,
+.panel.is-collapsed .inspector-wrap,
+.panel.is-collapsed .panel-title-text { display: none; }
+.panel.is-collapsed .panel-head {
+  justify-content: center;
+  padding: 0;
+}
+
+/* Timeline chiếm toàn chiều rộng đáy */
+.timeline-panel { grid-column: 1 / 4; }
+
+/* Utility pages (Tách nhạc & Cài đặt) */
+.utility-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+}
+.utility-container {
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* 4. Statusbar */
+.statusbar {
+  height: var(--h-statusbar);
+  background: var(--c-inset);
+  border-top: 1px solid var(--c-line);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-3);
+  gap: var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+  flex: none;
+}
+.status-job {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.status-bar-track {
+  width: 140px;
+  height: 6px;
+  background: var(--c-surface-3);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.status-bar-fill {
+  height: 100%;
+  background: var(--c-info);
+  transition: width 0.2s ease;
+}
+.status-bar-fill.err { background: var(--c-err); }
+.status-bar-fill.ok { background: var(--c-ok); }

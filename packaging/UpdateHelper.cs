@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Windows.Forms;
 
 internal static class UpdateHelper
@@ -17,6 +18,7 @@ internal static class UpdateHelper
     private static int Main(string[] args)
     {
         string root = null;
+        string updateLog = null;
         try
         {
             if (args.Length != 3) throw new InvalidOperationException("Tham số cập nhật không hợp lệ.");
@@ -27,11 +29,12 @@ internal static class UpdateHelper
             string appExe = Path.Combine(root, "VietKaraStudio.exe");
             if (!File.Exists(appExe) || !Directory.Exists(payload)) throw new InvalidOperationException("Không tìm thấy thư mục ứng dụng hoặc bản vá.");
 
+            string updateFolder = Directory.GetParent(payload).FullName;
+            updateLog = Path.Combine(Directory.GetParent(updateFolder).FullName, "install-error.log");
             try { Process.GetProcessById(processId).WaitForExit(); }
             catch (ArgumentException) { }
             catch (InvalidOperationException) { }
 
-            string updateFolder = Directory.GetParent(payload).FullName;
             string backup = Path.Combine(updateFolder, "rollback");
             if (Directory.Exists(backup)) Directory.Delete(backup, true);
             Directory.CreateDirectory(backup);
@@ -48,14 +51,20 @@ internal static class UpdateHelper
                     if (!target.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Đường dẫn cập nhật vượt khỏi thư mục ứng dụng.");
                     string saved = Path.Combine(backup, relative);
                     bool existed = File.Exists(target);
-                    if (existed)
+                    try
                     {
-                        Directory.CreateDirectory(Path.GetDirectoryName(saved));
-                        File.Copy(target, saved, true);
+                        if (existed)
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(saved));
+                            RetryFileOperation(() => File.Copy(target, saved, true));
+                        }
+                        ReplaceFile(source, target);
+                        copied.Add(new CopiedFile { Target = target, Backup = saved, Existed = existed });
                     }
-                    copied.Add(new CopiedFile { Target = target, Backup = saved, Existed = existed });
-                    Directory.CreateDirectory(Path.GetDirectoryName(target));
-                    File.Copy(source, target, true);
+                    catch (Exception error)
+                    {
+                        throw new IOException("Không thay được tệp " + relative + ": " + error.Message, error);
+                    }
                 }
                 if (!File.Exists(appExe)) throw new InvalidOperationException("Không tìm thấy chương trình sau khi áp dụng bản vá.");
             }
@@ -66,8 +75,8 @@ internal static class UpdateHelper
                     CopiedFile item = copied[i];
                     try
                     {
-                        if (item.Existed && File.Exists(item.Backup)) File.Copy(item.Backup, item.Target, true);
-                        else if (File.Exists(item.Target)) File.Delete(item.Target);
+                        if (item.Existed && File.Exists(item.Backup)) ReplaceFile(item.Backup, item.Target);
+                        else if (File.Exists(item.Target)) RetryFileOperation(() => File.Delete(item.Target));
                     }
                     catch { }
                 }
@@ -81,6 +90,11 @@ internal static class UpdateHelper
         }
         catch (Exception error)
         {
+            if (!String.IsNullOrEmpty(updateLog))
+            {
+                try { File.WriteAllText(updateLog, error.ToString()); }
+                catch { }
+            }
             try
             {
                 MessageBox.Show("Không cài được bản vá VietKara Studio. Bản cũ đã được khôi phục nếu cần.\r\n\r\n" + error.Message,
@@ -93,6 +107,44 @@ internal static class UpdateHelper
             }
             catch { }
             return 1;
+        }
+    }
+
+    private static void ReplaceFile(string source, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(target));
+        string staged = Path.Combine(Path.GetDirectoryName(target), ".vcl-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            RetryFileOperation(() => File.Copy(source, staged, true));
+            RetryFileOperation(() =>
+            {
+                if (File.Exists(target)) File.Replace(staged, target, null);
+                else File.Move(staged, target);
+            });
+        }
+        finally
+        {
+            try { File.Delete(staged); }
+            catch { }
+        }
+    }
+
+    private static void RetryFileOperation(Action action)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try { action(); return; }
+            catch (IOException error)
+            {
+                int code = error.HResult & 0xffff;
+                if (attempt >= 7 || (code != 5 && code != 32 && code != 33)) throw;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                if (attempt >= 7) throw;
+            }
+            Thread.Sleep(350);
         }
     }
 

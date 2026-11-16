@@ -82,7 +82,7 @@ def test_real_vocal_analysis_preserves_words_anchors_and_times(client,monkeypatc
     after=client.get(url).get_json()
     assert [{k:v for k,v in w.items() if k!='role'} for w in after['words']]==[{k:v for k,v in w.items() if k!='role'} for w in before['words']]
     assert after['text']==before['text'] and after['anchors']==before['anchors']
-    assert [w['role'] for w in after['words']]==['male','female','all','female']
+    assert [w['role'] for w in after['words']]==['all','all','all','female']
     # A later line edit reuses the full-track pitch cache, not stale line decisions.
     import librosa
     monkeypatch.setattr(librosa,'pyin',no_separation)

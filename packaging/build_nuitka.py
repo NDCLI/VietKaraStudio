@@ -14,7 +14,7 @@ import sys
 import build_release as legacy
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='1.1.2'
+VERSION='1.1.18'
 BUILD=ROOT/'build-tools/nuitka-1.1.0'
 DIST=BUILD/'desktop_entry.dist'
 STAGE=BUILD/'payload'
@@ -40,7 +40,7 @@ def compile_app():
           # handlers and can abort MKL/NumPy with forrtl error 200.
           '--windows-console-mode=disable','--deployment','--python-flag=isolated','--python-flag=no_site',
           '--python-flag=dont_write_bytecode','--assume-yes-for-downloads','--output-dir='+str(BUILD),
-          '--output-filename=VietKaraStudio.exe','--windows-icon-from-ico='+str(ROOT/'resources/VietKaraStudio.ico'),
+          '--output-filename=VietKaraStudio.exe','--windows-icon-from-ico='+str(ROOT/'resources/VietKaraStudio-Nuitka.ico'),
           '--product-name=VietKara Studio','--file-description=VietKara Studio Nuitka',
           '--product-version='+VERSION,'--file-version='+VERSION+'.0',
           '--report='+str(BUILD/'compilation-report.xml')]
@@ -112,10 +112,10 @@ Model tai rieng, cache/model cu duoc su dung lai. WebView2 can cho giao dien.
     print('Nuitka stage ready: '+str(STAGE),flush=True)
 
 
-def compile_updater():
+def compile_updater(output=None):
     compiler=Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     if not compiler.is_file():raise SystemExit('Missing Windows .NET Framework C# compiler: '+str(compiler))
-    output=STAGE/'VietKaraUpdater.exe'
+    output=output or STAGE/'VietKaraUpdater.exe'
     subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/out:'+str(output),
                     '/reference:System.Windows.Forms.dll',str(ROOT/'packaging/UpdateHelper.cs')],check=True)
 

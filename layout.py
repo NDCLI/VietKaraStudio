@@ -8,6 +8,7 @@ import struct
 
 from PIL import ImageFont
 from fontTools.ttLib import TTFont
+from bundled_assets import ASSET_ROOT, bundled_fonts, font_text, role_asset, icon_geometry, asset_url
 
 from styles import validate_settings
 from timing import beat_words, lyric_lines
@@ -57,7 +58,10 @@ def role_icon_path(role, size=32, ass=False):
 
 def role_icon_space(opts):
     if opts['role_icons'] and opts['singing_mode'] == 'duet' and opts['display_mode'] == 'karaoke':
-        return opts['font_size'] * .94  # .72 em icon plus .22 em gap
+        # Reserve the widest chosen artwork when wrapping before roles are known.
+        ratio = max(icon_geometry(role_asset(role, opts))[0] / icon_geometry(role_asset(role, opts))[1]
+                    for role in ('male', 'female', 'all'))
+        return opts['font_size'] * (.72 * ratio + .22)
     return 0
 
 
@@ -92,7 +96,8 @@ def font_catalog():
                 result.append((family, style, str(file)))
             except OSError:
                 pass
-    return result
+    # Bundled faces win ties over a differently installed version of the family.
+    return [(f['family'], f['style'], str(ASSET_ROOT / f['file'])) for f in bundled_fonts()] + result
 
 
 @lru_cache(maxsize=80)
@@ -172,7 +177,7 @@ class Measure:
 
     @lru_cache(maxsize=2048)
     def width(self, text):
-        return float(self.font.getlength(text)) * self.scale
+        return float(self.font.getlength(font_text(text, self.family))) * self.scale
 
     def fits(self, tokens, width):
         extra = 2 * self.opts['outline_width'] + self.opts['shadow'] + (self.opts['font_size'] * .15 if self.opts['italic'] else 0)
@@ -253,6 +258,11 @@ def display_plan(project):
     opts = validate_settings(project.get('settings', {}))
     measure = Measure(opts)
     width, height = frame_size(opts)
+    # Use one consistent ink height, including Vietnamese accents, for all lanes.
+    bounds = measure.font.getbbox(font_text("ẮẰẲẴẶẤẦẨẪẬỄỆỖỘỚỜỞỠỢỨỪỬỮỰỸỴgyp", measure.family))
+    ink_height = bounds[3] - bounds[1] + opts['outline_width'] * 2 + opts['shadow']
+    row_step = (opts['font_size'] * (1.15 + opts['line_height']) if opts['line_gap'] is None
+                else ink_height + opts['line_gap'])
     rows = []
     indexed = {**project, 'words': [{**word, 'source_index':i} for i,word in enumerate(project.get('words', []))]}
     for original in lyric_lines(beat_words(indexed)):
@@ -269,12 +279,18 @@ def display_plan(project):
     rows.sort(key=lambda row: row[0]['start'])
     plan, countdowns, block_row = [], [], 0
     slots=[]
+    role_slots={'male':0, 'female':1, 'voice_c':2, 'voice_d':3, 'voice_e':4, 'voice_f':5}
     previous_role = None
     for i, words in enumerate(rows):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
-        slots.append(words[0].get('row',block_row%2))
+        role = words[0].get('role', 'all') if opts['singing_mode']=='duet' else 'all'
+        slot = block_row % 2
+        if opts['singing_mode'] == 'duet':
+            slot = words[0].get('row', role_slots.get(role, slot))
+        slots.append(slot)
         block_row+=1
+    lane_count = min(6, max(2, max(slots, default=1)+1)) if opts['display_mode'] == 'karaoke' else 1
     block_row=0
     block_start=0
     for i, words in enumerate(rows):
@@ -285,22 +301,27 @@ def display_plan(project):
         slot = slots[i]
         block_row += 1
         start, end = words[0]['start'], max(w['end'] for w in words)
-        ds = max(0, start - 1.5)
+        first_lead = max(0.0, min(15.0, float(opts.get('lead_in', 5.0) or 5.0)))
+        next_lead = max(0.0, min(8.0, float(opts.get('row_lead', 1.5) or 1.5)))
+        ds = max(0, start - (first_lead if first else next_lead))
         previous = next((j for j in range(i-1,-1,-1) if slots[j] == slot), None)
         following = next((j for j in range(i+1,len(rows)) if slots[j] == slot), None)
         if previous is not None: ds = min(start,max(ds, rows[previous][-1]['end'] + .05))
         if i==block_start+1 and plan[block_start]['slot']!=slot:
             ds=min(ds,plan[block_start]['show_start'])
         de = end + .6
-        if following is not None: de = min(de, max(end, rows[following][0]['start'] - 1.55))
+        if following is not None: de = min(de, max(end, rows[following][0]['start'] - (next_lead + .05)))
         if opts['display_mode'] != 'karaoke':
             ds, de, slot = start, end + .1, 0
             if i+1 < len(rows): de = min(de, max(end, rows[i+1][0]['start']))
         role = words[0].get('role', 'all') if opts['singing_mode'] == 'duet' and opts['display_mode']=='karaoke' else 'all'
         role_changed = role != previous_role
         size = opts['font_size']
+        if lane_count > 2:
+            stack_height = size * 1.2 + (lane_count-1) * row_step
+            size *= min(1, height*.47/max(1,stack_height))
         text = ' '.join(w['text'] for w in words)
-        icon_space = role_icon_space(opts) if role_changed else 0
+        icon_space = role_icon_space(opts) if role_changed and role in ('male', 'female', 'all') else 0
         row_width = measure.width(text) + icon_space
         shrink = min(1, width * .9 / max(1, row_width))
         size *= shrink
@@ -308,25 +329,49 @@ def display_plan(project):
         align = opts['align']
         if align == 'justify': align = 'right' if slot else 'left'
         x = width * .05 if align == 'left' else width * .95 - row_width if align == 'right' else (width-row_width)/2
-        x += width * opts['horizontal_offset']/100
+        if opts['position'] == 'custom':
+            x += width * (opts['lyric_x']-50) / 100
+        else:
+            x += width * opts['horizontal_offset']/100
         x = max(width*.02, min(width*.98-row_width, x))
-        baseline = {'bottom':height - size * 1.25, 'center':height/2+size*.5,
-                    'top':size*(opts['line_height']+2)}[opts['position']]
-        if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
-        bottom = baseline - height * opts['vertical_offset']/100
-        y = max(0, bottom - size*(1.15 + (opts['line_height'] if slot == 0 and opts['display_mode']=='karaoke' else 0)))
-        color = {'male': opts['role_a_color'], 'female': opts['role_b_color'],
-                 'all': opts['role_all_color']}.get(role, opts['sung'])
+        step = row_step * size / opts['font_size']
+        lanes = lane_count if opts['display_mode'] == 'karaoke' else 1
+        if opts['position'] == 'custom':
+            stack_height = size * 1.2 + (lanes-1) * step
+            top = max(0, min(height-stack_height, height*opts['lyric_y']/100-stack_height/2))
+            y = top + (slot if lanes > 1 else 0) * step
+        else:
+            baseline = {'bottom':height - size * 1.25, 'center':height/2+size*.5,
+                        'top':size*(opts['line_height']+2)}[opts['position']]
+            if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
+            bottom = baseline - height * opts['vertical_offset']/100
+            y = max(0, bottom - size*1.15 - (lanes-1-slot)*step)
+        role_colors={'male':opts['role_a_color'],'female':opts['role_b_color'],'all':opts['role_all_color'],
+                     'voice_c':opts['role_c_color'],'voice_d':opts['role_d_color'],
+                     'voice_e':opts['role_e_color'],'voice_f':opts['role_f_color'],
+                     'unknown':opts['role_unknown_color']}
+        role_labels={'male':opts['role_a_name'],'female':opts['role_b_name'],'all':'Cùng hát',
+                     'voice_c':opts['role_c_name'],'voice_d':opts['role_d_name'],
+                     'voice_e':opts['role_e_name'],'voice_f':opts['role_f_name'],
+                     'unknown':opts['role_unknown_name']}
+        color = opts['sung']
+        if opts['singing_mode'] == 'duet' and opts['display_mode'] == 'karaoke':
+            color = role_colors.get(role, color)
         positioned, cursor = [], x
         for j, word in enumerate(words):
             # Measure prefixes so kerning between adjacent tokens is included in placement.
             prefix = ' '.join(w['text'] for w in words[:j])
             left = x + (icon_space + (measure.width(prefix + ' ') if j else 0)) * shrink
             word_width = measure.width(word['text']) * shrink
-            positioned.append({**word, 'x': round(left, 3), 'width': round(word_width, 3)})
+            positioned.append({**word, 'display_text':font_text(word['text'], measure.family),
+                               'x': round(left, 3), 'width': round(word_width, 3)})
+        icon_file = role_asset(role, opts)
+        icon_width, icon_height = icon_geometry(icon_file)
         marker = ({'x':round(x,3), 'y':round(y+size*.08,3), 'size':round(size*.72,3),
                    'role':role, 'path':role_icon_path(role), 'color':color,
-                   'label':{'male':opts['role_a_name'], 'female':opts['role_b_name']}.get(role, 'Cùng hát')}
+                   'asset':icon_file, 'url':asset_url('ICON/'+icon_file),
+                   'width':round(size*.72*icon_width/icon_height,3),
+                   'label':role_labels.get(role,'Cùng hát')}
                   if icon_space and role_changed else None)
         previous_role = role
         plan.append({'index':i, 'line':words[0]['line'], 'slot':slot, 'section_start':bool(first),
@@ -334,6 +379,8 @@ def display_plan(project):
                      'start':start, 'end':end, 'show_start':ds, 'show_end':max(ds+.01,de),
                      'x':round(x,3), 'y':round(y,3), 'width':round(row_width,3), 'height':round(size*1.2,3),
                      'font_size':round(size,3), 'color':color, 'align':align, 'role':role, 'text':text,
+                     'neighbor_step':round(size*opts['line_height'] if opts['line_gap'] is None else step, 3),
+                     'display_text':font_text(text, measure.family),
                      'role_icon':marker, 'words':positioned})
         # A new lyric paragraph/row is not necessarily an instrumental break.
         # Count in only at the opening or after at least eight seconds without lyrics.
@@ -352,4 +399,5 @@ def display_plan(project):
             warnings.append({'type':'overlap','line':row['line'],'previous_line':previous['line']})
     from song_title import title_plan
     return {'title':title_plan(project), 'width':width, 'height':height, 'font':measure.family, 'font_factor':measure.factor,
+            'effective_line_gap':round(max(0, row_step-ink_height), 2),
             'font_fallback':measure.fallback, 'rows':plan, 'countdowns':countdowns,'warnings':warnings}

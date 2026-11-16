@@ -1,20 +1,27 @@
 """Validated settings shared by projects, presets and subtitle rendering."""
 import math
 import re
+from bundled_assets import ICON_CHOICES, ICON_SETTINGS
 
 DEFAULT_SETTINGS = {
-    "aspect": "landscape", "font": "Arial", "font_size": 72,
-    "sung": "#52efb9", "unsung": "#ffffff", "background": "#101d2b",
-    "use_background": True, "outline_unsung": "#15202a", "outline_sung": "#15202a",
-    "outline_width": 3, "outline_unsung_opacity": 100, "outline_sung_opacity": 100,
-    "italic": False, "shadow": 1, "shadow_color": "#000000",
-    "position": "bottom", "line_height": 1.4, "line_animation": "none",
+    "aspect": "landscape", "font": "Tahoma", "font_size": 120,
+    "sung": "#0000ff", "unsung": "#fff3df", "background": "#101d2b",
+    "use_background": True, "outline_unsung": "#000000", "outline_sung": "#ffffff",
+    "outline_width": 10, "outline_unsung_opacity": 100, "outline_sung_opacity": 100,
+    "italic": True, "shadow": 8, "shadow_color": "#000000",
+    "position": "bottom", "line_height": 1.85, "line_animation": "none",
     "display_mode": "karaoke", "resolution": "1080p", "background_type": "auto",
-    "countdown": "none", "countdown_seconds": 4, "singing_mode": "solo",
+    "countdown": "mic", "countdown_seconds": 4, "singing_mode": "solo",
     "role_a_name": "Nam", "role_b_name": "Nữ", "role_a_color": "#62b5ff", "role_b_color": "#ff87b7",
+    "role_c_name": "Giọng 3", "role_d_name": "Giọng 4", "role_e_name": "Giọng 5", "role_f_name": "Giọng 6",
+    "role_unknown_name": "Chưa rõ", "role_c_color": "#f2a76b", "role_d_color": "#9a91f4",
+    "role_e_color": "#73c98c", "role_f_color": "#e87b91", "role_unknown_color": "#a7b3c5",
     "role_all_color": "#f4cf72",
     "role_icons": True,
-    "align": "center", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
+    "role_a_icon": "man-new-blue.png", "role_b_icon": "lady-pink.png",
+    "role_all_icon": "men(blue) & lady(pink).png",
+    "align": "justify", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
+    "lyric_x": 50, "lyric_y": 75, "line_gap": None,
     "sweep_feather": 0, "sweep_glow": 0, "sung_gradient": False,
     "gradient_top": "#ffffff", "gradient_bottom": "#1a3ad6", "gradient_start": 0, "gradient_end": 100,
     "line_max_words": 5, "mv_style": "stack", "subtitle_box": True,
@@ -22,17 +29,19 @@ DEFAULT_SETTINGS = {
     "logo_enabled": False, "logo_size": 12, "logo_x": 96, "logo_y": 4,
     "logo_opacity": 100, "logo_effect": "none",
     "timeline_linked": True,
-    "render_quality": "high", "render_fps": "source",
-    "render_format": "mp4",
+    "render_quality": "high", "render_fps": "source", "audio_normalize": False,
+    "render_format": "mp4", "audio_output": "beat",
     "title_enabled": False, "title_text": "", "title_credit": "", "title_font": "Arial",
     "title_start": 0, "title_end": 8, "title_size": 105, "title_x": 50, "title_y": 28,
     "title_color": "#ffffff", "title_outline": "#15202a", "title_outline_width": 3,
     "title_shadow": 2, "title_shadow_color": "#000000", "title_weight": 700, "title_italic": False,
     "title_template": "none",
     "title_enter": "fade", "title_exit": "fade", "title_effect_seconds": .7,
+    "lead_in": 5.0, "row_lead": 1.5, "sync_offset": 0.0, "pitch_semitones": 0,
 }
 COLOR_KEYS = ("sung", "unsung", "background", "outline_unsung", "outline_sung", "shadow_color",
-              "role_a_color", "role_b_color", "role_all_color", "gradient_top", "gradient_bottom", "subtitle_box_color",
+              "role_a_color", "role_b_color", "role_c_color", "role_d_color", "role_e_color", "role_f_color",
+              "role_unknown_color", "role_all_color", "gradient_top", "gradient_bottom", "subtitle_box_color",
               "title_color", "title_outline", "title_shadow_color")
 TITLE_EFFECTS = ("none", "fade", "slide_up", "slide_down", "slide_left", "slide_right", "zoom", "flip")
 TITLE_TEMPLATES = ("none", "gradient", "midnight", "crystal", "neon", "retro", "pastel")
@@ -48,6 +57,9 @@ def validate_settings(values, base=None):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(result[key])):
             raise ValueError(f"Màu {key} không hợp lệ.")
         result[key] = result[key].lower()
+    for role, key in ICON_SETTINGS.items():
+        if result[key] not in {name for name, label in ICON_CHOICES[role]}:
+            raise ValueError(f'Biểu tượng {key} không hợp lệ.')
     for key, low, high in (("font_size", 20, 240), ("outline_width", 0, 12),
                            ("shadow", 0, 15), ("line_height", 1, 2.5),
                            ("title_start", 0, 86400), ("title_end", .1, 86400), ("title_size", 30, 220),
@@ -58,9 +70,11 @@ def validate_settings(values, base=None):
                            ("outline_unsung_opacity", 0, 100), ("outline_sung_opacity", 0, 100),
                            ("countdown_seconds", 1, 8), ("vertical_offset", 0, 75),
                            ("horizontal_offset", -40, 40), ("horizontal_scale", 50, 150),
+                           ("lyric_x", 0, 100), ("lyric_y", 0, 100),
                            ("sweep_feather", 0, 40), ("sweep_glow", 0, 200),
                            ("gradient_start", 0, 99), ("gradient_end", 1, 100),
-                           ("line_max_words", 2, 20), ("subtitle_box_opacity", 0, 100), ("subtitle_box_radius", 0, 40)):
+                           ("line_max_words", 2, 20), ("subtitle_box_opacity", 0, 100), ("subtitle_box_radius", 0, 40),
+                           ("lead_in", 0, 15), ("row_lead", 0, 8), ("sync_offset", -60, 60), ("pitch_semitones", -12, 12)):
         try:
             number = float(result[key])
         except (TypeError, ValueError):
@@ -68,30 +82,42 @@ def validate_settings(values, base=None):
         if not math.isfinite(number):
             raise ValueError(f"Giá trị {key} không hợp lệ.")
         result[key] = round(max(low, min(high, number)), 2)
+    if result["line_gap"] is not None:
+        try:
+            gap = float(result["line_gap"])
+        except (TypeError, ValueError):
+            raise ValueError("Khoảng cách dòng phải là số.") from None
+        if not math.isfinite(gap):
+            raise ValueError("Khoảng cách dòng không hợp lệ.")
+        result["line_gap"] = round(max(0, min(600, gap)), 2)
     result["font_size"] = round(result["font_size"])
     for key in ('font','title_font'):
         result[key] = re.sub(r"[,\r\n{}\\]", "", str(result[key]))[:80].strip() or "Arial"
-    for key in ("countdown_seconds", "line_max_words", "title_weight"):
+    for key in ("countdown_seconds", "line_max_words", "title_weight", "pitch_semitones"):
         result[key] = round(result[key])
     if result["gradient_start"] >= result["gradient_end"]:
         result["gradient_end"] = min(100, result["gradient_start"] + 1)
-    for key in ("role_a_name", "role_b_name"):
-        result[key] = str(result[key]).strip()[:30] or ("Vai A" if key == "role_a_name" else "Vai B")
+    for key in ("role_a_name", "role_b_name", "role_c_name", "role_d_name", "role_e_name", "role_f_name", "role_unknown_name"):
+        fallback = {"role_a_name": "Nam", "role_b_name": "Nữ", "role_c_name": "Giọng 3",
+                    "role_d_name": "Giọng 4", "role_e_name": "Giọng 5", "role_f_name": "Giọng 6",
+                    "role_unknown_name": "Chưa rõ"}[key]
+        result[key] = str(result[key]).strip()[:30] or fallback
     for key in ('title_text','title_credit'):
         result[key]=str(result[key]).replace('\r',' ').replace('\n',' ').strip()[:180]
     if result['title_end']<=result['title_start']:
         raise ValueError('Thời gian kết thúc tiêu đề phải sau bắt đầu.')
-    for key in ("italic", "title_italic", "use_background", "sung_gradient", "subtitle_box", "logo_enabled", "timeline_linked", "role_icons", "title_enabled"):
+    for key in ("italic", "title_italic", "use_background", "sung_gradient", "subtitle_box", "logo_enabled", "timeline_linked", "role_icons", "title_enabled", "audio_normalize"):
         if type(result[key]) is not bool:
             raise ValueError(f"Giá trị {key} phải là true hoặc false.")
     for key, choices in (("title_enter", TITLE_EFFECTS), ("title_exit", TITLE_EFFECTS), ("title_template", TITLE_TEMPLATES), ("aspect", ("landscape", "portrait")),
-                         ("position", ("bottom", "center", "top")),
+                         ("position", ("bottom", "center", "top", "custom")),
                          ("line_animation", ANIMATIONS), ("display_mode", ("karaoke", "lyricsmv", "subtitle")),
                          ("resolution", ("1080p", "4k")), ("background_type", ("auto", "color", "image", "video", "original")),
                          ("countdown", ("none", "mic", "star", "heart", "note", "moon", "image")),
                          ("singing_mode", ("solo", "duet")), ("align", ("left", "center", "right", "justify")),
                          ("mv_style", ("single", "stack", "scroll")), ("logo_effect", ("none", "fade", "float", "pulse")),
                          ("render_quality", ("standard", "high", "maximum")), ("render_fps", ("source", "30", "60")),
+                         ("audio_output", ("beat", "guide", "backing")),
                          ("render_format", ("mp4", "mov", "mkv"))):
         if result[key] not in choices:
             raise ValueError(f"Giá trị {key} không hợp lệ.")

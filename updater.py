@@ -9,9 +9,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import zipfile
@@ -57,6 +58,9 @@ def _installed_version() -> str:
 
 
 def _helper() -> Path:
+    patched = engine.ROOT / "resources" / "VietKaraUpdater.exe"
+    if patched.is_file():
+        return patched
     return engine.ROOT / "VietKaraUpdater.exe"
 
 
@@ -154,7 +158,10 @@ def _asset_digest(release: dict, patch_asset: dict) -> str:
     url = sidecar.get("browser_download_url", "")
     if urlparse(url).scheme != "https" or urlparse(url).hostname != "github.com":
         raise ValueError("Đường dẫn mã kiểm tra của gói vá không hợp lệ.")
-    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater"})
+    cache_key = str(sidecar.get("updated_at") or sidecar.get("id") or "")
+    if cache_key:
+        url += ("&" if "?" in url else "?") + urlencode({"v": cache_key})
+    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Cache-Control": "no-cache"})
     with urlopen(request, timeout=20) as response:
         host = urlparse(response.geturl()).hostname or ""
         if not (host == "github.com" or host == "githubusercontent.com" or host.endswith(".githubusercontent.com")):
@@ -171,7 +178,11 @@ def _download_asset(asset: dict, destination: Path) -> str:
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "github.com":
         raise ValueError("Đường dẫn gói vá không hợp lệ.")
-    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Accept": "application/octet-stream"})
+    cache_key = str(asset.get("digest") or asset.get("updated_at") or asset.get("id") or "")
+    if cache_key:
+        url += ("&" if "?" in url else "?") + urlencode({"v": cache_key})
+    request = Request(url, headers={"User-Agent": "VietKaraStudio-Updater", "Accept": "application/octet-stream",
+                                    "Cache-Control": "no-cache"})
     digest = hashlib.sha256()
     total = 0
     with urlopen(request, timeout=45) as response, destination.open("wb") as stream:
@@ -231,6 +242,8 @@ def _extract_patch(archive_path: Path, version: str, target: Path) -> None:
             raise ValueError("Gói vá có tệp thiếu hoặc thừa.")
         for entry in files:
             name = entry.filename
+            if name == "UPDATE-MANIFEST.json":
+                continue
             if not _safe_patch_path(name):
                 raise ValueError("Gói vá chứa đường dẫn không an toàn.")
             mode = (entry.external_attr >> 16) & 0o170000
@@ -300,8 +313,21 @@ def apply() -> dict:
         raise ValueError("Không tìm thấy trình cài bản vá. Hãy chạy lại bộ Setup.")
     if not (ready["folder"] and Path(ready["folder"]).is_dir()):
         raise ValueError("Không tìm thấy dữ liệu bản vá.")
+    try:
+        with tempfile.NamedTemporaryFile(prefix=".vcl-update-", dir=engine.ROOT):
+            pass
+    except PermissionError as exc:
+        raise ValueError("Windows từ chối quyền ghi thư mục VietKara. Hãy chạy lại Setup trong thư mục người dùng.") from exc
+    # Start a copy outside the payload so the updater can replace its own installed file.
+    runner = UPDATE_ROOT / f"apply-helper-{os.getpid()}.exe"
+    for old in UPDATE_ROOT.glob("apply-helper-*.exe"):
+        try:
+            old.unlink()
+        except OSError:
+            pass
+    shutil.copyfile(helper, runner)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0x00000008) | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-    subprocess.Popen([str(helper), str(os.getpid()), ready["folder"], str(engine.ROOT)],
+    subprocess.Popen([str(runner), str(os.getpid()), ready["folder"], str(engine.ROOT)],
                      cwd=str(engine.ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags)
     threading.Timer(1.5, os._exit, args=(0,)).start()
