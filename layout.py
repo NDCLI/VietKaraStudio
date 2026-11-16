@@ -301,14 +301,16 @@ def display_plan(project):
         slot = slots[i]
         block_row += 1
         start, end = words[0]['start'], max(w['end'] for w in words)
-        ds = max(0, start - 1.5)
+        first_lead = max(0.0, min(15.0, float(opts.get('lead_in', 5.0) or 5.0)))
+        next_lead = max(0.0, min(8.0, float(opts.get('row_lead', 1.5) or 1.5)))
+        ds = max(0, start - (first_lead if first else next_lead))
         previous = next((j for j in range(i-1,-1,-1) if slots[j] == slot), None)
         following = next((j for j in range(i+1,len(rows)) if slots[j] == slot), None)
         if previous is not None: ds = min(start,max(ds, rows[previous][-1]['end'] + .05))
         if i==block_start+1 and plan[block_start]['slot']!=slot:
             ds=min(ds,plan[block_start]['show_start'])
         de = end + .6
-        if following is not None: de = min(de, max(end, rows[following][0]['start'] - 1.55))
+        if following is not None: de = min(de, max(end, rows[following][0]['start'] - (next_lead + .05)))
         if opts['display_mode'] != 'karaoke':
             ds, de, slot = start, end + .1, 0
             if i+1 < len(rows): de = min(de, max(end, rows[i+1][0]['start']))

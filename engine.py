@@ -201,8 +201,11 @@ def separate(reference, directory, job, device=None):
     if (models / bundled.name).is_file():
         bundled = models / bundled.name
     elif not bundled.is_file():
-        from model_manager import cached_demucs
-        bundled=cached_demucs(DATA) or bundled
+        from model_manager import cached_demucs, download_demucs
+        bundled = cached_demucs(DATA)
+        if not bundled or not bundled.is_file():
+            job.update(10, "Chưa có model tách nhạc trên máy, đang tự động tải Demucs…")
+            bundled = download_demucs(DATA)
     args = [*task_command("demucs"), "--two-stems", "vocals", "--float32",
             "--shifts", "1", "--jobs", "1", "-o", str(directory / "separated")]
     if bundled.is_file():

@@ -45,7 +45,8 @@ function studioStyle(){
   document.querySelectorAll('[data-singing-mode]').forEach(b=>{const on=b.dataset.singingMode===s.singing_mode;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-title-template]').forEach(b=>{const on=b.dataset.titleTemplate===s.title_template;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-align]').forEach(b=>{const on=b.dataset.align===s.align;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
-  document.querySelectorAll('[data-karaoke-only]').forEach(el=>el.hidden=s.display_mode!=='karaoke');
+  const activeInspectorTab=document.querySelector('[data-inspector-tab].on')?.dataset.inspectorTab||'design';
+  document.querySelectorAll('[data-karaoke-only]').forEach(el=>{const sec=el.dataset?.propertySection;el.hidden=s.display_mode!=='karaoke'||(!!sec&&sec!==activeInspectorTab);});
   $('modeHint').textContent={karaoke:'Hai hàng cố định, quét màu theo từng từ.',lyricsmv:'Lời nổi bật theo từng câu trên nền nhạc/video.',subtitle:'Phụ đề hiện trọn câu theo mốc đã căn.'}[s.display_mode];
   $('roleAnalysisStatus').textContent=p.role_analysis?roleAnalysisMessage(p.role_analysis):'Dùng vocal đã tách; chưa có vocal thì app tự tách trước.';
   $('duetSettings').hidden=s.singing_mode!=='duet'||s.display_mode!=='karaoke';
@@ -238,7 +239,7 @@ function initWorkspaceChrome(){
   $('collapseRightBtn').setAttribute('aria-label',saved.right?'Mở bảng thuộc tính':'Thu gọn bảng thuộc tính');$('collapseRightBtn').title=saved.right?'Mở bảng':'Thu gọn bảng';
   const savePanels=()=>{try{localStorage.setItem('obs_studio_panels_v1',JSON.stringify({left:root.classList.contains('left-collapsed'),right:root.classList.contains('right-collapsed')}));}catch{}};
   $('collapseLeftBtn').onclick=()=>{root.classList.toggle('left-collapsed');const collapsed=root.classList.contains('left-collapsed');$('collapseLeftBtn').setAttribute('aria-label',collapsed?'Mở bảng lời và nguồn':'Thu gọn bảng lời và nguồn');$('collapseLeftBtn').title=collapsed?'Mở bảng':'Thu gọn bảng';$('collapseLeftBtn').textContent=collapsed?'›':'‹';savePanels();fitStudioPreview();drawTimeline();};
-  $('collapseRightBtn').onclick=()=>{root.classList.toggle('right-collapsed');const collapsed=root.classList.contains('right-collapsed');$('collapseRightBtn').setAttribute('aria-label',collapsed?'Mở bảng thuộc tính':'Thu gọn bảng thuộc tính');$('collapseRightBtn').title=collapsed?'Mở bảng':'Thu gọn bảng';$('collapseRightBtn').textContent=collapsed?'‹':'›';savePanels();fitStudioPreview();drawTimeline();};
+  $('collapseRightBtn').onclick=()=>{root.classList.toggle('right-collapsed');const collapsed=root.classList.contains('right-collapsed');$('collapseRightBtn').setAttribute('aria-label',collapsed?'Mở bảng thuộc tính':'Thu gọn bảng thuộc tính');$('collapseRightBtn').title=collapsed?'Mở bảng':'Thu gọn bảng';$('collapseRightBtn').textContent=collapsed?'‹':'›';if(!collapsed){showInspector(document.querySelector('[data-inspector-tab].on')?.dataset.inspectorTab||'design');}savePanels();fitStudioPreview();drawTimeline();};
   document.querySelectorAll('[data-left-tab]').forEach(button=>button.onclick=()=>{
     const name=button.dataset.leftTab;
     document.querySelectorAll('[data-left-tab]').forEach(tab=>{const active=tab===button;tab.classList.toggle('on',active);tab.setAttribute('aria-selected',String(active));});
@@ -392,7 +393,8 @@ function studioTimeline(){
   if(canvas.width!==Math.round(W*dpr)||canvas.height!==Math.round(H*dpr)){canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);}
   const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#0c1520';ctx.fillRect(0,0,W,H);
-  if(state.followPlayhead&&!audio.paused&&!state.drag&&document.activeElement!==$('pan')){
+  state.followPlayhead=true;
+  if(!audio.paused&&!state.drag&&document.activeElement!==$('pan')){
     const duration=beatDuration(),span=Math.max(3,duration/state.zoom);
     state.pan=Math.max(0,Math.min(Math.max(0,duration-span),beatNow()-span*.35));
     $('pan').value=state.pan;
@@ -421,6 +423,10 @@ function studioTimeline(){
   });
   for(const anchor of state.project.anchors){const at=x(anchor.beat);ctx.strokeStyle='#dda85588';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(at,22);ctx.lineTo(at,H);ctx.stroke();ctx.setLineDash([]);}
   const cursor=x(beatNow());if(cursor>=G&&cursor<=W){ctx.fillStyle='#ef8c76';ctx.fillRect(cursor,20,1,H);ctx.beginPath();ctx.moveTo(cursor,24);ctx.lineTo(cursor-4,17);ctx.lineTo(cursor+4,17);ctx.fill();}
+  if(state.marquee&&Math.hypot(state.marquee.x1-state.marquee.x0,state.marquee.y1-state.marquee.y0)>4){
+    const mx=Math.min(state.marquee.x0,state.marquee.x1),my=Math.min(state.marquee.y0,state.marquee.y1),mw=Math.abs(state.marquee.x1-state.marquee.x0),mh=Math.abs(state.marquee.y1-state.marquee.y0);
+    ctx.fillStyle='rgba(72,191,166,0.18)';ctx.strokeStyle='#48bfa6';ctx.lineWidth=1;ctx.fillRect(mx,my,mw,mh);ctx.strokeRect(mx,my,mw,mh);
+  }
   ctx.restore();ctx.fillStyle='#101c29';ctx.fillRect(0,0,G,H);
   const settings=state.project.settings||{},trackNames=['Dòng trên','Dòng dưới',settings.role_c_name||'Giọng 3',settings.role_d_name||'Giọng 4',settings.role_e_name||'Giọng 5',settings.role_f_name||'Giọng 6'];
   ctx.font='bold 8px Segoe UI';
@@ -460,7 +466,7 @@ for(const canvas of [$('timeline'),$('waveformCanvas')])canvas.addEventListener(
   const rect=canvas.getBoundingClientRect(),gutter=timelineGutter(rect.width);
   const fraction=Math.max(0,Math.min(1,(event.clientX-rect.left-gutter)/Math.max(1,rect.width-gutter)));
   const old=timelineRange(),anchor=old.start+fraction*old.span;
-  state.zoom=Math.max(1,Math.min(16,state.zoom*(event.deltaY<0?1.15:1/1.15)));
+  state.zoom=Math.max(1,Math.min(64,state.zoom*(event.deltaY<0?1.15:1/1.15)));
   $('zoom').step='.01';$('zoom').value=state.zoom;
   const span=Math.max(3,old.duration/state.zoom);
   state.pan=Math.max(0,Math.min(old.duration-span,anchor-fraction*span));

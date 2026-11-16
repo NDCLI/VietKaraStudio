@@ -4,14 +4,14 @@ import re
 from bundled_assets import ICON_CHOICES, ICON_SETTINGS
 
 DEFAULT_SETTINGS = {
-    "aspect": "landscape", "font": "Arial", "font_size": 72,
-    "sung": "#52efb9", "unsung": "#ffffff", "background": "#101d2b",
-    "use_background": True, "outline_unsung": "#15202a", "outline_sung": "#15202a",
-    "outline_width": 3, "outline_unsung_opacity": 100, "outline_sung_opacity": 100,
-    "italic": False, "shadow": 1, "shadow_color": "#000000",
-    "position": "bottom", "line_height": 1.4, "line_animation": "none",
+    "aspect": "landscape", "font": "Tahoma", "font_size": 120,
+    "sung": "#0000ff", "unsung": "#fff3df", "background": "#101d2b",
+    "use_background": True, "outline_unsung": "#000000", "outline_sung": "#ffffff",
+    "outline_width": 10, "outline_unsung_opacity": 100, "outline_sung_opacity": 100,
+    "italic": True, "shadow": 8, "shadow_color": "#000000",
+    "position": "bottom", "line_height": 1.85, "line_animation": "none",
     "display_mode": "karaoke", "resolution": "1080p", "background_type": "auto",
-    "countdown": "none", "countdown_seconds": 4, "singing_mode": "solo",
+    "countdown": "mic", "countdown_seconds": 4, "singing_mode": "solo",
     "role_a_name": "Nam", "role_b_name": "Nữ", "role_a_color": "#62b5ff", "role_b_color": "#ff87b7",
     "role_c_name": "Giọng 3", "role_d_name": "Giọng 4", "role_e_name": "Giọng 5", "role_f_name": "Giọng 6",
     "role_unknown_name": "Chưa rõ", "role_c_color": "#f2a76b", "role_d_color": "#9a91f4",
@@ -20,7 +20,7 @@ DEFAULT_SETTINGS = {
     "role_icons": True,
     "role_a_icon": "man-new-blue.png", "role_b_icon": "lady-pink.png",
     "role_all_icon": "men(blue) & lady(pink).png",
-    "align": "center", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
+    "align": "justify", "vertical_offset": 0, "horizontal_offset": 0, "horizontal_scale": 100,
     "lyric_x": 50, "lyric_y": 75, "line_gap": None,
     "sweep_feather": 0, "sweep_glow": 0, "sung_gradient": False,
     "gradient_top": "#ffffff", "gradient_bottom": "#1a3ad6", "gradient_start": 0, "gradient_end": 100,
@@ -37,6 +37,7 @@ DEFAULT_SETTINGS = {
     "title_shadow": 2, "title_shadow_color": "#000000", "title_weight": 700, "title_italic": False,
     "title_template": "none",
     "title_enter": "fade", "title_exit": "fade", "title_effect_seconds": .7,
+    "lead_in": 5.0, "row_lead": 1.5, "sync_offset": 0.0, "pitch_semitones": 0,
 }
 COLOR_KEYS = ("sung", "unsung", "background", "outline_unsung", "outline_sung", "shadow_color",
               "role_a_color", "role_b_color", "role_c_color", "role_d_color", "role_e_color", "role_f_color",
@@ -72,7 +73,8 @@ def validate_settings(values, base=None):
                            ("lyric_x", 0, 100), ("lyric_y", 0, 100),
                            ("sweep_feather", 0, 40), ("sweep_glow", 0, 200),
                            ("gradient_start", 0, 99), ("gradient_end", 1, 100),
-                           ("line_max_words", 2, 20), ("subtitle_box_opacity", 0, 100), ("subtitle_box_radius", 0, 40)):
+                           ("line_max_words", 2, 20), ("subtitle_box_opacity", 0, 100), ("subtitle_box_radius", 0, 40),
+                           ("lead_in", 0, 15), ("row_lead", 0, 8), ("sync_offset", -60, 60), ("pitch_semitones", -12, 12)):
         try:
             number = float(result[key])
         except (TypeError, ValueError):
@@ -91,7 +93,7 @@ def validate_settings(values, base=None):
     result["font_size"] = round(result["font_size"])
     for key in ('font','title_font'):
         result[key] = re.sub(r"[,\r\n{}\\]", "", str(result[key]))[:80].strip() or "Arial"
-    for key in ("countdown_seconds", "line_max_words", "title_weight"):
+    for key in ("countdown_seconds", "line_max_words", "title_weight", "pitch_semitones"):
         result[key] = round(result[key])
     if result["gradient_start"] >= result["gradient_end"]:
         result["gradient_end"] = min(100, result["gradient_start"] + 1)

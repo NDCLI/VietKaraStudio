@@ -187,9 +187,9 @@ def probe_video(path):
                                 creationflags=engine.CREATE_NO_WINDOW)
         details = result.stderr
         match = re.search(r'Duration: (\d+):(\d+):(\d+(?:\.\d+)?)', details)
-        stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[).*?(\d+(?:\.\d+)?) fps', details)
+        stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[|,).*?(\d+(?:\.\d+)?) fps', details)
         if not stream:
-            stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[)', details)
+            stream = re.search(r'Video:.*?,\s+(\d+)x(\d+)(?:\s|\[|,)', details)
         if not stream:
             raise ValueError('Không đọc được thông tin video.')
         duration = ((int(match.group(1)) * 60 + int(match.group(2))) * 60 + float(match.group(3))) if match else 0.

@@ -26,7 +26,8 @@ CONFIG_SHA256 = "b35077d94861f068097cce1a5e54633c055e7dcc2613eade4e4dc7c7c9c3f48
 DEFAULT_MODEL = "roformer"
 LITE_MODEL = "5_HP-Karaoke-UVR.pth"
 LITE_SHA256 = "fe00891defbb61f4261500af22f7624f1a3df8dc75fa3998d1aece02e6be4537"
-BACKING_MODELS = (DEFAULT_MODEL, "uvr-lite")
+MDX_KARA2_MODEL = "UVR_MDXNET_KARA_2.onnx"
+BACKING_MODELS = (DEFAULT_MODEL, "uvr-lite", "mdx-kara-2")
 STEM_FILE = "backing.wav"
 MIX_PATTERN = r"bb_[0-9a-f]{24}\.wav"
 SAMPLE_RATE = 44100
@@ -57,6 +58,8 @@ def model_files(model):
     repository = "TRvlvr/model_repo/releases/download/all_public_uvr_models"
     if model == "uvr-lite":
         return [(LITE_MODEL, LITE_SHA256, repository)]
+    if model == "mdx-kara-2":
+        return [(MDX_KARA2_MODEL, "", repository)]
     return [(MODEL, MODEL_SHA256, repository),
             (MODEL_CONFIG, CONFIG_SHA256, "nomadkaraoke/python-audio-separator/releases/download/model-configs")]
 
@@ -72,7 +75,7 @@ def source_key(directory: Path, model: str = DEFAULT_MODEL) -> str | None:
     vocals = fingerprint(directory / "vocals.wav")
     if not vocals:
         return None
-    checksum = MODEL_SHA256 if model == DEFAULT_MODEL else LITE_SHA256
+    checksum = MODEL_SHA256 if model == DEFAULT_MODEL else LITE_SHA256 if model == "uvr-lite" else "mdx-kara-2-v2"
     return f"{checksum}:{fingerprint(directory / 'reference.wav')}:{vocals}"
 
 
@@ -115,7 +118,9 @@ def status(project: dict, directory: Path, *, beat_name: str = "beat.wav") -> st
 
 
 def _download_model_file(target: Path, staging: Path, repository: str, expected_sha: str, progress):
-    if fingerprint(target) == expected_sha:
+    if expected_sha and fingerprint(target) == expected_sha:
+        return
+    if not expected_sha and target.is_file() and target.stat().st_size > 1024 * 1024:
         return
     url = f"https://github.com/{repository}/{target.name}"
     partial = staging / (target.name + ".partial")
@@ -132,7 +137,7 @@ def _download_model_file(target: Path, staging: Path, repository: str, expected_
             if percent != reported:
                 progress(percent * .25, f"Đang tải model tách bè · {received / 1048576:.0f} MB")
                 reported = percent
-    if digest.hexdigest() != expected_sha:
+    if expected_sha and digest.hexdigest() != expected_sha:
         raise RuntimeError("Model tách bè tải về không khớp mã kiểm tra. Hãy thử lại.")
     try:
         partial.replace(target)
@@ -158,7 +163,8 @@ def run_separator(vocals: Path, destination: Path, models: Path, device: str, mo
     if device == "cpu":
         torch.set_num_threads(min(4, torch.get_num_threads()))
     lite = model == "uvr-lite"
-    filename = LITE_MODEL if lite else MODEL
+    mdx_kara = model == "mdx-kara-2"
+    filename = LITE_MODEL if lite else MDX_KARA2_MODEL if mdx_kara else MODEL
     ensure_model(models, destination.parent, model, progress)
 
     class KaraokeSeparator(Separator):
@@ -169,12 +175,17 @@ def run_separator(vocals: Path, destination: Path, models: Path, device: str, mo
         def download_model_files(self, model_filename):
             if lite:
                 return filename, "VR", "UVR Karaoke", str(models / filename), None
+            if mdx_kara:
+                return filename, "MDX", "UVR-MDX-NET Karaoke 2", str(models / filename), None
             return MODEL, "MDXC", "Mel-RoFormer Karaoke", str(models / MODEL), MODEL_CONFIG
 
         def load_model_data_using_hash(self, model_path):
             if lite:
                 # Parameters for the SHA-256-pinned official 5_HP karaoke weights.
                 return {"vr_model_param": "4band_v2_sn", "primary_stem": "Instrumental", "is_karaoke": True}
+            if mdx_kara:
+                return {"compensate": 1.065, "mdx_dim_f_set": 2048, "mdx_dim_t_set": 8,
+                        "mdx_n_fft_scale_set": 5120, "primary_stem": "Instrumental", "is_karaoke": True}
             return super().load_model_data_using_hash(model_path)
 
     progress(26, "Đang nạp model tách giọng bè…")

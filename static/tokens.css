@@ -1,0 +1,69 @@
+/* =========================================================
+   Design tokens – chỉnh màu, font, khoảng cách tại đây
+   ========================================================= */
+:root {
+  /* Nền & bề mặt */
+  --c-bg: #0f1115;
+  --c-surface-1: #161920;      /* panel */
+  --c-surface-2: #1d212a;      /* control, hover */
+  --c-surface-3: #262b36;      /* active */
+  --c-inset: #0b0d11;          /* ô nhập, vùng sâu */
+  --c-line: #2a2f3a;
+  --c-line-strong: #3a4150;
+
+  /* Chữ */
+  --c-text: #e7e9ee;
+  --c-text-2: #a3abbb;
+  --c-text-3: #6f788a;
+
+  /* Nhấn & trạng thái */
+  --c-accent: #e8b04a;         /* vàng VietKara */
+  --c-accent-ink: #1a1408;
+  --c-info: #4aa3e8;
+  --c-ok: #4cc38a;
+  --c-warn: #e8a24a;
+  --c-err: #e5605b;
+  --c-playhead: #ff5a52;
+
+  /* Vai song ca */
+  --c-role-all: #b58cf0;
+  --c-role-female: #e86fa8;
+  --c-role-male: #4aa3e8;
+  --c-role-unknown: #7d8596;
+
+  /* Sóng nhạc */
+  --c-wave-ref: #7a8bb0;
+  --c-wave-beat: #4cc38a;
+
+  /* Typography */
+  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+
+  /* Khoảng cách (thang 4px) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+
+  /* Kích thước khung */
+  --h-menubar: 28px;
+  --h-topbar: 44px;
+  --h-statusbar: 26px;
+  --h-panel-head: 32px;
+  --h-control: 28px;
+  --w-left: 264px;
+  --w-right: 316px;
+  --h-timeline: 38%;
+  --w-track-label: 112px;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-pop: 0 10px 30px #0009;
+}

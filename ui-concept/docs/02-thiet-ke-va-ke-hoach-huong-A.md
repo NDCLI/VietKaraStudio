@@ -26,7 +26,16 @@
 
 ## 3. Kế hoạch áp dụng vào dự án thật theo từng giai đoạn
 
-> **Chưa thực hiện kế hoạch này** cho đến khi anh/chị duyệt thiết kế và yêu cầu triển khai.
+> **Đã duyệt triển khai (16/11/2026).** Tiến độ:
+>
+> | Giai đoạn | Trạng thái |
+> |---|---|
+> | 1 — Tokens & CSS | ✅ Xong: `static/tokens.css`, `static/studio-a.css` (nạp sau `style.css`), đã kiểm tra 1366×768 & 1920×1080 |
+> | 2 — Khung 4 vùng | ✅ Xong: bỏ rail trái, chuyển điều hướng 3 trang (`Karaoke`, `Tách nhạc lấy beat`, `Cài đặt model`) lên Topbar, sửa cuộn dọc Inspector & tràn ngang, thêm null-check trong `static/branding.js` |
+> | 3 — Inspector | ✅ Xong: thanh tab dọc `56px` bên trái Inspector với vạch nhấn vàng `--c-accent`, giữ nguyên toàn bộ `id` và `data-inspector-tab` |
+> | 4 — Tách nhạc & Cài đặt | ✅ Xong: đồng bộ bề mặt, viền, chữ và nút trên `#separationPage` & `#settingsPage` theo `tokens.css` |
+>
+> Cách làm Giai đoạn 1: không sửa trực tiếp `style.css` (566 dòng, nhiều lớp `:root` chồng nhau) mà dùng lớp `studio-a.css` cuối cùng, để dễ so sánh/hoàn tác; chỉ gỡ dần phần cũ khi lớp mới đã ổn định.
 
 ### Giai đoạn 1 — Chuẩn hóa Design Tokens & CSS (rủi ro thấp)
 - **Tái sử dụng**: giữ nguyên toàn bộ `app.py`, `worker.py`, các endpoint Flask và handler JS hiện có.

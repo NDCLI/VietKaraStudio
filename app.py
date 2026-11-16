@@ -265,6 +265,64 @@ def review_tool_backing(identifier):
     return jsonify({'status': 'ready' if accepted else 'weak'})
 
 
+_PITCH_LOCKS_GUARD = threading.Lock()
+_PITCH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _render_pitch_fast(src_wav: Path, dst_wav: Path, pitch: int):
+    import subprocess
+    with _PITCH_LOCKS_GUARD:
+        lock = _PITCH_LOCKS.setdefault(str(dst_wav), threading.Lock())
+    with lock:
+        if dst_wav.is_file() and dst_wav.stat().st_mtime >= src_wav.stat().st_mtime:
+            return
+        factor = 2.0 ** (pitch / 12.0)
+        af = (f"rubberband=pitch={factor:.6f}:transients=crisp:phase=laminar:"
+              f"formant=preserved:pitchq=quality:smoothing=on:channels=together")
+        tmp_out = dst_wav.with_name(f"{dst_wav.stem}.{uuid.uuid4().hex[:8]}.tmp.wav")
+        try:
+            subprocess.run([engine.binary("ffmpeg"), "-y", "-v", "error", "-i", str(src_wav),
+                            "-af", af, "-ar", "44100", "-ac", "2", "-c:a", "pcm_s16le", str(tmp_out)],
+                           check=True, creationflags=engine.CREATE_NO_WINDOW)
+            tmp_out.replace(dst_wav)
+        finally:
+            tmp_out.unlink(missing_ok=True)
+
+
+def _render_pitch_r3(src_wav: Path, dst_wav: Path, pitch: int):
+    import subprocess
+    with _PITCH_LOCKS_GUARD:
+        lock = _PITCH_LOCKS.setdefault(str(dst_wav), threading.Lock())
+    with lock:
+        if dst_wav.is_file() and dst_wav.stat().st_mtime >= src_wav.stat().st_mtime:
+            return
+        r3_exe = engine.ROOT / "tools" / "rubberband" / "rubberband-4.0.0-gpl-executable-windows" / "rubberband-r3.exe"
+        tmp_out = dst_wav.with_name(f"{dst_wav.stem}.{uuid.uuid4().hex[:8]}.tmp.wav")
+        try:
+            if r3_exe.is_file():
+                subprocess.run([str(r3_exe), "-q", "-p", str(pitch), "--formant", str(src_wav), str(tmp_out)],
+                               check=True, creationflags=engine.CREATE_NO_WINDOW)
+            else:
+                _render_pitch_fast(src_wav, tmp_out, pitch)
+                return
+            tmp_out.replace(dst_wav)
+        finally:
+            tmp_out.unlink(missing_ok=True)
+
+
+def _get_pitched_audio(src_wav: Path, out_dir: Path, pitch: int, prefer_fast_preview: bool) -> Path:
+    r3_path = out_dir / f"{src_wav.stem}_r3_pitch_{pitch:+d}.wav"
+    if r3_path.is_file() and r3_path.stat().st_mtime >= src_wav.stat().st_mtime:
+        return r3_path
+    if prefer_fast_preview:
+        fast_path = out_dir / f"{src_wav.stem}_rb_pitch_{pitch:+d}.wav"
+        _render_pitch_fast(src_wav, fast_path, pitch)
+        threading.Thread(target=lambda: _render_pitch_r3(src_wav, r3_path, pitch), daemon=True).start()
+        return fast_path
+    _render_pitch_r3(src_wav, r3_path, pitch)
+    return r3_path
+
+
 @app.get('/api/tools/<identifier>/<stem>')
 def separated_audio(identifier, stem):
     folder = separation_folder(identifier)
@@ -280,7 +338,17 @@ def separated_audio(identifier, stem):
             path = folder / backing_vocals.STEM_FILE if stem == 'backing' else backing_vocals.mix_file(current, folder)
     else:
         raise ValueError('File không hợp lệ.')
-    return send_file(path, as_attachment=request.args.get('preview') != '1', download_name=stem + '.wav')
+    raw_pitch = request.args.get('pitch', '0')
+    try:
+        pitch = max(-12, min(12, int(float(raw_pitch))))
+    except (TypeError, ValueError):
+        pitch = 0
+    dl_name = stem + '.wav'
+    if pitch != 0 and path and path.is_file():
+        is_preview = request.args.get('preview') == '1'
+        path = _get_pitched_audio(path, folder, pitch, prefer_fast_preview=is_preview)
+        dl_name = f"{stem}_{pitch:+d}st.wav"
+    return send_file(path, as_attachment=request.args.get('preview') != '1', download_name=dl_name, conditional=True)
 
 
 def directory(pid):
@@ -322,9 +390,12 @@ def public(project):
     result["scenes"] = scene_tools.public(project.get("scenes", []), project_dir)
     result["beat_words"] = beat_words(project)
     result["vocals_ready"] = (project_dir / "vocals.wav").is_file()
+    result["backing_ready"] = (project_dir / "backing.wav").is_file()
     result["backing_status"] = backing_vocals.status(project, project_dir)
     if result['vocals_ready'] and not result.get('vocals'):
         result['vocals']={'name':'Vocal riêng',**engine.waveform(engine.DATA/'projects'/project['id']/'vocals.wav')}
+    if result['backing_ready'] and not result.get('backing'):
+        result['backing']={'name':'Giọng bè',**engine.waveform(project_dir/'backing.wav')}
     return result
 
 
@@ -787,17 +858,126 @@ def _matches_missing_media(project, slot, media_path):
 
 @app.get("/api/projects/<pid>/audio/<slot>")
 def audio(pid, slot):
+    path_dir = directory(pid)
     if slot == "beat_backing":
         with LOCK:
-            path = directory(pid)
             project = load(pid)
-            if (backing_vocals.status(project, path) not in ("review", "ready") or
+            if (backing_vocals.status(project, path_dir) not in ("review", "ready") or
                     request.args.get("v", project["backing_vocals"]["mix"]) != project["backing_vocals"]["mix"]):
                 raise FileNotFoundError("Chưa có bản beat + bè phù hợp với nguồn và mốc hiện tại.")
-            return send_file(backing_vocals.mix_file(project, path), conditional=True)
-    if slot not in ("reference", "beat", "vocals"):
+            wav_path = backing_vocals.mix_file(project, path_dir)
+    elif slot in ("reference", "beat", "vocals", "backing"):
+        wav_path = path_dir / f"{slot}.wav"
+    else:
         raise ValueError("Track không hợp lệ.")
-    return send_file(directory(pid) / f"{slot}.wav", conditional=True)
+    raw_pitch = request.args.get("pitch", "0")
+    try:
+        pitch = max(-12, min(12, int(float(raw_pitch))))
+    except (TypeError, ValueError):
+        pitch = 0
+    if pitch != 0 and wav_path and wav_path.is_file():
+        wav_path = _get_pitched_audio(wav_path, path_dir, pitch, prefer_fast_preview=True)
+    return send_file(wav_path, conditional=True)
+
+
+@app.post("/api/projects/<pid>/quick-start")
+def quick_start_project(pid):
+    idle(pid)
+    path = directory(pid)
+    payload = request.get_json(silent=True) or {}
+    youtube_url = str(payload.get("youtube_url") or request.form.get("youtube_url") or "").strip()
+    has_lyrics_raw = payload.get("has_lyrics", request.form.get("has_lyrics", "1"))
+    has_lyrics = str(has_lyrics_raw).lower() not in ("0", "false", "no")
+    model = str(payload.get("model") or request.form.get("model") or "medium")
+    language = str(payload.get("language") or request.form.get("language") or "vi")
+    raw_dev = str(payload.get("device") or request.form.get("device") or "auto").lower()
+    preference = "cpu" if raw_dev == "cpu" else "auto"
+    raw_bmodel = str(payload.get("backing_model") or request.form.get("backing_model") or backing_vocals.DEFAULT_MODEL)
+    backing_model = backing_vocals.validate_model(raw_bmodel)
+    incoming = None
+    filename = "YouTube"
+    if not youtube_url:
+        file = request.files.get("file")
+        if not file or not file.filename:
+            raise ValueError("Hãy chọn file nhạc/video hoặc nhập link YouTube.")
+        filename = Path(file.filename).name
+        ext = Path(filename).suffix.lower()
+        incoming = path / f"quickstart_in_{uuid.uuid4().hex}{ext}"
+        file.save(incoming)
+
+    def work(job):
+        downloaded = None
+        try:
+            source_path = incoming
+            source_name = filename
+            if youtube_url:
+                job.update(4, "Đang tải nhạc/video từ YouTube…")
+                downloaded = media_tools.download_youtube(youtube_url, path, job)
+                source_path = downloaded
+                source_name = downloaded.name
+            ext = source_path.suffix.lower()
+            bg_video = None
+            if ext in media_tools.VIDEO_EXTENSIONS:
+                job.update(10, "Đang chuẩn bị video nền…")
+                info = media_tools.probe_video(source_path)
+                proxy = path / "background_preview_next.mp4"
+                media_tools.make_proxy(source_path, proxy, job)
+                proxy.replace(path / "background_preview.mp4")
+                bg_src = "background_source" + ext
+                shutil.copy2(source_path, path / bg_src)
+                bg_video = {"name": source_name, "source_file": bg_src, "preview_file": "background_preview.mp4", **info}
+            job.update(18, "Đang trích xuất âm thanh gốc…")
+            engine.convert(source_path, path / "reference.wav", job)
+            ref_meta = {"name": source_name, **engine.waveform(path / "reference.wav")}
+            device = hardware.select_ai(preference=preference)["demucs"]
+            job.update(26, "Đang tách Nhạc nền (Beat) và Giọng hát (Vocal)…")
+            engine.separate(path / "reference.wav", path, job, device)
+            shutil.copy2(path / "reference_instrumental.wav", path / "beat.wav")
+            beat_meta = {"name": "Nhạc nền · " + source_name, **engine.waveform(path / "beat.wav")}
+            voc_meta = {"name": "Giọng hát · " + source_name, **engine.waveform(path / "vocals.wav")}
+            with LOCK:
+                current = load(pid)
+                if current["name"] == "Bài karaoke mới":
+                    current["name"] = Path(source_name).stem[:150]
+                current["reference"] = ref_meta
+                current["beat"] = beat_meta
+                current["vocals"] = voc_meta
+                if bg_video:
+                    current["background_video"] = bg_video
+                    current["settings"] = validate_settings({"background_type": "video"}, current["settings"])
+                current["words"] = []
+                current["anchors"] = []
+                save(current)
+            job.update(58, "Đang tách Giọng bè (Backing vocal)…")
+            try:
+                with LOCK:
+                    snap = load(pid)
+                backing_res = backing_vocals.prepare(snap, path, job, preference, model=backing_model)
+                backing_res["confirmed"] = True
+                with LOCK:
+                    current = load(pid)
+                    current["backing_vocals"] = backing_res
+                    if (path / "backing.wav").is_file():
+                        current["backing"] = {"name": "Giọng bè · " + source_name, **engine.waveform(path / "backing.wav")}
+                    save(current)
+            except Exception as exc:
+                app.logger.warning("Backing vocal separation skipped: %s", exc)
+            if has_lyrics:
+                job.update(78, "Đang nhận diện lời bài hát và tự căn từ…")
+                result, _ = recognize_cached(path, job, model, language, "", preference)
+                with LOCK:
+                    current = load(pid)
+                    current["words"] = validate_words(result["words"])
+                    current["text"] = result["text"]
+                    save(current)
+            return {"project_id": pid}
+        finally:
+            if incoming:
+                incoming.unlink(missing_ok=True)
+            if downloaded:
+                downloaded.unlink(missing_ok=True)
+
+    return task(pid, "quick-start", work)
 
 
 @app.post("/api/projects/<pid>/backing")
@@ -1050,6 +1230,165 @@ def analyze(pid):
     model, language, preference = (options.get("model", "medium"),
                                    options.get("language", "vi"), options.get("device", "auto"))
     return task(pid, "analyze", lambda job: analyze_project(pid, job, model, language, lyrics, preference))
+
+
+@app.post('/api/lyrics/search-web')
+def search_lyrics_web():
+    import concurrent.futures
+    import html as html_lib
+    import re
+    import urllib.parse
+    import urllib.request
+
+    payload = request.get_json(silent=True) or {}
+    query = str(payload.get('query') or '').strip()
+    if not query:
+        raise ValueError('Nhập tên bài hát hoặc ca sĩ để tìm lời.')
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VietKaraStudio/1.1'}
+
+    def fetch_json(url, timeout=8):
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8', 'replace'))
+
+    def from_lrclib():
+        out = []
+        try:
+            items = fetch_json('https://lrclib.net/api/search?q=' + urllib.parse.quote(query))
+            for item in (items if isinstance(items, list) else []):
+                plain = (item.get('plainLyrics') or '').strip()
+                synced = (item.get('syncedLyrics') or '').strip()
+                if not plain and not synced:
+                    continue
+                out.append({
+                    'source': 'LRCLIB',
+                    'trackName': item.get('trackName') or '',
+                    'artistName': item.get('artistName') or '',
+                    'duration': item.get('duration') or 0,
+                    'plainLyrics': plain,
+                    'syncedLyrics': synced,
+                })
+                if len(out) >= 6:
+                    break
+        except Exception:
+            pass
+        return out
+
+    def from_genius():
+        out = []
+        try:
+            data = fetch_json('https://genius.com/api/search/multi?per_page=5&q=' + urllib.parse.quote(query))
+            sections = (data.get('response') or {}).get('sections') or []
+            hits = []
+            for sec in sections:
+                if sec.get('type') in ('song', 'top_hit'):
+                    for h in sec.get('hits') or []:
+                        if h.get('type') == 'song' and h.get('result'):
+                            hits.append(h['result'])
+            seen_urls = set()
+            for res in hits[:3]:
+                song_url = res.get('url')
+                if not song_url or song_url in seen_urls:
+                    continue
+                seen_urls.add(song_url)
+                req = urllib.request.Request(song_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    page = resp.read().decode('utf-8', 'replace')
+                blocks = re.findall(r'<div[^>]+data-lyrics-container="true"[^>]*>(.*?)</div>', page, flags=re.S)
+                if not blocks:
+                    continue
+                text = '\n'.join(blocks)
+                text = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
+                text = re.sub(r'<[^>]+>', '', text)
+                text = html_lib.unescape(text).strip()
+                if text:
+                    out.append({
+                        'source': 'Genius',
+                        'trackName': res.get('title') or '',
+                        'artistName': res.get('artist_names') or '',
+                        'duration': 0,
+                        'plainLyrics': text,
+                        'syncedLyrics': '',
+                    })
+        except Exception:
+            pass
+        return out
+
+    def from_lyrics_ovh():
+        out = []
+        try:
+            data = fetch_json('https://api.lyrics.ovh/suggest/' + urllib.parse.quote(query))
+            for item in (data.get('data') or [])[:3]:
+                artist = (item.get('artist') or {}).get('name') or ''
+                title = item.get('title') or ''
+                if not artist or not title:
+                    continue
+                try:
+                    lyr = fetch_json(f'https://api.lyrics.ovh/v1/{urllib.parse.quote(artist)}/{urllib.parse.quote(title)}', timeout=6)
+                    plain = (lyr.get('lyrics') or '').strip()
+                    if plain:
+                        out.append({
+                            'source': 'Lyrics.ovh',
+                            'trackName': title,
+                            'artistName': artist,
+                            'duration': item.get('duration') or 0,
+                            'plainLyrics': plain,
+                            'syncedLyrics': '',
+                        })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return out
+
+    def from_youtube():
+        out = []
+        try:
+            import yt_dlp
+            opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'extract_flat': False, 'writesubtitles': True, 'writeautomaticsub': True}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(f'ytsearch3:{query} lyrics', download=False)
+            for entry in (info.get('entries') or [])[:3]:
+                if not entry:
+                    continue
+                subs = entry.get('subtitles') or {}
+                auto = entry.get('automatic_captions') or {}
+                tracks = subs.get('vi') or subs.get('en') or auto.get('vi') or auto.get('en') or []
+                vtt = next((t for t in tracks if t.get('ext') == 'vtt' and t.get('url')), None)
+                if not vtt:
+                    continue
+                req = urllib.request.Request(vtt['url'], headers=headers)
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    raw = resp.read().decode('utf-8', 'replace')
+                lines = []
+                for ln in raw.splitlines():
+                    ln = re.sub(r'<[^>]+>', '', ln).strip()
+                    if not ln or ln.startswith(('WEBVTT', 'Kind:', 'Language:')) or '-->' in ln or ln.isdigit():
+                        continue
+                    if not lines or lines[-1] != ln:
+                        lines.append(ln)
+                text = '\n'.join(lines).strip()
+                if text:
+                    out.append({
+                        'source': 'YouTube',
+                        'trackName': entry.get('title') or '',
+                        'artistName': entry.get('uploader') or '',
+                        'duration': entry.get('duration') or 0,
+                        'plainLyrics': text,
+                        'syncedLyrics': '',
+                    })
+        except Exception:
+            pass
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = [pool.submit(fn) for fn in (from_lrclib, from_genius, from_lyrics_ovh, from_youtube)]
+        results = []
+        for f in futs:
+            results.extend(f.result())
+
+    return jsonify({'results': results})
 
 
 def recognize_batch_snapshot(project, path, job):

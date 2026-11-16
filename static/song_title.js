@@ -46,23 +46,118 @@ function drawSongTitle(t){
   root.innerHTML=(box?`<div style="${boxStyle}"></div>`:'')+rows.map(row=>`<div style="position:absolute;white-space:nowrap;left:${row.x*scale}px;top:${row.y*scale}px;font-size:${row.size*scale}px;font-family:${esc(plan.font)};font-weight:${plan.weight};font-style:${plan.italic?'italic':'normal'};line-height:1.2;color:${plan.color};-webkit-text-stroke:${plan.outline_width*scale}px ${plan.outline};paint-order:stroke fill;text-shadow:${plan.shadow?`${plan.shadow*scale}px ${plan.shadow*scale}px ${plan.shadow*1.5*scale}px ${plan.shadow_color}`:'none'};opacity:${opacity};transform:translate(${m.x*row.size*.65*scale}px,${m.y*row.size*.65*scale}px) scale(${m.scale}) rotateX(${m.rx}deg);transform-origin:left top">${esc(row.display_text??row.text)}</div>`).join('');
 }
 
+const auxAudios={};
+function trackEnabled(slot){
+  if(!state.project)return false;
+  return slot==='vocals'?!!state.project.vocals_ready:slot==='backing'?!!state.project.backing_ready:!!state.project[slot];
+}
+function ensureTrackState(){
+  state.trackVolumes=state.trackVolumes||{beat:1,reference:1,vocals:1,backing:1};
+  if(!state.trackMuted)state.trackMuted={beat:false,reference:true,vocals:true,backing:false};
+  state.hiddenWaveLanes=state.hiddenWaveLanes||new Set();
+}
+function syncAuxTracks(){
+  if(!state.project)return;
+  ensureTrackState();
+  const vocSlot=state.project.vocals_ready?'vocals':'reference';
+  const slots=['beat',vocSlot,'backing'];
+  // Ensure master audio is on an enabled track (prefer beat)
+  const masterSlot=trackEnabled(state.track)?state.track:(slots.find(trackEnabled)||'beat');
+  audio.muted=!!state.trackMuted[masterSlot]||!trackEnabled(masterSlot);
+  audio.volume=state.trackVolumes[masterSlot]??1;
+  const masterBeatTime=beatNow();
+  for(const slot of slots){
+    if(slot===masterSlot||!trackEnabled(slot)||state.trackMuted[slot]){
+      if(auxAudios[slot]&&!auxAudios[slot].paused)auxAudios[slot].pause();
+      continue;
+    }
+    let el=auxAudios[slot];
+    if(!el){el=new Audio();el.preload='auto';auxAudios[slot]=el;}
+    const st=Math.round(Number(state.project?.settings?.pitch_semitones||0));
+    const wantSrc=location.origin+endpoint(`/audio/${slot}`)+`?v=${state.project.updated_at}`+(st?`&pitch=${st}`:'');
+    if(el.src!==wantSrc)el.src=wantSrc;
+    el.muted=false;
+    el.volume=state.trackVolumes[slot]??1;
+    el.preservesPitch=audio.preservesPitch;
+    el.playbackRate=audio.playbackRate;
+    const targetTime=slot==='beat'||slot==='backing'?masterBeatTime:mapTime(masterBeatTime,true);
+    if(Number.isFinite(targetTime)&&Math.abs((el.currentTime||0)-targetTime)>0.08){
+      try{el.currentTime=Math.max(0,targetTime);}catch{}
+    }
+    if(!audio.paused&&el.paused)el.play().catch(()=>{});
+    else if(audio.paused&&!el.paused)el.pause();
+  }
+}
 function renderWaveTrackControls(){
   const root=$('waveTrackControls');if(!root||!state.project)return;
-  const enabled=slot=>slot==='vocals'?state.project.vocals_ready:!!state.project[slot];
-  const icon=active=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3Z"/>${active?'<path d="M16 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>':'<path d="m16 9 6 6m0-6-6 6"/>'}</svg>`;
-  root.innerHTML=[['beat','Beat'],['reference','Có vocal'],['vocals','Vocal riêng']].map(([slot,label])=>{
-    const active=state.track===slot&&!audio.muted;
-    return `<button data-monitor-track="${slot}" aria-label="${active?'Tắt tiếng':'Nghe'} ${label}" aria-pressed="${active}" title="${enabled(slot)?'Bấm để nghe hoặc tắt tiếng':'Chưa có '+label}" ${!enabled(slot)||state.manualTiming?'disabled':''}>${icon(active)}<span>${label}</span></button>`;
+  ensureTrackState();
+  const spk=active=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 9h4l5-4v14l-5-4H3Z"/>${active?'<path d="M16 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>':'<path d="m16 9 6 6m0-6-6 6"/>'}</svg>`;
+  const eye=off=>off?`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.1A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.5 18.5 0 0 1-3.2 4.2M6.2 6.2C3.6 8.1 2 12 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4.8-1.1"/></svg>`:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const vocSlot=state.project.vocals_ready?'vocals':'reference';
+  const rows=[['beat','NHẠC NỀN'],[vocSlot,'GIỌNG HÁT'],['backing','GIỌNG BÈ']];
+  const unmutedSlots=rows.map(r=>r[0]).filter(s=>trackEnabled(s)&&!state.trackMuted[s]);
+  root.innerHTML=rows.map(([resolved,label])=>{
+    const laneKey=resolved==='vocals'?'reference':resolved;
+    const isEnabled=trackEnabled(resolved);
+    const active=isEnabled&&!state.trackMuted[resolved];
+    const isSolo=active&&unmutedSlots.length===1&&unmutedSlots[0]===resolved;
+    const vol=state.trackVolumes[resolved]??1;
+    const hiddenLane=state.hiddenWaveLanes.has(laneKey);
+    const dis=!isEnabled||state.manualTiming?'disabled':'';
+    return `<div class="wtc-lane ${active?'on':''}">
+      <div class="wtc-head"><strong>${label}</strong><button type="button" class="wtc-eye ${hiddenLane?'off':''}" data-hide-lane="${laneKey}" title="${hiddenLane?'Hiện':'Ẩn'} sóng ${label}" aria-label="${hiddenLane?'Hiện':'Ẩn'} sóng ${label}">${eye(hiddenLane)}</button></div>
+      <div class="wtc-controls">
+        <button type="button" class="wtc-solo ${isSolo?'on':''}" data-monitor-track="${resolved}" aria-pressed="${isSolo}" title="Solo chỉ nghe ${label}" ${dis}>S</button>
+        <button type="button" class="wtc-mute ${active?'on':''}" data-mute-track="${resolved}" aria-pressed="${active}" title="${active?'Tắt tiếng':'Bật nghe thêm'} ${label}" ${dis}>${spk(active)}</button>
+        <input type="range" class="wtc-vol" data-vol-track="${resolved}" min="0" max="1" step="0.02" value="${vol}" title="Âm lượng ${label}" ${dis}>
+      </div>
+    </div>`;
   }).join('');
+  syncAuxTracks();
 }
 function initWaveTrackControls(){
+  for(const ev of ['play','pause','seeking','seeked','ratechange','timeupdate']){
+    audio.addEventListener(ev,syncAuxTracks);
+  }
   $('waveTrackControls').onclick=wrap(async event=>{
-    const button=event.target.closest('[data-monitor-track]');if(!button||state.manualTiming)return;
-    const track=button.dataset.monitorTrack;
-    if(state.track===track)audio.muted=!audio.muted;
-    else{
-      const playing=!audio.paused,position=beatNow();audio.muted=false;setAudio(track,position,playing);
+    ensureTrackState();
+    const eyeBtn=event.target.closest('[data-hide-lane]');
+    if(eyeBtn){
+      const lane=eyeBtn.dataset.hideLane;
+      if(state.hiddenWaveLanes.has(lane))state.hiddenWaveLanes.delete(lane);
+      else state.hiddenWaveLanes.add(lane);
+      renderWaveTrackControls();drawTimeline();return;
     }
-    renderWaveTrackControls();drawTimeline();
+    const solo=event.target.closest('[data-monitor-track]');
+    if(solo&&!state.manualTiming){
+      const track=solo.dataset.monitorTrack;
+      const vocSlot=state.project.vocals_ready?'vocals':'reference';
+      const allSlots=['beat',vocSlot,'backing'].filter(trackEnabled);
+      const unmuted=allSlots.filter(s=>!state.trackMuted[s]);
+      if(unmuted.length===1&&unmuted[0]===track){
+        for(const s of allSlots)state.trackMuted[s]=false;
+      }else{
+        for(const s of allSlots)state.trackMuted[s]=(s!==track);
+      }
+      if(!audio.getAttribute('src')&&trackEnabled(track))setAudio(track,beatNow(),!audio.paused);
+      renderWaveTrackControls();drawTimeline();return;
+    }
+    const mute=event.target.closest('[data-mute-track]');
+    if(mute&&!state.manualTiming){
+      const track=mute.dataset.muteTrack;
+      state.trackMuted[track]=!state.trackMuted[track];
+      if(!state.trackMuted[track]&&!audio.getAttribute('src')&&trackEnabled(track)){
+        setAudio(track,beatNow(),!audio.paused);
+      }
+      renderWaveTrackControls();drawTimeline();
+    }
   });
+  $('waveTrackControls').oninput=event=>{
+    const slider=event.target.closest('[data-vol-track]');if(!slider)return;
+    ensureTrackState();
+    const track=slider.dataset.volTrack,v=Number(slider.value);
+    state.trackVolumes[track]=v;
+    if(v>0&&state.trackMuted[track])state.trackMuted[track]=false;
+    renderWaveTrackControls();
+  };
 }

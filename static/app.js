@@ -23,7 +23,7 @@ async function api(path, options={}) {
 }
 function endpoint(suffix=''){return `/api/projects/${state.project.id}${suffix}`;}
 function toast(message,error=false){clearTimeout(state.toastTimer);$('toast').textContent=message;$('toast').classList.toggle('error',error);$('toast').hidden=false;state.toastTimer=setTimeout(()=>$('toast').hidden=true,error?12000:5500);}
-function handleError(error){console.error(error);toast(error.message||String(error),true);}
+function handleError(error){if(error?.name==='AbortError'||/interrupted by a/i.test(String(error?.message||error)))return;console.error(error);toast(error.message||String(error),true);}
 function wrap(fn){return (...args)=>{try{return Promise.resolve(fn(...args)).catch(handleError);}catch(error){handleError(error);}};}
 function time(t,precise=false){t=Math.max(0,Number(t)||0);const cs=Math.round(t*100),m=Math.floor(cs/6000),s=Math.floor(cs/100)%60;return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}${precise?'.'+String(cs%100).padStart(2,'0'):''}`;}
 function mapTime(t,inverse=false){const anchors=state.project?.anchors||[];if(!anchors.length)return t;const x=inverse?'beat':'ref',y=inverse?'ref':'beat';if(anchors.length===1)return t+anchors[0][y]-anchors[0][x];let pair=anchors.slice(0,2);for(let i=0;i<anchors.length-1;i++){pair=anchors.slice(i,i+2);if(t<=pair[1][x])break;}return pair[0][y]+(t-pair[0][x])*(pair[1][y]-pair[0][y])/(pair[1][x]-pair[0][x]);}
@@ -99,9 +99,9 @@ function timelineRange(){const duration=beatDuration();const span=Math.max(3,dur
 function drawTimeline(){studioTimeline();studioWaveforms();}
 
 function eventPoint(event){const rect=$('timeline').getBoundingClientRect(),offset=timelineGutter(rect.width);return {x:event.clientX-rect.left,y:event.clientY-rect.top,width:rect.width-offset,offset};}
-$('timeline').addEventListener('pointerdown',event=>{if(state.job||state.manualTiming)return;const p=eventPoint(event),range=timelineRange(),hit=[...state.rectangles].reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(!hit){seekBeat(range.start+Math.max(0,p.x-p.offset)/p.width*range.span);return;}selectWord(hit.i,false,event.ctrlKey||event.metaKey);if(event.ctrlKey||event.metaKey)return;if(lineLocked(selectedWord().line)){toast('Câu này đã khóa. Mở khóa để chỉnh mốc.');return;}const word=wordOnBeat(selectedWord());remember();state.drag={index:hit.i,startX:p.x,start:word.start,end:word.end,line:word.line,linked:state.project.settings.timeline_linked!==false&&!state.project.words[hit.i-1]?.locked&&!state.project.words[hit.i+1]?.locked,previous:state.project.words[hit.i-1]?wordOnBeat(state.project.words[hit.i-1]):null,next:state.project.words[hit.i+1]?wordOnBeat(state.project.words[hit.i+1]):null,kind:event.shiftKey?'move':p.x>hit.x+hit.w-6?'end':p.x<hit.x+6?'start':'move',span:range.span,width:p.width,group:event.shiftKey?state.project.words.map((w,i)=>({i,...wordOnBeat(w)})).filter(w=>w.line===selectedWord().line):null};$('timeline').setPointerCapture(event.pointerId);});
-$('timeline').addEventListener('pointermove',event=>{const p=eventPoint(event);if(!state.drag){const hit=state.rectangles.find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);$('timeline').style.cursor=hit?(p.x>hit.x+hit.w-6||p.x<hit.x+6?'ew-resize':'grab'):'crosshair';return;}const d=state.drag,delta=(p.x-d.startX)/d.width*d.span,word=state.project.words[d.index];let a=d.start,b=d.end;if(d.kind==='move'){a+=delta;b+=delta;if(a<0){b-=a;a=0;}if(b>beatDuration()){a-=b-beatDuration();b=beatDuration();}}else{const resized=timelineResize(d,d.previous,d.next,d.kind,delta,d.linked,beatDuration());a=resized.start;b=resized.end;d.boundary=resized;}const refA=mapTime(a,true),refB=mapTime(b,true);if(refA>=0&&refB>refA){word.start=refA;word.end=refB;word.estimated=false;if(d.boundary?.previousEnd!=null){const neighbor=state.project.words[d.index-1];neighbor.end=mapTime(d.boundary.previousEnd,true);neighbor.estimated=false;}if(d.boundary?.nextStart!=null){const neighbor=state.project.words[d.index+1];neighbor.start=mapTime(d.boundary.nextStart,true);neighbor.estimated=false;}}if(d.group){const shift=Math.max(-Math.min(...d.group.map(w=>w.start)),Math.min(beatDuration()-Math.max(...d.group.map(w=>w.end)),delta));for(const w of d.group){const item=state.project.words[w.i],ra=mapTime(w.start+shift,true),rb=mapTime(w.end+shift,true);if(ra>=0&&rb>ra){item.start=ra;item.end=rb;}}}renderSelected();drawTimeline();previewFrame();});
-function finishDrag(){if(!state.drag)return;state.drag=null;renderWords();dirty();}
+$('timeline').addEventListener('pointerdown',event=>{if(state.job||state.manualTiming)return;const p=eventPoint(event),range=timelineRange(),hit=[...state.rectangles].reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(!hit){if(p.y<24){seekBeat(range.start+Math.max(0,p.x-p.offset)/p.width*range.span);return;}state.marquee={x0:p.x,y0:p.y,x1:p.x,y1:p.y,base:new Set(event.ctrlKey||event.metaKey?state.timelineSelection:[])};$('timeline').setPointerCapture(event.pointerId);return;}const alreadyInMulti=state.timelineSelection.has(hit.i)&&state.timelineSelection.size>1&&!event.ctrlKey&&!event.metaKey;if(alreadyInMulti){state.selected=hit.i;renderWords();renderSelected();drawTimeline();}else selectWord(hit.i,false,event.ctrlKey||event.metaKey);if(event.ctrlKey||event.metaKey)return;if(lineLocked(selectedWord().line)){toast('Câu này đã khóa. Mở khóa để chỉnh mốc.');return;}const word=wordOnBeat(selectedWord());remember();const kind=event.shiftKey||alreadyInMulti?'move':p.x>hit.x+hit.w-6?'end':p.x<hit.x+6?'start':'move';const groupIndices=alreadyInMulti?[...state.timelineSelection].sort((a,b)=>a-b):event.shiftKey?state.project.words.map((w,i)=>w.line===selectedWord().line?i:-1).filter(i=>i>=0):null;state.drag={index:hit.i,startX:p.x,start:word.start,end:word.end,line:word.line,linked:state.project.settings.timeline_linked!==false&&!state.project.words[hit.i-1]?.locked&&!state.project.words[hit.i+1]?.locked,previous:state.project.words[hit.i-1]?wordOnBeat(state.project.words[hit.i-1]):null,next:state.project.words[hit.i+1]?wordOnBeat(state.project.words[hit.i+1]):null,kind,span:range.span,width:p.width,group:groupIndices?groupIndices.filter(i=>!lineLocked(state.project.words[i]?.line)).map(i=>({i,...wordOnBeat(state.project.words[i])})):null};$('timeline').setPointerCapture(event.pointerId);});
+$('timeline').addEventListener('pointermove',event=>{const p=eventPoint(event);if(state.marquee){state.marquee.x1=p.x;state.marquee.y1=p.y;const xMin=Math.min(state.marquee.x0,p.x),xMax=Math.max(state.marquee.x0,p.x),yMin=Math.min(state.marquee.y0,p.y),yMax=Math.max(state.marquee.y0,p.y);if(Math.hypot(p.x-state.marquee.x0,p.y-state.marquee.y0)>4){state.timelineSelection=new Set(state.marquee.base);for(const r of state.rectangles){if(r.x+r.w>=xMin&&r.x<=xMax&&r.y+r.h>=yMin&&r.y<=yMax)state.timelineSelection.add(r.i);}const arr=[...state.timelineSelection].sort((a,b)=>a-b);state.selected=arr.length?arr[0]:-1;renderSelected();}drawTimeline();return;}if(!state.drag){const hit=state.rectangles.find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);$('timeline').style.cursor=hit?(p.x>hit.x+hit.w-6||p.x<hit.x+6?'ew-resize':'grab'):'crosshair';return;}const d=state.drag,delta=(p.x-d.startX)/d.width*d.span,word=state.project.words[d.index];let a=d.start,b=d.end;if(d.kind==='move'){a+=delta;b+=delta;if(a<0){b-=a;a=0;}if(b>beatDuration()){a-=b-beatDuration();b=beatDuration();}}else{const resized=timelineResize(d,d.previous,d.next,d.kind,delta,d.linked,beatDuration());a=resized.start;b=resized.end;d.boundary=resized;}const refA=mapTime(a,true),refB=mapTime(b,true);if(!d.group&&refA>=0&&refB>refA){word.start=refA;word.end=refB;word.estimated=false;if(d.boundary?.previousEnd!=null){const neighbor=state.project.words[d.index-1];neighbor.end=mapTime(d.boundary.previousEnd,true);neighbor.estimated=false;}if(d.boundary?.nextStart!=null){const neighbor=state.project.words[d.index+1];neighbor.start=mapTime(d.boundary.nextStart,true);neighbor.estimated=false;}}if(d.group&&d.group.length){const shift=Math.max(-Math.min(...d.group.map(w=>w.start)),Math.min(beatDuration()-Math.max(...d.group.map(w=>w.end)),delta));for(const w of d.group){const item=state.project.words[w.i],ra=mapTime(w.start+shift,true),rb=mapTime(w.end+shift,true);if(ra>=0&&rb>ra){item.start=ra;item.end=rb;item.estimated=false;}}}renderSelected();drawTimeline();previewFrame();});
+function finishDrag(event){if(state.marquee){const m=state.marquee;state.marquee=null;if(Math.hypot(m.x1-m.x0,m.y1-m.y0)<=4){const pt=eventPoint(event),range=timelineRange();seekBeat(range.start+Math.max(0,m.x0-pt.offset)/pt.width*range.span);}else{renderWords();renderSelected();}drawTimeline();return;}if(!state.drag)return;state.drag=null;renderWords();dirty();}
 $('timeline').addEventListener('pointerup',finishDrag);$('timeline').addEventListener('pointercancel',finishDrag);
 
 
@@ -427,3 +427,610 @@ $('savePresetBtn').onclick=wrap(async()=>{const name=$('newPresetName').value.tr
 $('exportPresetBtn').onclick=()=>{if(state.presetId)location.href=`/api/presets/${encodeURIComponent(state.presetId)}/download`;};
 $('deletePresetBtn').onclick=wrap(async()=>{const p=state.presets.find(p=>p.id===state.presetId);if(!p||p.builtin)return;await api(`/api/presets/${p.id}`,{method:'DELETE'});state.presetId=null;await loadPresets();showPreset(state.presets[0]?.id);toast('Đã xóa preset riêng.');});
 $('importPresetInput').onchange=wrap(async()=>{const input=$('importPresetInput'),file=input.files[0];if(!file)return;try{if(file.size>1024*1024)throw Error('Preset JSON tối đa 1 MB.');const data=JSON.parse((await file.text()).replace(/^\uFEFF/,''));const p=await api('/api/presets',{method:'POST',body:data});await loadPresets();showPreset(p.id);toast('Đã nhập '+p.name+'. Bấm Áp dụng để dùng.');}finally{input.value='';}});
+
+(() => {
+  const openBtn = $('searchLyricsOnlineBtn'), dlg = $('lyricsSearchDialog');
+  if (!openBtn || !dlg) return;
+  let selectedText = '';
+  const setButtons = on => {
+    $('copyOnlineLyricsBtn').disabled = !on;
+    $('applyOnlineLyricsBtn').disabled = !on;
+  };
+  openBtn.onclick = () => {
+    const title = ($('projectName')?.value || '').trim();
+    if (!$('lyricsSearchQuery').value.trim() && title && title !== 'Bài karaoke mới') {
+      $('lyricsSearchQuery').value = title;
+    }
+    $('lyricsCurrentCompare').value = $('lyricsText')?.value || state.project?.text || '';
+    $('lyricsSearchPreview').value = '';
+    $('lyricsSearchResults').innerHTML = '';
+    setButtons(false);
+    dlg.showModal();
+    if ($('lyricsSearchQuery').value.trim()) $('lyricsSearchForm').requestSubmit();
+    else $('lyricsSearchQuery').focus();
+  };
+  $('lyricsSearchForm').onsubmit = wrap(async e => {
+    e.preventDefault();
+    const q = $('lyricsSearchQuery').value.trim();
+    if (!q) return;
+    $('lyricsSearchStatus').textContent = 'Đang tìm lời trên mạng…';
+    $('lyricsSearchResults').innerHTML = '';
+    $('lyricsSearchPreview').value = '';
+    setButtons(false);
+    const data = await api('/api/lyrics/search-web', { method: 'POST', body: { query: q } });
+    const list = data.results || [];
+    $('lyricsSearchStatus').textContent = list.length ? `Tìm thấy ${list.length} kết quả. Chọn một bài để đối chiếu:` : 'Không tìm thấy kết quả phù hợp.';
+    for (const item of list) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ghost small';
+      btn.style.cssText = 'text-align:left;justify-content:flex-start;flex-direction:column;align-items:flex-start;gap:2px;padding:8px;height:auto;white-space:normal';
+      const dur = item.duration ? ` · ${Math.floor(item.duration / 60)}:${String(Math.round(item.duration % 60)).padStart(2, '0')}` : '';
+      const src = item.source ? `[${esc(item.source)}] ` : '';
+      btn.innerHTML = `<strong style="font-size:12px">${esc(item.trackName || 'Không rõ tên')}</strong><span class="small muted">${src}${esc(item.artistName || 'Không rõ ca sĩ')}${dur}</span>`;
+      btn.onclick = () => {
+        for (const b of $('lyricsSearchResults').children) b.classList.remove('on');
+        btn.classList.add('on');
+        selectedText = (item.plainLyrics || item.syncedLyrics.replace(/\[[^\]]+\]\s*/g, '')).trim();
+        $('lyricsSearchPreview').value = selectedText;
+        setButtons(!!selectedText);
+      };
+      $('lyricsSearchResults').appendChild(btn);
+    }
+    if (list.length) $('lyricsSearchResults').firstElementChild?.click();
+  });
+  $('copyOnlineLyricsBtn').onclick = () => {
+    if (!selectedText) return;
+    $('lyricsText').value = selectedText;
+    $('lyricsEditor').open = true;
+    dlg.close();
+    toast('Đã chép lời vào ô sửa lời.');
+  };
+  $('applyOnlineLyricsBtn').onclick = () => {
+    if (!selectedText) return;
+    $('lyricsText').value = selectedText;
+    dlg.close();
+    $('applyLyricsEditsBtn').click();
+  };
+})();
+
+(() => {
+  const wrapEl = document.querySelector('.transport-quick');
+  if (!wrapEl) return;
+  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  let pitchReqId = 0, pitchDebounce = null;
+  function showPitchProgress(st) {
+    const jb = $('jobBar'), jt = $('jobTitle'), jp = $('jobProgress'), jpct = $('jobPercent');
+    if (!jb) return () => {};
+    jb.hidden = false;
+    if (jt) jt.textContent = `Đang xử lý chuyển tone (${st > 0 ? '+' : ''}${st} st)…`;
+    let pct = 15;
+    if (jp) jp.style.width = pct + '%';
+    if (jpct) jpct.textContent = pct + '%';
+    const iv = setInterval(() => {
+      pct = Math.min(92, pct + 8);
+      if (jp) jp.style.width = pct + '%';
+      if (jpct) jpct.textContent = pct + '%';
+    }, 250);
+    return () => {
+      clearInterval(iv);
+      if (jp) jp.style.width = '100%';
+      if (jpct) jpct.textContent = '100%';
+      setTimeout(() => { if (!state.job) jb.hidden = true; }, 200);
+    };
+  }
+  function applyPitchToAudio() {
+    if (!state.project) return;
+    const st = Math.round(Number(state.project?.settings?.pitch_semitones || 0));
+    const baseRate = Number($('playbackRate')?.value || 1);
+    audio.preservesPitch = true; audio.playbackRate = baseRate;
+    const curSrc = audio.getAttribute('src');
+    if (!curSrc) return;
+    const base = curSrc.replace(/&pitch=[^&]+/g, '');
+    const want = st !== 0 ? `${base}&pitch=${st}` : base;
+    if (curSrc === want) { if (typeof syncAuxTracks === 'function') syncAuxTracks(); return; }
+    clearTimeout(pitchDebounce);
+    const reqId = ++pitchReqId;
+    pitchDebounce = setTimeout(async () => {
+      const pos = audio.currentTime || 0, wasPlaying = !audio.paused;
+      const done = st !== 0 ? showPitchProgress(st) : () => {};
+      try {
+        if (st !== 0) {
+          await fetch(want, { method: 'HEAD' });
+          const vocSlot = state.project.vocals_ready ? 'vocals' : 'reference';
+          for (const extra of [vocSlot, 'backing']) {
+            if (state.trackMuted && state.trackMuted[extra]) continue;
+            const u = endpoint(`/audio/${extra}`) + `?v=${state.project.updated_at}&pitch=${st}`;
+            if (u !== want) await fetch(u, { method: 'HEAD' }).catch(() => {});
+          }
+        }
+        if (reqId !== pitchReqId) return;
+        audio.onloadeddata = () => {
+          audio.onloadeddata = null;
+          audio.playbackRate = baseRate;
+          if (pos > 0.05) try { audio.currentTime = Math.min(audio.duration || pos, pos); } catch {}
+          if (wasPlaying) audio.play().catch(() => {});
+        };
+        audio.src = want;
+        if (typeof syncAuxTracks === 'function') syncAuxTracks();
+      } finally {
+        done();
+      }
+    }, 220);
+  }
+  function syncTq() {
+    const p = state.project, s = p?.settings || {};
+    const off = Number(s.sync_offset || 0);
+    const st = Math.round(Number(s.pitch_semitones || 0));
+    $('tqOffset').textContent = (off >= 0 ? '+' : '') + off.toFixed(1) + 's';
+    if ($('tqPitch')) {
+      const targetNote = notes[((st % 12) + 12) % 12];
+      $('tqPitch').textContent = st === 0 ? '0 st' : `${st > 0 ? '+' : ''}${st} (${targetNote})`;
+    }
+    $('tqFirstLead').textContent = Number(s.lead_in ?? 5).toFixed(1) + 's';
+    $('tqNextLead').textContent = Number(s.row_lead ?? 1.5).toFixed(1) + 's';
+  }
+  wrapEl.addEventListener('click', wrap(async e => {
+    const btn = e.target.closest('[data-tq]');
+    if (!btn || !state.project) return;
+    const s = state.project.settings;
+    const key = btn.dataset.tq, delta = Number(btn.dataset.delta || 0);
+    if (key === 'offset') {
+      const next = Math.max(-60, Math.min(60, Math.round((Number(s.sync_offset || 0) + delta) * 10) / 10));
+      const actualDelta = next - Number(s.sync_offset || 0);
+      if (!actualDelta) return;
+      remember();
+      s.sync_offset = next;
+      const dur = beatDuration() || 86400;
+      for (const w of state.project.words) {
+        if (lineLocked(w.line)) continue;
+        const ns = Math.max(0, Math.min(dur - 0.05, w.start + actualDelta));
+        const ne = Math.max(ns + 0.05, Math.min(dur, w.end + actualDelta));
+        w.start = ns; w.end = ne;
+      }
+      syncTq(); renderWords(); renderSelected(); drawTimeline(); scheduleLayout(); previewFrame(); dirty();
+    } else if (key === 'pitch') {
+      const next = Math.max(-12, Math.min(12, Math.round(Number(s.pitch_semitones || 0) + delta)));
+      s.pitch_semitones = next;
+      applyPitchToAudio();
+      syncTq(); dirty();
+    } else if (key === 'first_lead') {
+      const next = Math.max(0, Math.min(15, Math.round((Number(s.lead_in ?? 5) + delta) * 10) / 10));
+      s.lead_in = next;
+      syncTq(); scheduleLayout(); previewFrame(); dirty();
+    } else if (key === 'next_lead') {
+      const next = Math.max(0, Math.min(8, Math.round((Number(s.row_lead ?? 1.5) + delta) * 10) / 10));
+      s.row_lead = next;
+      syncTq(); scheduleLayout(); previewFrame(); dirty();
+    }
+  }));
+  $('playbackRate')?.addEventListener('change', applyPitchToAudio);
+  setInterval(syncTq, 600);
+})();
+
+(() => {
+  const qsScreen = $('karaokeStartScreen'), page = $('karaokePage');
+  if (!qsScreen || !page) return;
+  const skipped = new Set();
+  let qsMode = 'file', qsFile = null;
+  const qsAudio = new Audio();
+  let qsPeaks = [];
+
+  function fmtDur(sec) {
+    if (!Number.isFinite(sec) || sec <= 0) return '0:00';
+    return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  }
+  function drawQsWave() {
+    const c = $('qsWaveCanvas');
+    if (!c) return;
+    const W = c.clientWidth || 680, H = c.height || 54;
+    if (c.width !== W) c.width = W;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    const prog = qsAudio.duration ? qsAudio.currentTime / qsAudio.duration : 0;
+    const n = qsPeaks.length || 120;
+    for (let x = 0; x < W; x += 3) {
+      const idx = Math.floor((x / W) * n);
+      const v = qsPeaks.length ? qsPeaks[idx] : (0.25 + 0.55 * Math.abs(Math.sin(x * 0.07) * Math.cos(x * 0.023)));
+      const h = Math.max(4, v * (H - 8));
+      ctx.fillStyle = (x / W) <= prog ? '#f97316' : '#4b5563';
+      ctx.fillRect(x, (H - h) / 2, 2, h);
+    }
+    const cx = prog * W;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(cx, 0, 2, H);
+  }
+  qsAudio.ontimeupdate = () => {
+    $('qsFileDur').textContent = `${fmtDur(qsAudio.currentTime)} / ${fmtDur(qsAudio.duration)}`;
+    drawQsWave();
+  };
+  qsAudio.onended = () => { $('qsPlayBtn').textContent = '▶'; };
+
+  function checkQsVisibility() {
+    const p = state.project;
+    if (!p) return;
+    const hasMedia = !!(p.beat || p.reference || p.vocals_ready);
+    const show = !hasMedia && !skipped.has(p.id) && !state.job;
+    qsScreen.hidden = !show;
+    page.classList.toggle('qs-active', show);
+    if (!show && !qsAudio.paused) qsAudio.pause();
+  }
+  setInterval(checkQsVisibility, 400);
+
+  qsScreen.addEventListener('click', e => {
+    const tab = e.target.closest('[data-qs-mode]');
+    if (!tab) return;
+    qsMode = tab.dataset.qsMode;
+    for (const b of qsScreen.querySelectorAll('[data-qs-mode]')) b.classList.toggle('on', b === tab);
+    $('qsFileBar').hidden = qsMode !== 'file';
+    $('qsYoutubeBar').hidden = qsMode !== 'youtube';
+    $('qsPreviewCard').hidden = qsMode !== 'file' || !qsFile;
+    $('qsOptionsBlock').hidden = qsMode === 'file' ? !qsFile : !$('qsYoutubeInput').value.trim();
+  });
+
+  $('qsBrowseBtn').onclick = () => $('qsFileInput').click();
+  $('qsFileLabel').onclick = () => $('qsFileInput').click();
+  $('qsFileInput').onchange = async () => {
+    const f = $('qsFileInput').files[0];
+    if (!f) return;
+    qsFile = f;
+    $('qsFileLabel').value = f.name;
+    $('qsFileName').textContent = f.name;
+    $('qsPreviewCard').hidden = false;
+    $('qsOptionsBlock').hidden = false;
+    qsAudio.src = URL.createObjectURL(f);
+    qsAudio.onloadedmetadata = () => {
+      $('qsFileDur').textContent = `0:00 / ${fmtDur(qsAudio.duration)}`;
+      drawQsWave();
+    };
+    try {
+      const buf = await f.arrayBuffer();
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const decoded = await ac.decodeAudioData(buf);
+      const ch = decoded.getChannelData(0);
+      const bins = 220, step = Math.max(1, Math.floor(ch.length / bins));
+      qsPeaks = [];
+      for (let i = 0; i < bins; i++) {
+        let max = 0;
+        for (let j = 0; j < step; j += 16) {
+          const val = Math.abs(ch[i * step + j] || 0);
+          if (val > max) max = val;
+        }
+        qsPeaks.push(Math.min(1, max));
+      }
+      ac.close();
+      drawQsWave();
+    } catch {
+      qsPeaks = [];
+      drawQsWave();
+    }
+  };
+  $('qsYoutubeInput').oninput = () => {
+    $('qsOptionsBlock').hidden = !$('qsYoutubeInput').value.trim();
+  };
+  $('qsPlayBtn').onclick = () => {
+    if (!qsAudio.src) return;
+    if (qsAudio.paused) { qsAudio.play(); $('qsPlayBtn').textContent = '⏸'; }
+    else { qsAudio.pause(); $('qsPlayBtn').textContent = '▶'; }
+  };
+  $('qsVolSlider').oninput = e => { qsAudio.volume = Number(e.target.value); };
+  $('qsWaveCanvas').onclick = e => {
+    if (!qsAudio.duration) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    qsAudio.currentTime = Math.max(0, Math.min(qsAudio.duration, ((e.clientX - r.left) / r.width) * qsAudio.duration));
+    drawQsWave();
+  };
+  $('qsSkipBtn').onclick = () => {
+    if (state.project) skipped.add(state.project.id);
+    checkQsVisibility();
+  };
+  $('qsStartBtn').onclick = wrap(async () => {
+    if (!state.project) return;
+    if (!qsAudio.paused) qsAudio.pause();
+    const hasLyrics = qsScreen.querySelector('input[name="qsHasLyrics"]:checked')?.value !== '0';
+    const aiModel = $('quickWhisperModel')?.value || $('aiModel')?.value || 'medium';
+    const aiLang = $('aiLanguage')?.value || 'vi';
+    const aiDevice = $('quickAiDevice')?.value || 'auto';
+    const backRaw = $('quickBackingModel')?.value || 'backing-roformer';
+    const backModel = { 'backing-roformer': 'roformer', 'mdx-kara-2': 'mdx-kara-2', 'backing-uvr-lite': 'uvr-lite' }[backRaw] || 'roformer';
+    skipped.add(state.project.id);
+    checkQsVisibility();
+    let job;
+    if (qsMode === 'youtube') {
+      const url = $('qsYoutubeInput').value.trim();
+      if (!url) throw Error('Hãy nhập link YouTube.');
+      job = await api(endpoint('/quick-start'), { method: 'POST', body: { youtube_url: url, has_lyrics: hasLyrics, model: aiModel, language: aiLang, device: aiDevice, backing_model: backModel } });
+    } else {
+      if (!qsFile) throw Error('Hãy chọn file nhạc hoặc video.');
+      const fd = new FormData();
+      fd.append('file', qsFile);
+      fd.append('has_lyrics', hasLyrics ? '1' : '0');
+      fd.append('model', aiModel);
+      fd.append('language', aiLang);
+      fd.append('device', aiDevice);
+      fd.append('backing_model', backModel);
+      job = await api(endpoint('/quick-start'), { method: 'POST', body: fd });
+    }
+    await followJob(job);
+    const fresh = await api(endpoint(''));
+    state.project = fresh;
+    renderAll();
+  });
+})();
+
+(() => {
+  // 1. Tự động đóng menu Tệp khi bấm ra ngoài hoặc bấm chọn mục trong menu
+  document.addEventListener('pointerdown', e => {
+    for (const d of document.querySelectorAll('details.menu-pop[open]')) {
+      if (!d.contains(e.target)) d.open = false;
+    }
+  });
+  document.addEventListener('click', e => {
+    const inDrop = e.target.closest('.menu-drop button');
+    if (inDrop) {
+      for (const d of document.querySelectorAll('details.menu-pop[open]')) d.open = false;
+    }
+  });
+
+  // 2. Nút Lưu project trong menu Tệp
+  const saveMenuBtn = $('menuSaveBtn');
+  if (saveMenuBtn) {
+    saveMenuBtn.onclick = wrap(async () => {
+      await saveNow();
+      toast('Đã lưu project.');
+    });
+  }
+
+  // 3. Đồng bộ Thiết bị AI & Chọn nhanh Model trên thanh công cụ
+  const devSel = $('quickAiDevice');
+  const instSel = $('quickInstModel');
+  const backSel = $('quickBackingModel');
+  const whispSel = $('quickWhisperModel');
+
+  function syncQuickSelectorsFromStorage() {
+    const dev = localStorage.getItem('obs_ai_device') || 'auto';
+    const inst = localStorage.getItem('obs_active_inst_model') || 'mdx-inst-hq-1';
+    const back = localStorage.getItem('obs_active_backing_model') || 'backing-roformer';
+    const whisp = localStorage.getItem('obs_active_whisper_model') || $('aiModel')?.value || 'medium';
+    if (devSel) devSel.value = dev;
+    if (instSel) instSel.value = inst;
+    if (backSel) backSel.value = back;
+    if (whispSel) whispSel.value = whisp;
+    if ($('aiModel')) $('aiModel').value = whisp;
+    if ($('separationInstModel')) $('separationInstModel').value = inst;
+    if ($('separationBackingModel')) {
+      $('separationBackingModel').value = { 'backing-roformer': 'roformer', 'mdx-kara-2': 'mdx-kara-2', 'backing-uvr-lite': 'uvr-lite' }[back] || 'roformer';
+    }
+  }
+  syncQuickSelectorsFromStorage();
+  setInterval(syncQuickSelectorsFromStorage, 1000);
+
+  devSel?.addEventListener('change', () => {
+    localStorage.setItem('obs_ai_device', devSel.value);
+    toast('Thiết bị xử lý AI: ' + devSel.options[devSel.selectedIndex].text);
+  });
+  instSel?.addEventListener('change', () => {
+    localStorage.setItem('obs_active_inst_model', instSel.value);
+    if ($('separationInstModel')) $('separationInstModel').value = instSel.value;
+    if (typeof refreshModels === 'function' && !$('settingsPage')?.hidden) refreshModels();
+    toast('Model tách nhạc: ' + instSel.options[instSel.selectedIndex].text);
+  });
+  backSel?.addEventListener('change', () => {
+    localStorage.setItem('obs_active_backing_model', backSel.value);
+    if ($('separationBackingModel')) {
+      $('separationBackingModel').value = { 'backing-roformer': 'roformer', 'mdx-kara-2': 'mdx-kara-2', 'backing-uvr-lite': 'uvr-lite' }[backSel.value] || 'roformer';
+    }
+    if (typeof refreshModels === 'function' && !$('settingsPage')?.hidden) refreshModels();
+    toast('Model tách bè: ' + backSel.options[backSel.selectedIndex].text);
+  });
+  whispSel?.addEventListener('change', () => {
+    localStorage.setItem('obs_active_whisper_model', whispSel.value);
+    if ($('aiModel')) $('aiModel').value = whispSel.value;
+    if (typeof refreshModels === 'function' && !$('settingsPage')?.hidden) refreshModels();
+    toast('Model nhận lời: ' + whispSel.options[whispSel.selectedIndex].text);
+  });
+})();
+
+(() => {
+  // 1. Giao diện gọn cho trang Tách nhạc lấy beat (chọn nguồn xong mới hiện 2 nút tách)
+  const sepPage = $('separationPage');
+  if (sepPage) {
+    let sepMode = 'file';
+    function updateSepChoices() {
+      const hasFile = !!$('separationInput')?.files?.length;
+      const hasUrl = !!$('separationYoutubeUrl')?.value?.trim();
+      if ($('sepChoicesWrap')) {
+        $('sepChoicesWrap').hidden = sepMode === 'file' ? !hasFile : !hasUrl;
+      }
+    }
+    sepPage.addEventListener('click', e => {
+      const tab = e.target.closest('[data-sep-tab]');
+      if (!tab) return;
+      sepMode = tab.dataset.sepTab;
+      for (const b of sepPage.querySelectorAll('[data-sep-tab]')) b.classList.toggle('on', b === tab);
+      if ($('sepFileBar')) $('sepFileBar').hidden = sepMode !== 'file';
+      if ($('sepYoutubeBar')) $('sepYoutubeBar').hidden = sepMode !== 'youtube';
+      if (sepMode === 'file') $('separationYoutubeUrl').value = '';
+      updateSepChoices();
+    });
+    $('sepBrowseBtn')?.addEventListener('click', () => $('separationInput')?.click());
+    $('sepFileDisplay')?.addEventListener('click', () => $('separationInput')?.click());
+    $('separationInput')?.addEventListener('change', () => {
+      const f = $('separationInput')?.files?.[0];
+      if ($('sepFileDisplay')) $('sepFileDisplay').value = f ? f.name : '';
+      updateSepChoices();
+    });
+    $('separationYoutubeUrl')?.addEventListener('input', updateSepChoices);
+  }
+
+  // 2. Trình phát hiện đại (.modern-audio-player) & Nâng / Hạ Tone sau khi tách
+  let sepPitch = 0;
+  const baseDownloadHrefs = new Map();
+
+  function fmtMapTime(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '0:00';
+    return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+  }
+
+  let sepPitchReq = 0;
+  function syncAudioPitchSrc(aud, wantPlay) {
+    if (!aud) return false;
+    const cur = aud.getAttribute('src');
+    if (!cur) return false;
+    const base = cur.replace(/&pitch=[^&]+/g, '');
+    const want = sepPitch === 0 ? base : `${base}&pitch=${sepPitch}`;
+    if (cur === want) return false;
+    const pos = aud.currentTime || 0;
+    const reqId = ++sepPitchReq;
+    const jb = $('jobBar'), jt = $('jobTitle'), jp = $('jobProgress'), jpct = $('jobPercent');
+    if (jb && sepPitch !== 0) {
+      jb.hidden = false;
+      if (jt) jt.textContent = `Đang xử lý chuyển tone (${sepPitch > 0 ? '+' : ''}${sepPitch} st)…`;
+      if (jp) jp.style.width = '45%';
+      if (jpct) jpct.textContent = '45%';
+    }
+    if ($('sepPitchValue')) $('sepPitchValue').textContent = '⏳ Đang xử lý…';
+    fetch(want, { method: 'HEAD' }).finally(() => {
+      if (reqId !== sepPitchReq) return;
+      if (jb && !state.job) jb.hidden = true;
+      if ($('sepPitchValue')) {
+        $('sepPitchValue').textContent = sepPitch === 0 ? '0 st (Gốc)' : `${sepPitch > 0 ? '+' : ''}${sepPitch} st (R3)`;
+      }
+      aud.onloadeddata = () => {
+        aud.onloadeddata = null;
+        if (pos > 0.05) {
+          try { aud.currentTime = Math.min(aud.duration || pos, pos); } catch {}
+        }
+        if (wantPlay) aud.play().catch(() => {});
+      };
+      aud.src = want;
+    });
+    return true;
+  }
+
+  function applySepPitchToPlayers() {
+    if ($('sepPitchValue')) {
+      $('sepPitchValue').textContent = sepPitch === 0 ? '0 st (Gốc)' : `${sepPitch > 0 ? '+' : ''}${sepPitch} st (R3)`;
+    }
+    for (const b of document.querySelectorAll('[data-sep-pitch-set]')) {
+      b.classList.toggle('on', Number(b.dataset.sepPitchSet) === sepPitch);
+    }
+    for (const tag of document.querySelectorAll('.map-pitch-tag')) {
+      tag.textContent = `Tone: ${sepPitch > 0 ? '+' : ''}${sepPitch} st`;
+    }
+    for (const id of ['separatedBeatPreview', 'separatedBeatBackingPreview', 'separatedVocalPreview']) {
+      const aud = $(id);
+      if (!aud || aud.paused) continue;
+      syncAudioPitchSrc(aud, true);
+    }
+    for (const dlId of ['separatedBeatDownload', 'separatedBeatBackingDownload', 'separatedVocalDownload']) {
+      const a = $(dlId);
+      if (!a) continue;
+      const cur = a.getAttribute('href');
+      if (!cur) continue;
+      const clean = cur.split('?')[0];
+      baseDownloadHrefs.set(dlId, clean);
+      a.setAttribute('href', sepPitch === 0 ? clean : `${clean}?pitch=${sepPitch}`);
+    }
+  }
+
+  document.addEventListener('click', e => {
+    const stepBtn = e.target.closest('[data-sep-pitch-delta]');
+    if (stepBtn) {
+      sepPitch = Math.max(-12, Math.min(12, sepPitch + Number(stepBtn.dataset.sepPitchDelta || 0)));
+      applySepPitchToPlayers();
+      return;
+    }
+    const setBtn = e.target.closest('[data-sep-pitch-set]');
+    if (setBtn) {
+      sepPitch = Math.max(-12, Math.min(12, Number(setBtn.dataset.sepPitchSet || 0)));
+      applySepPitchToPlayers();
+      return;
+    }
+  });
+
+  for (const wrapEl of document.querySelectorAll('.modern-audio-player[data-for-audio]')) {
+    const aud = $(wrapEl.dataset.forAudio);
+    if (!aud) continue;
+    const playBtn = wrapEl.querySelector('.map-play');
+    const seekEl = wrapEl.querySelector('.map-seek');
+    const timeEl = wrapEl.querySelector('.map-time');
+    const volEl = wrapEl.querySelector('.map-vol');
+
+    playBtn.onclick = () => {
+      if (!aud.getAttribute('src')) return toast('Chưa có bản âm thanh này.');
+      if (aud.paused) {
+        for (const otherId of ['separatedBeatPreview', 'separatedBeatBackingPreview', 'separatedVocalPreview']) {
+          const o = $(otherId);
+          if (o && o !== aud && !o.paused) o.pause();
+        }
+        if (!syncAudioPitchSrc(aud, true)) {
+          aud.play().catch(err => { if (err?.name !== 'AbortError') handleError(err); });
+        }
+      } else {
+        aud.pause();
+      }
+    };
+    aud.addEventListener('play', () => { playBtn.textContent = '⏸'; });
+    aud.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+    aud.addEventListener('ended', () => { playBtn.textContent = '▶'; });
+    aud.addEventListener('loadedmetadata', () => {
+      timeEl.textContent = `${fmtMapTime(aud.currentTime)} / ${fmtMapTime(aud.duration)}`;
+    });
+    aud.addEventListener('timeupdate', () => {
+      if (aud.duration) seekEl.value = (aud.currentTime / aud.duration) * 100;
+      timeEl.textContent = `${fmtMapTime(aud.currentTime)} / ${fmtMapTime(aud.duration)}`;
+    });
+    seekEl.oninput = () => {
+      if (aud.duration) aud.currentTime = (Number(seekEl.value) / 100) * aud.duration;
+    };
+    volEl.oninput = () => {
+      aud.volume = Number(volEl.value);
+    };
+  }
+})();
+
+(() => {
+  const cancelBtn = $('sepCancelBtn');
+  if (cancelBtn) {
+    cancelBtn.onclick = () => $('cancelJobBtn')?.click();
+  }
+  setInterval(() => {
+    const prog = $('separationProgress'), pct = $('sepPercentText');
+    if (prog && pct) {
+      pct.textContent = Math.round(Number(prog.value) || 0) + '%';
+    }
+  }, 300);
+})();
+
+(() => {
+  const PLAY_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8a.6.6 0 0 1 .9-.5l8 5.2a.6.6 0 0 1 0 1l-8 5.2a.6.6 0 0 1-.9-.5V2.8Z"/></svg>';
+  const PAUSE_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.8" width="3" height="10.4" rx=".8"/><rect x="9.5" y="2.8" width="3" height="10.4" rx=".8"/></svg>';
+
+  function syncPlaySvg(btn, isPaused) {
+    if (!btn) return;
+    const stateKey = isPaused ? 'play' : 'pause';
+    if (btn.dataset.svgState === stateKey && btn.firstElementChild?.tagName === 'svg') return;
+    btn.dataset.svgState = stateKey;
+    btn.innerHTML = isPaused ? PLAY_SVG : PAUSE_SVG;
+  }
+
+  const mainBtn = $('playBtn');
+  if (mainBtn && typeof audio !== 'undefined') {
+    syncPlaySvg(mainBtn, audio.paused);
+    for (const ev of ['play', 'pause', 'ended']) {
+      audio.addEventListener(ev, () => queueMicrotask(() => syncPlaySvg(mainBtn, audio.paused)));
+    }
+  }
+
+  for (const wrapEl of document.querySelectorAll('.modern-audio-player[data-for-audio]')) {
+    const aud = $(wrapEl.dataset.forAudio);
+    const btn = wrapEl.querySelector('.map-play');
+    if (aud && btn) {
+      syncPlaySvg(btn, aud.paused);
+      for (const ev of ['play', 'pause', 'ended']) {
+        aud.addEventListener(ev, () => queueMicrotask(() => syncPlaySvg(btn, aud.paused)));
+      }
+    }
+  }
+})();
