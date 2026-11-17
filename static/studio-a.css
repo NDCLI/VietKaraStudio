@@ -667,3 +667,4 @@ dialog::backdrop{background:#02060dbb}
 .preset-tools .inline-preset-actions{padding:0 4px;gap:8px;flex-shrink:0}
 .preset-tools #activePreset{display:none}
 .workspace>.timeline-panel{padding:0!important;gap:0!important}
+@media(min-width:901px){.topbar .top-actions{margin-left:0!important}}

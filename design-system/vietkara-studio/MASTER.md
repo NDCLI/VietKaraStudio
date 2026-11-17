@@ -60,3 +60,5 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Bound each response to 6,000 bins; prefetch adjacent audio and reuse the result while the viewport stays covered. Refresh paused canvases after async data arrives.
 - Checks: 205 Python tests and 29 JavaScript tests pass. Four new tests cover signed transients, stable gain, frame boundaries/output limits, source replacement and endpoint validation. Browser checks verified detail at zoom 1/64, mobile width, no request loop and no JS errors.
 - Earlier smooth-envelope guidance is superseded by this correction. Release remains unpublished during visual review.
+
+- Header review: project title/save state, processing settings and export form one right-aligned group with 8–12px gaps at desktop widths. Verified 1024/1366/1920/2560 widths and preserved mobile reflow.
