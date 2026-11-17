@@ -195,9 +195,6 @@ dialog::backdrop{background:rgba(5,6,9,.62)}
 .ce-actions{display:flex;align-items:center;gap:8px}
 .ce-submit-btn{background:#10b981!important;border-color:#10b981!important;color:#06281e!important;font-weight:700!important;min-width:110px;min-height:36px;border-radius:7px!important;box-shadow:none!important}
 .ce-submit-btn:hover:not(:disabled){background:#34d399!important;border-color:#34d399!important}
-.ce-right{border-left:1px solid #2a2f3a;padding-left:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
-.ce-qr-title{font-size:10px;letter-spacing:.5px;color:var(--c-text-2)}
-.ce-qr-box{width:136px;height:136px;border-radius:10px;background:repeating-linear-gradient(45deg,#eef2f6 0,#eef2f6 8px,#dce3ec 8px,#dce3ec 16px);display:grid;place-items:center;padding:8px;text-align:center;color:#111827;font-size:11px;font-weight:600}
 
 /* 12. Màn hình bắt đầu nhanh tab Karaoke (ảnh 3 & 4) */
 #karaokePage.qs-active>.studio-top,
@@ -639,9 +636,7 @@ dialog::backdrop{background:#02060dbb}
 .compact-export-dialog{background:var(--c-surface-1)!important}
 .ce-submit-btn{background:var(--c-accent)!important;border-color:var(--c-accent)!important;color:white!important}
 .ce-submit-btn:hover:not(:disabled){background:var(--c-accent-hover)!important;border-color:var(--c-accent-hover)!important}
-.ce-qr-box{background:var(--c-inset);border:1px dashed var(--c-line-strong);color:var(--c-text-3)}
-.ce-qr-box:empty::before{content:'Mã chia sẻ sẽ xuất hiện sau khi xuất video';font-size:12px;line-height:1.6;font-weight:400}
-.ce-row-2 label,.ce-qr-title{font-size:11px;letter-spacing:0}
+.ce-row-2 label{font-size:11px;letter-spacing:0}
 .sep-pitch-presets button.on{background:var(--c-accent)!important;border-color:var(--c-accent)!important;color:white!important}
 .map-seek,.map-vol,.qs-vol-wrap input{accent-color:var(--c-info)!important}
 .separation-track{background:var(--c-surface-1)!important;border-color:var(--c-line)!important}
@@ -653,7 +648,7 @@ dialog::backdrop{background:#02060dbb}
  .workspace.left-collapsed.right-collapsed>.studio-top{grid-template-columns:44px 0 minmax(220px,1fr) 0 44px!important}
  .workspace.left-collapsed .pane-heading,.workspace.right-collapsed .inspector-heading{padding:0!important;min-height:44px}
 }
-@media(max-width:900px){.pane-collapse{display:none!important}.compact-export-dialog .ce-grid{grid-template-columns:1fr}.ce-right{border-left:0;border-top:1px solid var(--c-line);padding:16px 0 0}.ce-qr-box{width:100%;height:auto;min-height:54px}.ce-footer{flex-wrap:wrap}.ce-actions{flex-wrap:wrap}.ce-row-2{gap:8px}}
+@media(max-width:900px){.pane-collapse{display:none!important}.compact-export-dialog .ce-grid{grid-template-columns:1fr}.ce-footer{flex-wrap:wrap}.ce-actions{flex-wrap:wrap}.ce-row-2{gap:8px}}
 
 /* Readable samples fill the panel; import/export actions stay below the scroll area. */
 .inspector-column:has([data-inspector-tab="presets"].on)>[data-inspector-pane="design"]{overflow-y:auto;width:100%}
@@ -670,3 +665,6 @@ dialog::backdrop{background:#02060dbb}
 @media(min-width:901px){.topbar .top-actions{margin-left:0!important}}
 .alignment-buttons button{flex:1;min-height:36px;color:var(--c-text-2)}
 .alignment-buttons button.on{background:var(--c-accent)!important;border-color:var(--c-accent)!important;color:white!important}
+
+.compact-export-dialog .ce-grid{grid-template-columns:minmax(0,1fr)}
+#exportSavedPath{overflow-wrap:anywhere}

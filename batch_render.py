@@ -123,7 +123,8 @@ def create(data_root: Path, projects: list[tuple[dict, Path]], owner: str,
                 seen_outputs.add(output_key)
                 snapshot = deepcopy(project)
                 snapshot["settings"] = validate_settings({"aspect": target_aspect,
-                                                          "audio_output": audio_output},
+                                                          "audio_output": audio_output,
+                                                          **({'export_kind': 'video'} if mode == 'batch' else {})},
                                                          project.get("settings", {}))
                 media_list = required_media(snapshot, source)
                 snapshots.append((project, snapshot, source, media_list, requested, audio_output))

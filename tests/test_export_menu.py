@@ -48,3 +48,54 @@ def test_export_manifest_original_video_fps_and_selected_folder(client,tmp_path,
     assert not list(folder.glob('*.partial'))
     assert client.patch(url,json={'settings':{'render_quality':'invalid'}}).status_code==400
     assert client.patch(url,json={'settings':{'render_format':'../avi'}}).status_code==400
+
+
+@pytest.mark.parametrize('format,codec',[('wav','pcm_s24le'),('mp3','mp3'),('flac','flac'),('m4a','aac')])
+def test_audio_export_real_formats_and_open_folder(client,tmp_path,monkeypatch,format,codec):
+    import app as service
+    pid=client.post('/api/projects',json={'name':'Audio export'}).get_json()['id'];url='/api/projects/'+pid
+    wait(client,client.post(url+'/media/beat',data={'file':(wave_bytes(440,.8),'beat.wav')}))
+    folder=tmp_path/'audio-output';folder.mkdir()
+    client.post(url+'/export-folder',json={'folder':str(folder)})
+    assert client.patch(url,json={'settings':{'export_kind':'audio','audio_format':format,'background_type':'image'}}).status_code==200
+    info=client.get(url+'/render-info').get_json()
+    assert info['kind']=='audio' and not info['errors']
+    result=wait(client,client.post(url+'/render',json={}))['result']
+    output=Path(result['output_path']);assert output.parent==folder and output.suffix=='.'+format
+    probe=json.loads(engine.subprocess.check_output([engine.binary('ffprobe'),'-v','error','-show_streams','-of','json',str(output)],creationflags=engine.CREATE_NO_WINDOW))
+    assert len(probe['streams'])==1 and probe['streams'][0]['codec_type']=='audio'
+    assert probe['streams'][0]['codec_name']==codec
+    assert client.get(result['audio']).status_code==200
+    assert not list((tmp_path/'projects'/pid/'exports').rglob('*.ass'))
+    opened=[];monkeypatch.setattr(service.os,'startfile',opened.append,raising=False)
+    jid=result['audio'].split('/exports/')[1].split('/')[0]
+    assert client.post(url+'/exports/'+jid+'/open-folder').status_code==200
+    assert opened==[str(folder)]
+    assert client.post(url+'/exports/'+'0'*32+'/open-folder').status_code==404
+    assert client.post(url+'/render',json={'preview':{'start':0,'duration':.5}}).status_code==400
+
+
+@pytest.mark.parametrize('aspect,dimensions',[('landscape',(2560,1440)),('portrait',(1440,2560))])
+def test_2k_video_dimensions_match_actual_output(client,tmp_path,monkeypatch,aspect,dimensions):
+    monkeypatch.setattr(engine.hardware,'detect',lambda:{'video':{'encoder':'libx264','name':'CPU'}})
+    pid=client.post('/api/projects',json={}).get_json()['id'];url='/api/projects/'+pid
+    wait(client,client.post(url+'/media/beat',data={'file':(wave_bytes(440,.6),'beat.wav')}))
+    assert client.patch(url,json={'settings':{'resolution':'2k','aspect':aspect,'render_quality':'standard','countdown':'none'}}).status_code==200
+    info=client.get(url+'/render-info').get_json();assert (info['output']['width'],info['output']['height'])==dimensions
+    result=wait(client,client.post(url+'/render',json={}))['result']
+    actual=media_tools.probe_video(Path(result['output_path']))
+    assert (actual['width'],actual['height'])==dimensions
+
+
+def test_audio_guide_normalization_and_default_export_folder(client,tmp_path,monkeypatch):
+    import app as service
+    pid=client.post('/api/projects',json={}).get_json()['id'];url='/api/projects/'+pid
+    wait(client,client.post(url+'/media/beat',data={'file':(wave_bytes(440,.8),'beat.wav')}))
+    (tmp_path/'projects'/pid/'vocals.wav').write_bytes(wave_bytes(880,.8).getvalue())
+    client.patch(url,json={'settings':{'export_kind':'audio','audio_format':'wav','audio_output':'guide','audio_normalize':True}})
+    result=wait(client,client.post(url+'/render',json={}))['result']
+    opened=[];monkeypatch.setattr(service.os,'startfile',opened.append,raising=False)
+    jid=result['audio'].split('/exports/')[1].split('/')[0]
+    assert client.post(url+'/exports/'+jid+'/open-folder').status_code==200
+    assert Path(opened[0])==Path(result['output_path']).parent
+    assert client.patch(url,json={'settings':{'audio_format':'../mp3'}}).status_code==400

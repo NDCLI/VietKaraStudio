@@ -1675,7 +1675,9 @@ def resume_render_batch(batch_id):
 @app.get('/api/projects/<pid>/render-info')
 def render_information(pid):
     import render_info
-    return jsonify(render_info.describe(load(pid),directory(pid)))
+    project = load(pid)
+    describe = render_info.describe_audio if project.get('settings', {}).get('export_kind') == 'audio' else render_info.describe
+    return jsonify(describe(project,directory(pid)))
 
 
 @app.post('/api/projects/<pid>/export-folder')
@@ -1709,6 +1711,8 @@ def render(pid):
         snapshot = load(pid)
         data=request.get_json(silent=True) or {}
         preview=data.get("preview") if isinstance(data.get("preview"),dict) else None
+        if preview is not None and snapshot.get('settings', {}).get('export_kind') == 'audio':
+            raise ValueError('Chế độ âm thanh không dùng render thử video.')
         if preview is not None:
             try:
                 duration=float((snapshot.get("beat") or {}).get("duration",0))
@@ -1727,9 +1731,27 @@ def render(pid):
     return jsonify(job.public()), 202
 
 
+@app.post('/api/projects/<pid>/exports/<jid>/open-folder')
+def open_export_folder(pid, jid):
+    if not re.fullmatch(r'[0-9a-f]{32}', jid):
+        raise ValueError('Mã xuất không hợp lệ.')
+    folder = directory(pid)/'exports'/jid
+    manifest_path = folder/'render-info.json'
+    if not manifest_path.is_file():
+        raise FileNotFoundError('Chưa có kết quả xuất.')
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    selected = Path(manifest.get('folder', ''))
+    if selected.is_absolute() and selected.is_dir():
+        folder = selected
+    if not hasattr(os, 'startfile'):
+        raise ValueError('Mở thư mục xuất được hỗ trợ trên Windows.')
+    os.startfile(str(folder))
+    return jsonify(folder=str(folder))
+
+
 @app.get("/api/projects/<pid>/exports/<jid>/<filename>")
 def export_file(pid, jid, filename):
-    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json", "qa-contact.jpg"):
+    if not re.fullmatch(r"[0-9a-f]{32}", jid) or filename not in ("karaoke.mp4", "karaoke.mov", "karaoke.mkv", "audio.wav", "audio.mp3", "audio.flac", "audio.m4a", "lyrics.ass", "lyrics.srt", "lyrics.lrc", "render-info.json", "qa-contact.jpg"):
         raise ValueError("File không hợp lệ.")
     return send_file(directory(pid) / "exports" / jid / filename, as_attachment=True)
 

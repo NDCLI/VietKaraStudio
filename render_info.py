@@ -8,7 +8,7 @@ import re
 import subprocess
 
 import media_tools
-from styles import validate_settings
+from styles import validate_settings, output_dimensions
 
 
 @lru_cache(maxsize=32)
@@ -157,11 +157,34 @@ def encoding_options(quality,encoder):
     return ['-c:v','libx264','-preset',preset,'-crf',str(crf)]
 
 
+def describe_audio(project, directory, *, frozen_audio=False):
+    import backing_vocals
+    s = validate_settings(project.get('settings', {}))
+    errors = []
+    if not project.get('beat') or not (directory/'beat.wav').is_file():
+        errors.append('Chưa có beat gốc.')
+    if s['audio_output'] == 'guide' and not any((directory/name).is_file() for name in ('vocals.wav', 'reference.wav')):
+        errors.append('Cần bản hát tham chiếu hoặc vocal đã tách để tạo bản hướng dẫn.')
+    if s['audio_output'] == 'backing':
+        mix = backing_vocals.mix_file(project, directory)
+        ready = bool(mix and mix.is_file()) if frozen_audio else backing_vocals.status(project, directory) == 'ready'
+        if not ready:
+            errors.append('Cần xác nhận bản bè trước khi xuất Beat + bè.')
+    folder = project.get('export_directory', '')
+    if folder and (not Path(folder).is_absolute() or not Path(folder).is_dir()):
+        errors.append('Thư mục xuất không còn tồn tại. Hãy chọn lại.')
+    return {'project': project.get('name', ''), 'kind': 'audio', 'settings': s,
+            'duration': (project.get('beat') or {}).get('duration', 0),
+            'folder': folder or 'Thư mục exports của project (mặc định)',
+            'output': {'format': s['audio_format'].upper(),
+                       'audio': {'beat':'Beat gốc', 'guide':'Beat + vocal hướng dẫn', 'backing':'Beat + bè'}[s['audio_output']]},
+            'errors': errors, 'warnings': [], 'checks': []}
+
+
 def describe(project,directory,*,frozen_audio=False):
     import backing_vocals
     s=validate_settings(project.get('settings',{}));warnings=[];errors=[]
-    width,height=(1080,1920) if s['aspect']=='portrait' else (1920,1080)
-    if s['resolution']=='4k':width*=2;height*=2
+    width,height=output_dimensions(s)
     kind,path='color',None
     try:kind,path=media_tools.background_source({**project,'settings':s},directory)
     except ValueError as exc:errors.append(str(exc))

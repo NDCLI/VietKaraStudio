@@ -39,8 +39,8 @@ function studioStyle(){
   const video=$('backgroundVideo'),url=videoSlot?endpoint('/video/'+videoSlot)+'?v='+p.updated_at:'';
   if(video.getAttribute('data-source')!==url){video.pause();video.setAttribute('data-source',url);if(url)video.src=url;else{video.removeAttribute('src');video.load();}}
   video.hidden=!url;$('backgroundInfo').textContent=info;
-  $('resolutionBadge').textContent=s.resolution==='4k'?'4K':'1080P';
-  $('renderBtn').textContent='↗ Dựng video '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p');
+  $('resolutionBadge').textContent=({ '4k':'4K','2k':'2K','1080p':'1080P' }[s.resolution]);
+  $('renderBtn').textContent=exportButtonLabel(s);
   document.querySelectorAll('[data-display-mode]').forEach(b=>{const on=b.dataset.displayMode===s.display_mode;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-singing-mode]').forEach(b=>{const on=b.dataset.singingMode===s.singing_mode;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
   document.querySelectorAll('[data-title-template]').forEach(b=>{const on=b.dataset.titleTemplate===s.title_template;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});

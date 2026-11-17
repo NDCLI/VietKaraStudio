@@ -12,6 +12,8 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 
 ## Tính năng
 
+- Xuất Audio WAV, MP3, FLAC hoặc M4A đúng định dạng; kết quả có đường dẫn và nút mở thư mục xuất.
+
 - Nhập audio/video, beat gốc, SRT hoặc lời riêng; tự nhận lời và căn thời gian từng từ.
 - Tự ưu tiên GPU, có CPU dự phòng; tải model chủ động và dùng lại cache.
 - Đồng bộ thủ công bằng gõ/giữ Space, nghe trước 15 giây từ điểm chọn; chỉnh bổ sung trên timeline hai hàng.
@@ -19,7 +21,7 @@ Gói Setup mang theo ứng dụng, Python, FFmpeg và runtime NVIDIA CUDA. Model
 - Tự chia dòng; preset cỡ chữ 110, font tiếng Việt, viền/bóng, hiệu ứng quét màu và song ca.
 - Video/ảnh/màu nền, đếm ngược đầu bài hoặc sau nhạc dạo, logo và hiệu ứng logo.
 - Trong **Kiểu lời → Vị trí và khoảng cách lời**, nhập khoảng cách hai dòng theo pixel, hoặc chỉnh tọa độ ngang/dọc đến 0,1%. Giá trị dùng chung khi xem trước và xuất video.
-- Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/4K; kèm SRT/LRC/ASS và thông tin render.
+- Xuất MP4/MOV/MKV, chọn thư mục, fps, chất lượng, FHD/2K/4K; kèm SRT/LRC/ASS và thông tin render.
 - Tách vocal/beat thành WAV riêng. Gợi ý phân vai song ca dựa trên cao độ, cần nghe và sửa khi cần.
 - Tách giọng bè từ bản hát, nghe thử và xác nhận. Nút **Bè** bật/tắt phần bè khi nghe beat. Khi dựng lẻ hoặc theo lô, chọn **Beat + bè** để xuất bản đã nghe thử.
 - Trong **Tách nhạc lấy beat**, chọn **Tách beat không bè** hoặc **Tách beat có bè** ngay khi nạp nguồn. Kết quả có nghe thử và tải WAV riêng cho beat không bè, beat có bè (nếu tạo được) và vocal. Link YouTube kèm playlist được lấy đúng video đang chọn. Có thêm model tách bè nhẹ UVR Karaoke bên cạnh Mel-RoFormer hiện tại; chỉ hiện trạng thái xử lý đơn giản khi chạy.

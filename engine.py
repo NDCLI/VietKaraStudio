@@ -16,7 +16,7 @@ import numpy as np
 import soundfile as sf
 import hardware
 from app_runtime import task_command
-from styles import validate_settings
+from styles import validate_settings, output_dimensions
 
 from timing import beat_words, lyric_lines
 
@@ -402,20 +402,83 @@ def export_text(project, kind, directory=None):
     raise ValueError("Định dạng không hợp lệ.")
 
 
+def render_audio(project, directory, job, render_id=None, *, frozen_audio=False):
+    import render_info
+    import backing_vocals
+    s = validate_settings(project.get('settings', {}))
+    manifest = render_info.describe_audio(project, directory, frozen_audio=frozen_audio)
+    if manifest['errors']:
+        raise ValueError(' '.join(manifest['errors']))
+    render_id = render_id if isinstance(render_id, str) and re.fullmatch(r'[0-9a-f]{32}', render_id) else job.id
+    export = directory/'exports'/render_id
+    export.mkdir(parents=True, exist_ok=True)
+    soundtrack = backing_vocals.mix_file(project, directory) if s['audio_output'] == 'backing' else directory/'beat.wav'
+    args = [binary('ffmpeg'), '-y', '-v', 'error', '-progress', 'pipe:1', '-nostats', '-i', str(soundtrack)]
+    if s['audio_output'] == 'guide':
+        vocal = directory/'vocals.wav'
+        if not vocal.is_file():
+            vocal = separate(directory/'reference.wav', directory, job, hardware.select_ai()['demucs'])
+        graph = '[0:a:0][1:a:0]amix=inputs=2:duration=first:dropout_transition=0:normalize=1'
+        if s['audio_normalize']:
+            graph += ',loudnorm=I=-16:TP=-1.5:LRA=11'
+        args += ['-i', str(vocal), '-filter_complex', graph+'[mix]', '-map', '[mix]']
+    else:
+        args += ['-map', '0:a:0']
+    codecs = {'wav':['-c:a','pcm_s24le'], 'mp3':['-c:a','libmp3lame','-b:a','320k'],
+              'flac':['-c:a','flac','-compression_level','5'], 'm4a':['-c:a','aac','-b:a','320k','-movflags','+faststart']}
+    filename = 'audio.'+s['audio_format']
+    args += ['-vn', '-t', str(manifest['duration'])]
+    if s['audio_normalize'] and s['audio_output'] != 'guide':
+        args += ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11']
+    args += codecs[s['audio_format']] + [filename]
+    job.update(5, 'Đang xuất âm thanh '+s['audio_format'].upper()+'…')
+    def progress(line):
+        if line.startswith('out_time_us='):
+            try:
+                seconds = int(line.split('=', 1)[1])/1e6
+                job.update(min(98, 5+seconds/max(.001, manifest['duration'])*93), 'Đang xuất âm thanh…')
+            except ValueError:
+                pass
+    command(args, job, cwd=export, progress=progress)
+    job.check()
+    probe = json.loads(subprocess.check_output([binary('ffprobe'), '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(export/filename)], creationflags=CREATE_NO_WINDOW, timeout=30))
+    if not any(stream.get('codec_type') == 'audio' for stream in probe.get('streams', [])) or any(stream.get('codec_type') == 'video' for stream in probe.get('streams', [])):
+        raise RuntimeError('File xuất không phải âm thanh hợp lệ.')
+    manifest['postflight'] = {'verified': True, 'duration': float(probe['format'].get('duration', 0))}
+    (export/'render-info.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    output_path = export/filename
+    if project.get('export_directory'):
+        stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', project.get('name', 'audio')).strip(' .')[:65] or 'audio'
+        destination = Path(project['export_directory'])/(stem+'_'+render_id+'.'+s['audio_format'])
+        partial = destination.with_suffix(destination.suffix+'.partial')
+        try:
+            with output_path.open('rb') as source, partial.open('xb') as output:
+                while chunk := source.read(8*1024*1024):
+                    job.check()
+                    output.write(chunk)
+            partial.replace(destination)
+        finally:
+            partial.unlink(missing_ok=True)
+        output_path = destination
+    return {'kind': 'audio', 'audio': f"/api/projects/{project['id']}/exports/{render_id}/{filename}",
+            'format': s['audio_format'], 'output_path': str(output_path)}
+
+
 def render(project, directory, job, render_id=None, *, frozen_audio=False):
     """Render from the selected karaoke soundtrack."""
     if not project.get("beat") or not (directory / "beat.wav").exists():
         raise ValueError("Hãy nạp beat gốc trước khi xuất.")
     opts = validate_settings(project.get("settings", {}))
     project = {**project, 'settings':opts}
+    if opts['export_kind'] == 'audio':
+        return render_audio(project, directory, job, render_id, frozen_audio=frozen_audio)
     import media_tools
     from layout import display_plan
     render_id = render_id if isinstance(render_id, str) and re.fullmatch(r"[0-9a-f]{32}", render_id) else job.id
     export = directory / "exports" / render_id
     export.mkdir(parents=True, exist_ok=True)
     (export / "lyrics.ass").write_text(build_ass(project, directory), encoding="utf-8-sig")
-    width, height = (1080, 1920) if opts.get("aspect") == "portrait" else (1920, 1080)
-    if opts['resolution']=='4k':width,height=width*2,height*2
+    width, height = output_dimensions(opts)
     bg = opts.get("background", "#101d2b")
     ass_color(bg)
     duration = project["beat"]["duration"]

@@ -31,6 +31,7 @@ DEFAULT_SETTINGS = {
     "timeline_linked": True,
     "render_quality": "high", "render_fps": "source", "audio_normalize": False,
     "render_format": "mp4", "audio_output": "beat",
+    "export_kind": "video", "audio_format": "wav",
     "title_enabled": False, "title_text": "", "title_credit": "", "title_font": "Arial",
     "title_start": 0, "title_end": 8, "title_size": 105, "title_x": 50, "title_y": 28,
     "title_color": "#ffffff", "title_outline": "#15202a", "title_outline_width": 3,
@@ -112,13 +113,19 @@ def validate_settings(values, base=None):
     for key, choices in (("title_enter", TITLE_EFFECTS), ("title_exit", TITLE_EFFECTS), ("title_template", TITLE_TEMPLATES), ("aspect", ("landscape", "portrait")),
                          ("position", ("bottom", "center", "top", "custom")),
                          ("line_animation", ANIMATIONS), ("display_mode", ("karaoke", "lyricsmv", "subtitle")),
-                         ("resolution", ("1080p", "4k")), ("background_type", ("auto", "color", "image", "video", "original")),
+                         ("resolution", ("1080p", "2k", "4k")), ("background_type", ("auto", "color", "image", "video", "original")),
                          ("countdown", ("none", "mic", "star", "heart", "note", "moon", "image")),
                          ("singing_mode", ("solo", "duet")), ("align", ("left", "center", "right", "justify")),
                          ("mv_style", ("single", "stack", "scroll")), ("logo_effect", ("none", "fade", "float", "pulse")),
                          ("render_quality", ("standard", "high", "maximum")), ("render_fps", ("source", "30", "60")),
                          ("audio_output", ("beat", "guide", "backing")),
-                         ("render_format", ("mp4", "mov", "mkv"))):
+                         ("render_format", ("mp4", "mov", "mkv")),
+                         ("export_kind", ("video", "audio")), ("audio_format", ("wav", "mp3", "flac", "m4a"))):
         if result[key] not in choices:
             raise ValueError(f"Giá trị {key} không hợp lệ.")
     return result
+
+
+def output_dimensions(settings):
+    short, long = {'1080p': (1080, 1920), '2k': (1440, 2560), '4k': (2160, 3840)}[settings['resolution']]
+    return (short, long) if settings['aspect'] == 'portrait' else (long, short)

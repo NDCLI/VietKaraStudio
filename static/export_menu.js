@@ -1,13 +1,51 @@
 'use strict';
 let exportMenuRevision=0;
+let completedExportFolder=null;
+function exportButtonLabel(s){
+  if(s.export_kind==='audio')return 'Xuất '+(s.audio_format||'wav').toUpperCase();
+  return 'Dựng '+(s.render_format||'mp4').toUpperCase()+' · '+({ '4k':'4K','2k':'2K','1080p':'1080p' }[s.resolution]||'1080p')+' · '+({standard:'Tiêu chuẩn',high:'Cao',maximum:'Rất cao'}[s.render_quality]||'Cao');
+}
+function syncExportFields(){
+  const s=state.project.settings,isAudio=s.export_kind==='audio',kind=isAudio?'audio':'video',select=$('exportFormat');
+  $('ceKindSelect').value=kind;
+  if(select.dataset.exportKind!==kind){
+    select.innerHTML=(isAudio?['wav','mp3','flac','m4a']:['mp4','mov','mkv']).map(value=>`<option value="${value}">${value.toUpperCase()}</option>`).join('');
+    select.dataset.exportKind=kind;
+  }
+  select.value=isAudio?s.audio_format||'wav':s.render_format||'mp4';
+  $('exportResolutionLabel').hidden=isAudio;$('videoQualityRow').hidden=isAudio;$('previewRenderBtn').hidden=isAudio;
+  $('exportAudio').closest('label').style.gridColumn=isAudio?'1 / -1':'';
+  $('ceModeNote').textContent=isAudio?'Xuất âm thanh theo track đã chọn. WAV và FLAC giữ chất lượng không mất dữ liệu; MP3 và M4A có dung lượng gọn hơn.':'Xuất video karaoke theo độ phân giải và chất lượng đã chọn.';
+  $('renderBtn').textContent=exportButtonLabel(s);
+}
+async function openCompletedExportFolder(){
+  if(completedExportFolder)await api(completedExportFolder,{method:'POST',body:{}});
+}
+async function showExportResult(job){
+  const result=job.result,isAudio=result.kind==='audio',url=result.audio||result.video;
+  const match=url?.match(/\/exports\/([0-9a-f]{32})\//);
+  completedExportFolder=match?`/api/projects/${job.project_id}/exports/${match[1]}/open-folder`:null;
+  $('openExportFolder').disabled=!completedExportFolder;
+  $('exportSavedPath').textContent=result.output_path?'Đã lưu: '+result.output_path:'';
+  $('renderResult').querySelector('strong').textContent=result.preview?'Đã dựng xong đoạn thử':'Đã xuất '+(isAudio?'âm thanh ':'video ')+(result.format||'').toUpperCase();
+  $('renderResult').hidden=false;$('exportDialog').showModal();
+  toast(isAudio?'Đã xuất file âm thanh.':'Đã dựng xong video.');
+  if($('ceOpenFolderCheck').checked&&!result.preview){try{await openCompletedExportFolder();}catch(error){handleError(error);}}
+}
 async function refreshExportMenu(){
   const revision=++exportMenuRevision,p=state.project,s=p.settings;
-  for(const [id,key] of [['exportAudio','audio_output'],['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).value=s[key]??({audio_output:'beat',render_quality:'high',render_fps:'source',render_format:'mp4'}[key]);
+  syncExportFields();
+  for(const [id,key] of [['exportAudio','audio_output'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).value=s[key]??({audio_output:'beat',render_quality:'high',render_fps:'source'}[key]);
   $('exportAudio').querySelector('[value="backing"]').disabled=p.backing_status!=='ready';
   $('exportFolder').value=p.export_directory||'';
   $('exportBeatName').textContent=p.beat?.name||'Chưa nạp beat';
   $('exportInventory').textContent='Đang kiểm tra file và thiết lập…';
   const info=await api(endpoint('/render-info'));if(revision!==exportMenuRevision)return;
+  if(s.export_kind==='audio'){
+    $('exportNotice').textContent=[...info.errors,...info.warnings].join('\n');$('exportNotice').classList.toggle('export-error',info.errors.length>0);
+    $('exportChecks').hidden=true;$('exportInventory').textContent=info.output.audio+' · '+info.output.format;
+    $('renderBtn').disabled=info.errors.length>0||!!state.job||!!state.renderJob;return;
+  }
   const o=info.output,bg=info.background,source=bg.source;
   const background=bg.kind==='video'?`Video gốc · ${source?`${source.width} × ${source.height} · ${Number(source.fps).toFixed(2)} fps`:'không đọc được nguồn'}`:bg.kind==='image'?'Ảnh đã nạp':'Màu nền '+s.background;
   const animation=$('lineAnimation').selectedOptions[0]?.textContent||s.line_animation;
@@ -41,9 +79,13 @@ async function refreshExportMenu(){
   }
   $('renderBtn').disabled=info.errors.length>0||!!state.job;
   $('previewRenderBtn').disabled=info.errors.length>0||!!state.job;
-  $('renderBtn').textContent='Dựng '+(s.render_format||'mp4').toUpperCase()+' · '+(s.resolution==='4k'?'4K':'1080p')+' · '+({standard:'Tiêu chuẩn',high:'Chất lượng cao',maximum:'Rất cao'}[s.render_quality]||'Chất lượng cao');
+  $('renderBtn').textContent=exportButtonLabel(s);
 }
 function initExportMenu(){
+  $('openExportFolder').onclick=wrap(openCompletedExportFolder);
+  $('ceKindSelect').onchange=wrap(async()=>{
+    state.project.settings.export_kind=$('ceKindSelect').value;syncExportFields();await saveNow();await refreshExportMenu();
+  });
   $('exportChecks').onclick = event => {
     const button = event.target.closest('[data-qa-word]');
     if (!button) return;
@@ -55,7 +97,7 @@ function initExportMenu(){
     seekBeat(Math.max(0, mapTime(word.start)));
   };
   for(const [id,key] of [['exportAudio','audio_output'],['exportFormat','render_format'],['exportQuality','render_quality'],['exportFps','render_fps'],['exportResolution','resolution'],['exportAspect','aspect']])$(id).onchange=wrap(async()=>{
-    if(state.job)return;state.project.settings[key]=$(id).value;renderStyle();await saveNow();await refreshExportMenu();
+    if(state.job)return;const setting=id==='exportFormat'&&state.project.settings.export_kind==='audio'?'audio_format':key;state.project.settings[setting]=$(id).value;renderStyle();await saveNow();await refreshExportMenu();
   });
   async function folder(pick){
     if(state.job)return;

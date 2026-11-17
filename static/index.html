@@ -5,9 +5,9 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg?v=2026.11-brand">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1-brand">
-  <link rel="stylesheet" href="/static/tokens.css?v=studio-pro-6">
-  <link rel="stylesheet" href="/static/style.css?v=studio-pro-6">
-  <link rel="stylesheet" href="/static/studio-a.css?v=studio-pro-6">
+  <link rel="stylesheet" href="/static/tokens.css?v=studio-pro-7">
+  <link rel="stylesheet" href="/static/style.css?v=studio-pro-7">
+  <link rel="stylesheet" href="/static/studio-a.css?v=studio-pro-7">
   <link rel="stylesheet" href="/static/controls.css?v=studio-controls-1">
 </head>
 <body class="ui-controls">
@@ -245,7 +245,7 @@
           <div class="tq-item"><span>CÂU ĐẦU HIỆN SỚM</span><div class="tq-step"><button type="button" data-tq="first_lead" data-delta="-0.5" title="Giảm 0.5s">«</button><b id="tqFirstLead">5.0s</b><button type="button" data-tq="first_lead" data-delta="0.5" title="Tăng 0.5s">»</button></div></div>
           <div class="tq-item"><span>HÀNG KẾ HIỆN SỚM</span><div class="tq-step"><button type="button" data-tq="next_lead" data-delta="-0.2" title="Giảm 0.2s">«</button><b id="tqNextLead">1.5s</b><button type="button" data-tq="next_lead" data-delta="0.2" title="Tăng 0.2s">»</button></div></div>
           <div class="tq-item"><span>TỈ LỆ</span><div class="tq-step tq-select-wrap"><select id="aspect" aria-label="Tỉ lệ khung hình"><option value="landscape">16:9</option><option value="portrait">9:16</option></select></div></div>
-          <div class="tq-item"><span>PHÂN GIẢI</span><div class="tq-step tq-select-wrap"><select id="resolution" aria-label="Độ phân giải"><option value="1080p">1080p</option><option value="4k">4K</option></select></div></div>
+          <div class="tq-item"><span>PHÂN GIẢI</span><div class="tq-step tq-select-wrap"><select id="resolution" aria-label="Độ phân giải"><option value="1080p">1080p</option><option value="2k">2K</option><option value="4k">4K</option></select></div></div>
         </div>
         <div class="transport-right">
           <button id="timelineAutoBtn" class="secondary small">Đồng bộ tự động</button>
@@ -367,7 +367,7 @@
   <div class="dialog-footer"><button id="savePresetBtn" class="secondary">Lưu thiết lập hiện tại</button><label class="secondary import-label">Nhập mẫu chữ JSON<input id="importPresetInput" type="file" accept=".json" hidden></label></div>
 </dialog>
 <dialog id="exportDialog" class="compact-export-dialog">
-  <div class="dialog-heading"><h2>↓ Xuất &amp; Chia sẻ</h2><button data-close class="icon-btn">−</button></div>
+  <div class="dialog-heading"><h2>Xuất bài hát</h2><button data-close class="icon-btn">−</button></div>
   <div class="ce-grid">
     <div class="ce-left">
       <div class="ce-row-2">
@@ -376,8 +376,9 @@
       </div>
       <div class="ce-row-2">
         <label>ÂM THANH XUẤT<select id="exportAudio"><option value="beat">Nhạc nền (Beat gốc)</option><option value="backing">Nhạc nền + Giọng bè</option><option value="guide">Nhạc nền + Giọng hát dẫn</option></select></label>
-        <label>ĐỘ PHÂN GIẢI<select id="exportResolution"><option value="1080p">Full HD · 1080p</option><option value="4k">4K · 2160p</option></select></label>
+        <label id="exportResolutionLabel">ĐỘ PHÂN GIẢI<select id="exportResolution"><option value="1080p">Full HD · 1080p</option><option value="2k">2K · 1440p</option><option value="4k">4K · 2160p</option></select></label>
       </div>
+      <div id="videoQualityRow" class="ce-row-2"><label>CHẤT LƯỢNG VIDEO<select id="exportQuality"><option value="standard">Tiêu chuẩn</option><option value="high" selected>Cao</option><option value="maximum">Rất cao</option></select></label><label>TỐC ĐỘ KHUNG HÌNH<select id="exportFps"><option value="source" selected>Theo nguồn</option><option value="30">30 fps</option><option value="60">60 fps</option></select></label></div>
       <p id="ceModeNote" class="small muted" style="margin:2px 0">ⓘ Xuất video karaoke kèm lời chữ chạy hoặc chỉ xuất âm thanh theo các track đã chọn (gồm Nhạc nền, Giọng hát và Giọng bè AI).</p>
       <div class="ce-path-bar">
         <span class="ce-path-tag">NƠI LƯU</span>
@@ -395,21 +396,17 @@
           <button type="button" id="renderBtn" class="ce-submit-btn">Xuất</button>
         </div>
       </div>
-      <div id="renderResult" class="render-result" hidden><strong>Đã xuất xong</strong><small id="exportSavedPath"></small><a id="downloadVideo" class="primary small" download>Tải file về máy ↓</a><video id="renderPreview" controls preload="metadata" style="max-height:140px"></video><img id="renderQaContact" alt="Ảnh mẫu" hidden></div>
+      <div id="renderResult" class="render-result" hidden><strong>Đã xuất xong</strong><small id="exportSavedPath"></small><button id="openExportFolder" type="button" class="secondary"><span data-icon="folder"></span>Mở thư mục xuất</button></div>
       <div hidden>
         <span id="exportBeatName"></span>
-        <select id="exportQuality"><option value="standard">Tiêu chuẩn</option><option value="high" selected>Cao</option><option value="maximum">Rất cao</option></select>
-        <select id="exportFps"><option value="source" selected>source</option><option value="30">30</option><option value="60">60</option></select>
+
+
         <select id="exportAspect"><option value="landscape" selected>16:9</option><option value="portrait">9:16</option></select>
         <input id="audioNormalize" type="checkbox">
         <div id="exportInventory"></div>
       </div>
     </div>
-    <div class="ce-right">
-      <strong class="ce-qr-title">GỬI QUA ĐIỆN THOẠI</strong>
-      <div id="ceQrBox" class="ce-qr-box"></div>
-      <small class="muted" style="text-align:center;font-size:11px;line-height:1.4">Xuất xong, mã QR / link tải sẽ hiện ở đây để gửi file sang điện thoại (cùng Wi-Fi)</small>
-    </div>
+
   </div>
 </dialog>
 <dialog id="alignPreviewDialog" class="align-preview-dialog"><div class="dialog-heading"><h2>Xem trước căn lại câu</h2><button data-close class="icon-btn" aria-label="Đóng xem trước">✕</button></div><p class="hint">So sánh lời và mốc mới trước khi áp dụng. Project hiện tại vẫn được giữ nguyên cho tới khi bạn xác nhận.</p><div id="alignPreviewContent"></div><div class="dialog-footer"><button id="discardAlignmentBtn" class="ghost">Bỏ đề xuất</button><button id="applyAlignmentBtn" class="primary">Áp dụng mốc mới</button></div></dialog>
@@ -428,18 +425,18 @@
 <input id="srtInput" type="file" accept=".srt" hidden>
 <dialog id="updateDialog" class="update-dialog" aria-labelledby="updateDialogTitle"><div class="dialog-heading"><div><p class="hint">CẬP NHẬT ỨNG DỤNG</p><h2 id="updateDialogTitle">Có phiên bản mới</h2></div></div><h3 id="updateDialogVersion"></h3><p id="updateDialogNotes" class="update-release-notes"></p><p id="updateDialogStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="updateDialogLater" type="button" class="secondary">Để sau</button><button id="updateDialogInstall" type="button" class="primary">Cập nhật</button></div></dialog>
 <audio id="audio" preload="metadata"></audio>
-<script src="/static/export_menu.js?v=backing-vocals-1"></script>
-<script src="/static/branding.js?v=studio-pro-6"></script>
-<script src="/static/layout_resize.js?v=studio-pro-6"></script>
+<script src="/static/export_menu.js?v=studio-export-2"></script>
+<script src="/static/branding.js?v=studio-pro-7"></script>
+<script src="/static/layout_resize.js?v=studio-pro-7"></script>
 <script src="/static/timeline_edit.js"></script>
-<script src="/static/bundled_assets.js?v=studio-pro-6"></script>
-<script src="/static/studio.js?v=studio-pro-6"></script>
+<script src="/static/bundled_assets.js?v=studio-pro-7"></script>
+<script src="/static/studio.js?v=studio-pro-7"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
-<script src="/static/song_title.js?v=studio-pro-6"></script>
-<script src="/static/workspace_tools.js?v=studio-pro-6"></script>
-<script src="/static/updates.js?v=studio-pro-6"></script>
+<script src="/static/song_title.js?v=studio-pro-7"></script>
+<script src="/static/workspace_tools.js?v=studio-pro-7"></script>
+<script src="/static/updates.js?v=studio-pro-7"></script>
 <script src="/static/backing_vocals.js"></script>
-<script src="/static/app.js?v=studio-pro-6"></script>
+<script src="/static/app.js?v=studio-pro-7"></script>
 <script src="/static/controls.js?v=studio-controls-1"></script>
 </body></html>

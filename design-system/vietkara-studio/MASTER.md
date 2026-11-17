@@ -80,3 +80,11 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Verified three pages at 375/768/1024/1366/1920 widths, open model/font/export pickers, Space/End/Enter selection, Escape dismissal, regenerated fonts and dynamic scene selects. No horizontal document overflow or JavaScript errors. All 29 JavaScript regressions pass.
 - Axe WCAG A/AA checks have no findings in interface controls across the three pages; project-rendered lyrics and user-colored role badges are excluded from that theme check.
 - Controls use the shared semantic color tokens. Release remains unpublished during user review.
+
+
+## Final export review — 2026-11-18
+
+- Remove the QR/phone-sharing panel and all post-render playback/download controls. Finished jobs show the saved path and Open export folder. The existing automatic-open checkbox now calls that same validated endpoint after successful exports.
+- Export kind is persisted independently from video/audio formats. Audio uses WAV (24-bit PCM), MP3 (320 kbps), FLAC or M4A/AAC (320 kbps); video retains MP4/MOV/MKV. Audio export ignores unrelated lyric/background validation, uses the selected soundtrack and preserves normalization.
+- Add 2K/QHD 2560×1440 and portrait 1440×2560 consistently to validated settings, render-info and actual encoder dimensions. Expose video quality and frame-rate controls. Batch video rendering keeps video output even when a project's single-export mode is Audio.
+- Verification: 215 Python tests, 29 JavaScript regressions. Real CPU exports validated all four audio codecs, suffixes, guide mixing with normalization, default/chosen folders, and both 2K orientations. Browser exercised actual MP3 and 2K renders, automatic/manual folder requests, mode changes and responsive output dialogs.
