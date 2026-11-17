@@ -2,7 +2,7 @@
 
 Studio karaoke chạy cục bộ trên Windows 10/11 x64. Video xuất dùng **beat gốc** mặc định. Có thể chọn thêm giọng bè đã duyệt hoặc vocal hướng dẫn.
 
-## Setup 1.1.1 và bản vá 1.1.19
+## Setup 1.1.1 và bản vá 1.1.20
 
 Setup Nuitka x64 1.1.1 ở `releases/VietKaraStudio-1.1.1-Nuitka-Setup-x64.exe` là bộ nền để nhận bản vá tự động. Mở **Cài đặt → Cập nhật VietKara Studio** để tải và cài bản vá.
 

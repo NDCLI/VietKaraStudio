@@ -5,61 +5,63 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg?v=2026.11-brand">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1-brand">
-  <link rel="stylesheet" href="/static/tokens.css?v=studio-a-1">
-  <link rel="stylesheet" href="/static/style.css?v=1.1.19-main">
-  <link rel="stylesheet" href="/static/studio-a.css?v=studio-a-r4">
+  <link rel="stylesheet" href="/static/tokens.css?v=studio-pro-1">
+  <link rel="stylesheet" href="/static/style.css?v=studio-pro-1">
+  <link rel="stylesheet" href="/static/studio-a.css?v=studio-pro-1">
 </head>
 <body>
+<a class="skip-link" href="#karaokePage">Đến vùng biên tập</a>
 <header class="topbar">
   <a class="brand" href="/" aria-label="VietKara Studio"><span class="brand-icon"><img class="brand-mark" src="/static/vietkara.svg?v=2026.11-brand" alt=""></span><span>Viet<span class="brand-light">Kara</span><small>STUDIO</small></span></a>
-  <details class="menu-pop top-file-menu"><summary>📁 Tệp ▾</summary><div class="menu-drop"><button id="projectsBtn" type="button">Chọn project…</button><button id="newBtn" type="button">＋ Project mới</button><button id="menuSaveBtn" type="button">💾 Lưu project</button><span class="menu-separator"></span><button type="button" data-menu-click="editLyricsBtn">Nhập / sửa lời</button><button type="button" data-menu-click="importSrtBtn">Nhập SRT…</button><span class="menu-separator"></span><strong class="menu-group-label">Xuất phụ đề</strong><button type="button" data-subtitle-export="srt">Xuất SRT</button><button type="button" data-subtitle-export="lrc">Xuất LRC</button><button type="button" data-subtitle-export="ass">Xuất ASS</button><span class="menu-separator"></span><button type="button" data-menu-click="backupBtn">Tải bản lưu project</button></div></details>
+  <details class="menu-pop top-file-menu"><summary><span data-icon="folder"></span><span>Tệp</span><span data-icon="chevron"></span></summary><div class="menu-drop"><button id="projectsBtn" type="button">Chọn project…</button><button id="newBtn" type="button">＋ Project mới</button><button id="menuSaveBtn" type="button"><span data-icon="save"></span> Lưu project</button><span class="menu-separator"></span><button type="button" data-menu-click="editLyricsBtn">Nhập / sửa lời</button><button type="button" data-menu-click="importSrtBtn">Nhập SRT…</button><span class="menu-separator"></span><strong class="menu-group-label">Xuất phụ đề</strong><button type="button" data-subtitle-export="srt">Xuất SRT</button><button type="button" data-subtitle-export="lrc">Xuất LRC</button><button type="button" data-subtitle-export="ass">Xuất ASS</button><span class="menu-separator"></span><button type="button" data-menu-click="backupBtn">Tải bản lưu project</button></div></details>
   <nav class="top-nav" aria-label="Chức năng app">
     <button type="button" data-page="karaoke" class="on" aria-current="page">Karaoke</button>
     <button id="separationPageBtn" type="button" data-page="separation">Tách nhạc</button>
     <button type="button" data-page="settings">Cài đặt</button>
   </nav>
   <div class="project-name"><span class="status-dot" aria-hidden="true"></span><label class="sr-only" for="projectName">Tên project</label><input id="projectName" aria-label="Tên project" value="Bài karaoke mới"><span id="saveStatus" role="status">Đã lưu</span></div>
-  <div class="wm-bar-controls" aria-label="Thiết bị AI và chọn nhanh model">
-    <label class="wm-select-group" title="Chọn thiết bị xử lý AI"><span>Thiết bị AI</span><select id="quickAiDevice"><option value="auto">⚡ Auto</option><option value="cuda">🖥 VGA</option><option value="cpu">🖧 CPU</option></select></label>
+  <details class="menu-pop processing-menu"><summary aria-label="Thiết lập xử lý"><span data-icon="settings"></span><span>Thiết lập</span><span data-icon="chevron"></span></summary><div class="processing-content"><div class="processing-heading"><strong>Thiết lập xử lý</strong><p>Chọn cấu hình phù hợp cho bài hát.</p></div><div class="wm-bar-controls" aria-label="Thiết bị AI và chọn nhanh model">
+    <label class="wm-select-group" title="Chọn thiết bị xử lý AI"><span>Thiết bị AI</span><select id="quickAiDevice"><option value="auto">Tự động</option><option value="cuda">GPU</option><option value="cpu">CPU</option></select></label>
     <label class="wm-select-group" title="Model tách nhạc nền & vocal"><span>Tách nhạc</span><select id="quickInstModel"><option value="mdx-inst-hq-1">MDX Inst HQ 1</option><option value="mdx-inst-hq-2">MDX Inst HQ 2</option><option value="mdx-inst-hq-3">MDX Inst HQ 3</option><option value="mdx-kim-vocal-2">Kim Vocal 2</option><option value="demucs">HTDemucs</option></select></label>
     <label class="wm-select-group" title="Model tách giọng bè"><span>Tách bè</span><select id="quickBackingModel"><option value="backing-roformer">Mel-RoFormer</option><option value="mdx-kara-2">MDX Karaoke 2</option><option value="backing-uvr-lite">UVR Karaoke Lite</option></select></label>
     <label class="wm-select-group" title="Model nhận diện lời bài hát"><span>Nhận lời</span><select id="quickWhisperModel"><option value="small">Whisper small</option><option value="medium" selected>Whisper medium</option><option value="large-v3-turbo">Whisper large-v3-turbo</option></select></label>
   </div>
+  </div></details>
   <button id="aiModelBtn" type="button" hidden>Thiết lập AI</button>
   <div class="top-actions"><button type="button" id="exportBtn" class="primary" aria-label="Xuất bài karaoke" title="Xuất karaoke">↗ Xuất video</button></div>
 </header>
-<main id="karaokePage" class="workspace" data-app-page="karaoke">
+<main id="karaokePage" class="workspace" data-app-page="karaoke" tabindex="-1">
   <section id="karaokeStartScreen" class="qs-screen" hidden>
-    <div class="qs-box">
+    <div class="qs-box"><div class="qs-intro"><span class="qs-emblem" data-icon="music"></span><span class="eyebrow">VIETKARA STUDIO</span><h1>Bắt đầu một bản karaoke</h1><p>Thêm bài hát, căn lời theo nhạc và tạo video của bạn.</p></div>
       <div class="qs-tabs" role="tablist">
-        <button type="button" class="qs-tab on" data-qs-mode="file">↑ Tải lên từ máy</button>
-        <button type="button" class="qs-tab" data-qs-mode="youtube">▶ Từ YouTube</button>
+        <button type="button" role="tab" aria-selected="true" class="qs-tab on" data-qs-mode="file"><span data-icon="folder"></span> File trên máy</button>
+        <button type="button" role="tab" aria-selected="false" class="qs-tab" data-qs-mode="youtube"><span data-icon="video"></span> Link YouTube</button>
       </div>
       <div id="qsFileBar" class="qs-input-bar">
-        <input id="qsFileLabel" readonly placeholder="Chưa chọn file — bấm Duyệt để chọn">
-        <button type="button" id="qsBrowseBtn" class="qs-browse-btn">Duyệt</button>
+        <input id="qsFileLabel" aria-label="File nhạc đã chọn" readonly placeholder="MP3, WAV, FLAC hoặc video của bạn">
+        <button type="button" id="qsBrowseBtn" class="qs-browse-btn">Chọn file</button>
         <input id="qsFileInput" type="file" accept="audio/*,video/*,.mp3,.wav,.flac,.m4a,.mp4,.mkv,.webm,.mov" hidden>
       </div>
       <div id="qsYoutubeBar" class="qs-input-bar" hidden>
-        <input id="qsYoutubeInput" placeholder="Dán link YouTube (ví dụ: https://www.youtube.com/watch?v=...)">
+        <label class="sr-only" for="qsYoutubeInput">Link YouTube</label><input id="qsYoutubeInput" type="url" inputmode="url" placeholder="Dán link YouTube (ví dụ: https://www.youtube.com/watch?v=...)">
       </div>
       <div id="qsPreviewCard" class="qs-preview-card" hidden>
-        <div class="qs-file-head"><span class="qs-music-ico">♫</span><div><strong id="qsFileName">Bài hát</strong><small id="qsFileDur">0:00 / 0:00</small></div></div>
+        <div class="qs-file-head"><span class="qs-music-ico" data-icon="music"></span><div><strong id="qsFileName">Bài hát</strong><small id="qsFileDur">0:00 / 0:00</small></div></div>
         <canvas id="qsWaveCanvas" height="54"></canvas>
         <div class="qs-player-row">
           <button type="button" id="qsPlayBtn" class="qs-play-btn">▶</button>
-          <div class="qs-vol-wrap"><span>S</span><span>🔊</span><input type="range" id="qsVolSlider" min="0" max="1" step="0.02" value="1"></div>
+          <div class="qs-vol-wrap"><span data-icon="volume"></span><input type="range" id="qsVolSlider" aria-label="Âm lượng nghe thử" min="0" max="1" step="0.02" value="1"></div>
         </div>
       </div>
       <div id="qsOptionsBlock" class="qs-options" hidden>
         <p class="small muted">Bài hát này có lời hát không?</p>
         <div class="qs-radios">
-          <label><input type="radio" name="qsHasLyrics" value="1" checked> <span>🎙 Có lời — tự nhận diện</span></label>
-          <label><input type="radio" name="qsHasLyrics" value="0"> <span>♫ Không lời — gõ nhịp tay</span></label>
+          <label><input type="radio" name="qsHasLyrics" value="1" checked> <span>Có lời · tự nhận diện</span></label>
+          <label><input type="radio" name="qsHasLyrics" value="0"> <span>Không lời · gõ nhịp tay</span></label>
         </div>
-        <button type="button" id="qsStartBtn" class="qs-start-btn">⚡ Tiếp tục</button>
+        <button type="button" id="qsStartBtn" class="qs-start-btn">Tiếp tục <span data-icon="arrow"></span></button>
       </div>
-      <div style="text-align:center;margin-top:8px"><button type="button" id="qsSkipBtn" class="text-button small">Vào thẳng trình biên tập →</button></div>
+      <div class="qs-skip"><button type="button" id="qsSkipBtn" class="text-button small">Vào thẳng trình biên tập →</button></div>
     </div>
   </section>
   <div class="studio-top">
@@ -103,7 +105,7 @@
   <div id="leftColumnGrip" class="layout-grip vertical-grip" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Đổi độ rộng cột lời" title="Kéo để đổi độ rộng cột lời · nhấp đôi để đặt lại"></div>
   <section class="editor-column">
     <div class="panel preview-panel">
-      <div class="panel-toolbar"><span class="eyebrow">KARAOKE PREVIEW</span><span class="audio-badge"><span class="status-dot"></span><span id="previewAudioLabel">BEAT GỐC</span></span><button id="fullscreenBtn" class="icon-btn" title="Toàn màn hình">⛶</button></div>
+      <div class="panel-toolbar"><span class="eyebrow">XEM TRƯỚC</span><span class="audio-badge"><span class="status-dot"></span><span id="previewAudioLabel">BEAT GỐC</span></span><button id="fullscreenBtn" class="icon-btn" title="Toàn màn hình">⛶</button></div>
       <div id="preview" class="preview">
         <div class="preview-grid"></div><div class="preview-orb orb-one"></div><div class="preview-orb orb-two"></div>
         <div class="preview-brand">VIETKARA <span>STUDIO</span></div>
@@ -263,7 +265,7 @@
     </div>
     <div id="waveformPanel" class="panel waveform-panel"><div id="waveTrackControls" class="wave-track-controls" aria-label="Chọn track để nghe"></div><canvas id="waveformCanvas" aria-label="Sóng beat gốc và bản hát" title="Bấm để tua · cuộn để zoom cùng timeline"></canvas></div>
     <div id="waveformHeightGrip" class="layout-grip horizontal-grip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Đổi chiều cao sóng nhạc và timeline lời" title="Kéo để chia chiều cao sóng nhạc / timeline lời · nhấp đôi để đặt lại"></div>
-    <div class="panel timeline-panel">
+    <div class="panel timeline-panel"><div class="timeline-caption"><strong>Timeline lời hát</strong><span>Kéo để chỉnh thời gian <kbd>Space</kbd> Phát / dừng</span></div>
       <div class="timeline-labels" hidden><span class="purple-text">Bản hát · đã quy đổi mốc</span><span class="green-text">Beat gốc · thời gian chuẩn</span><span>Lời · kéo để dời, kéo mép để giãn</span></div>
       <div class="timeline-view"><canvas id="timeline" aria-label="Timeline âm thanh và từng từ" title="Cuộn chuột để zoom tại con trỏ"></canvas></div>
       <input type="range" id="pan" min="0" max="0" step="0.05" value="0" aria-label="Cuộn timeline">
@@ -273,26 +275,27 @@
 </main>
 <section id="separationPage" class="utility-page" data-app-page="separation" hidden>
   <div class="separation-shell" style="max-width:860px;margin:28px auto">
-    <div class="qs-box" style="width:100%">
+    <div class="qs-box separation-source-card">
+      <div class="qs-intro"><span class="qs-emblem" data-icon="headphones"></span><span class="eyebrow">TÁCH NHẠC</span><h1>Tạo bản beat của bạn</h1><p>Tách nhạc nền, giữ giọng bè hoặc tải riêng vocal. Bắt đầu bằng một file nhạc hay link YouTube.</p></div>
       <div class="qs-tabs" role="tablist">
-        <button type="button" class="qs-tab on" data-sep-tab="file">↑ Tải lên từ máy</button>
-        <button type="button" class="qs-tab" data-sep-tab="youtube">▶ Từ YouTube</button>
+        <button type="button" role="tab" aria-selected="true" class="qs-tab on" data-sep-tab="file"><span data-icon="folder"></span> File trên máy</button>
+        <button type="button" role="tab" aria-selected="false" class="qs-tab" data-sep-tab="youtube"><span data-icon="video"></span> Link YouTube</button>
       </div>
       <div id="sepFileBar" class="qs-input-bar">
-        <input id="sepFileDisplay" readonly placeholder="Chưa chọn file — bấm Duyệt để chọn">
-        <button type="button" id="sepBrowseBtn" class="qs-browse-btn">Duyệt</button>
+        <input id="sepFileDisplay" aria-label="File cần tách" readonly placeholder="MP3, WAV, FLAC hoặc video của bạn">
+        <button type="button" id="sepBrowseBtn" class="qs-browse-btn">Chọn file</button>
         <input id="separationInput" type="file" accept="audio/*,video/*" hidden>
         <span id="separationFileName" hidden></span>
       </div>
       <div id="sepYoutubeBar" class="qs-input-bar" hidden>
-        <input id="separationYoutubeUrl" type="url" inputmode="url" placeholder="Dán link video YouTube tại đây…">
+        <input id="separationYoutubeUrl" aria-label="Link YouTube cần tách" type="url" inputmode="url" placeholder="Dán link video YouTube tại đây…">
       </div>
       <div id="sepChoicesWrap" hidden style="display:flex;flex-direction:column;gap:12px;margin-top:6px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <details class="separation-options"><summary>Tùy chọn xử lý</summary><div class="separation-model-grid">
           <label class="separation-model" for="separationInstModel"><span>Model tách nhạc nền &amp; vocal</span><select id="separationInstModel"><option value="mdx-inst-hq-1">UVR-MDX-NET Inst HQ 1 · Nhạc nền rất sạch</option><option value="mdx-inst-hq-2">UVR-MDX-NET Inst HQ 2 · Bản nâng cấp HQ</option><option value="mdx-inst-hq-3">UVR-MDX-NET Inst HQ 3 · Bản HQ mới nhất</option><option value="mdx-kim-vocal-2">Kim Vocal 2 · Ưu tiên tách vocal sạch</option><option value="demucs">HTDemucs · Chuẩn 4 stems</option></select></label>
           <label class="separation-model" for="separationBackingModel"><span>Model tách giọng bè</span><select id="separationBackingModel"><option value="roformer">Chất lượng cao · Mel-RoFormer Karaoke</option><option value="mdx-kara-2">Tối ưu giữ bè · UVR-MDX-NET Karaoke 2</option><option value="uvr-lite">Nhẹ · UVR Karaoke Lite (5_HP)</option></select></label>
-        </div>
-        <div class="separation-modes"><button id="separationRun" type="button" class="primary"><span aria-hidden="true">♫</span><strong>Tách beat không bè</strong><small>Nhạc nền sạch để hát karaoke</small><b aria-hidden="true">→</b></button><button id="separationWithBackingRun" type="button" class="secondary"><span aria-hidden="true">♬</span><strong>Tách beat có bè</strong><small>Giữ giọng bè, loại giọng hát chính</small><b aria-hidden="true">→</b></button></div>
+        </div></details>
+        <div class="separation-modes"><button id="separationRun" type="button" class="primary"><span data-icon="music" aria-hidden="true"></span><strong>Tách beat không bè</strong><small>Nhạc nền sạch để hát karaoke</small><b aria-hidden="true">→</b></button><button id="separationWithBackingRun" type="button" class="secondary"><span data-icon="mic" aria-hidden="true"></span><strong>Tách beat có bè</strong><small>Giữ giọng bè, loại giọng hát chính</small><b aria-hidden="true">→</b></button></div>
       </div>
       <div id="separationActivity" class="separation-activity" data-state="idle">
         <div class="spinner sep-spinner"></div>
@@ -308,7 +311,7 @@
       <div class="separation-result-heading"><div><span class="separation-eyebrow">ĐÃ XỬ LÝ · CHỈNH SỬA SAU KHI TÁCH</span><h2>Nghe thử, chỉnh Tone &amp; tải về</h2></div><span>WAV · Âm thanh chất lượng cao</span></div>
       <div class="sep-pitch-bar" aria-label="Chỉnh sửa nâng hạ tone sau khi tách">
         <div class="sep-pitch-info">
-          <strong>🎵 Nâng / Hạ Tone (Pitch Shift)</strong>
+          <strong>Nâng / hạ tone</strong>
           <small>Chỉnh cao độ nhạc nền &amp; giọng bè ngay sau khi tách (giữ nguyên tốc độ nhịp). Áp dụng cho cả nghe thử và file WAV tải về.</small>
         </div>
         <div class="sep-pitch-controls">
@@ -336,7 +339,7 @@
 </section>
 <section id="settingsPage" class="utility-page" data-app-page="settings" hidden><div class="utility-card"><h1>Cài đặt model</h1><p class="storage-location">Project, model, cache và bản vá được lưu tại:<code id="dataStoragePath">Đang kiểm tra…</code></p><p>Model tải mới nằm trong thư mục dữ liệu của VietKara Studio (data/models và data/cache). App ưu tiên model tại đây, sau đó dùng lại cache có sẵn trên máy để tránh tải trùng. Đường dẫn bên dưới là vị trí thực tế đang dùng.</p><button id="refreshModels" class="secondary">↻ Kiểm tra model</button><div id="modelList"></div><details class="tool-group"><summary>Cài model bằng file tải ngoài</summary><p>Whisper cần bộ model định dạng CTranslate2 gồm model.bin, config.json, tokenizer.json và vocabulary. Chép đầy đủ vào đường dẫn của model bên trên rồi bấm Kiểm tra model. Demucs dùng file trọng số .th đúng tên hiển thị. Hai model tách bè có nút tải trước và link tải file ngoài tại từng thẻ. Mel-RoFormer cần đủ file trọng số và file cấu hình; UVR Karaoke cần file .pth. App kiểm tra file trước khi dùng.</p><p>Có thể tải qua nút của app khi mạng hoạt động; nếu tải bị gián đoạn, bấm tải lại để tiếp tục phần còn thiếu.</p></details></div><div class="utility-card update-card"><h2>Cập nhật VietKara Studio</h2><p>App kiểm tra bản vá nhỏ trên GitHub và chỉ tải phần chương trình thay đổi. Project, nhạc và model của bạn được giữ nguyên.</p><label class="update-auto"><input id="autoUpdateEnabled" type="checkbox" checked><span>Thông báo khi có bản mới lúc mở app</span></label><p id="updateStatus" class="hint" role="status">Đang kiểm tra trạng thái cập nhật…</p><div class="update-actions"><button id="checkUpdates" class="secondary">↻ Kiểm tra ngay</button><button id="updateAction" class="primary" hidden></button></div></div></section>
 <div hidden><button id="alignLyricsBtn"></button><button id="estimateBtn"></button></div>
-<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.19</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
+<footer class="app-footer"><span>VIETKARA STUDIO <b>1.1.20</b></span><span>Audio xử lý trên máy của bạn <i>•</i> Tự ưu tiên GPU khả dụng</span><span id="healthStatus">Đang kiểm tra môi trường…</span></footer>
 <div id="jobBar" class="job-bar" hidden><div class="spinner"></div><div class="job-copy"><strong id="jobTitle">Đang xử lý…</strong><div class="progress-track"><div id="jobProgress"></div></div></div><span id="jobPercent">0%</span><button id="cancelJobBtn" class="ghost">Hủy</button></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <dialog id="tapDialog" class="tap-dialog">
@@ -367,8 +370,8 @@
   <div class="ce-grid">
     <div class="ce-left">
       <div class="ce-row-2">
-        <label>KIỂU<select id="ceKindSelect"><option value="video">🎬 Video Karaoke</option><option value="audio">♫ Audio</option></select></label>
-        <label>ĐỊNH DẠNG<select id="exportFormat"><option value="mp4">🎬 MP4</option><option value="mov">🎬 MOV</option><option value="mkv">🎬 MKV</option></select></label>
+        <label>KIỂU<select id="ceKindSelect"><option value="video">Video Karaoke</option><option value="audio">Audio</option></select></label>
+        <label>ĐỊNH DẠNG<select id="exportFormat"><option value="mp4">MP4</option><option value="mov">MOV</option><option value="mkv">MKV</option></select></label>
       </div>
       <div class="ce-row-2">
         <label>ÂM THANH XUẤT<select id="exportAudio"><option value="beat">Nhạc nền (Beat gốc)</option><option value="backing">Nhạc nền + Giọng bè</option><option value="guide">Nhạc nền + Giọng hát dẫn</option></select></label>
@@ -378,7 +381,7 @@
       <div class="ce-path-bar">
         <span class="ce-path-tag">NƠI LƯU</span>
         <input id="exportFolder" placeholder="Mặc định: thư mục exports của project" aria-label="Thư mục xuất">
-        <button type="button" id="pickExportFolder" class="ce-folder-btn" title="Chọn thư mục…">📁</button>
+        <button type="button" id="pickExportFolder" class="ce-folder-btn" title="Chọn thư mục…" aria-label="Chọn thư mục xuất"><span data-icon="folder"></span></button>
         <button type="button" id="saveExportFolder" class="ghost small" hidden>Lưu</button>
       </div>
       <p id="exportNotice" class="hint" role="status" style="margin:0"></p>
@@ -402,7 +405,7 @@
       </div>
     </div>
     <div class="ce-right">
-      <strong class="ce-qr-title">📱 GỬI QUA ĐIỆN THOẠI</strong>
+      <strong class="ce-qr-title">GỬI QUA ĐIỆN THOẠI</strong>
       <div id="ceQrBox" class="ce-qr-box"></div>
       <small class="muted" style="text-align:center;font-size:11px;line-height:1.4">Xuất xong, mã QR / link tải sẽ hiện ở đây để gửi file sang điện thoại (cùng Wi-Fi)</small>
     </div>
@@ -425,16 +428,16 @@
 <dialog id="updateDialog" class="update-dialog" aria-labelledby="updateDialogTitle"><div class="dialog-heading"><div><p class="hint">CẬP NHẬT ỨNG DỤNG</p><h2 id="updateDialogTitle">Có phiên bản mới</h2></div></div><h3 id="updateDialogVersion"></h3><p id="updateDialogNotes" class="update-release-notes"></p><p id="updateDialogStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="updateDialogLater" type="button" class="secondary">Để sau</button><button id="updateDialogInstall" type="button" class="primary">Cập nhật</button></div></dialog>
 <audio id="audio" preload="metadata"></audio>
 <script src="/static/export_menu.js?v=backing-vocals-1"></script>
-<script src="/static/branding.js?v=2026.11-brand"></script>
-<script src="/static/layout_resize.js?v=studio-a-r3"></script>
+<script src="/static/branding.js?v=studio-pro-1"></script>
+<script src="/static/layout_resize.js?v=studio-pro-1"></script>
 <script src="/static/timeline_edit.js"></script>
 <script src="/static/bundled_assets.js?v=source-1"></script>
-<script src="/static/studio.js?v=1.1.19-main"></script>
+<script src="/static/studio.js?v=studio-pro-1"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
-<script src="/static/song_title.js?v=studio-a-r3"></script>
-<script src="/static/workspace_tools.js?v=studio-a-r3"></script>
-<script src="/static/updates.js?v=1.1.19-main"></script>
+<script src="/static/song_title.js?v=studio-pro-1"></script>
+<script src="/static/workspace_tools.js?v=studio-pro-1"></script>
+<script src="/static/updates.js?v=studio-pro-1"></script>
 <script src="/static/backing_vocals.js"></script>
-<script src="/static/app.js?v=1.1.19-main"></script>
+<script src="/static/app.js?v=studio-pro-1"></script>
 </body></html>

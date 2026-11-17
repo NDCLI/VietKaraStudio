@@ -1,12 +1,13 @@
 'use strict';
-const studioLayoutDefaults={left:265,right:275,waves:96,lyrics:114};
+let studioWaveColors={};
+const studioLayoutDefaults={left:280,right:320,waves:144,lyrics:140};
 let studioLayoutSize={...studioLayoutDefaults};
 function applyStudioLayout(){
   const root=$('karaokePage'),width=root.clientWidth;
   studioLayoutSize.left=Math.max(170,Math.min(studioLayoutSize.left,Math.max(170,width-500)));
   studioLayoutSize.right=Math.max(230,Math.min(studioLayoutSize.right,Math.max(230,width-studioLayoutSize.left-250)));
-  studioLayoutSize.waves=96;
-  studioLayoutSize.lyrics=114;
+  studioLayoutSize.waves=Math.max(114,Math.min(studioLayoutSize.waves,Math.max(114,innerHeight*.24)));
+  studioLayoutSize.lyrics=Math.max(124,Math.min(studioLayoutSize.lyrics,Math.max(124,innerHeight*.27)));
   for(const [key,value] of Object.entries(studioLayoutSize))root.style.setProperty('--layout-'+key,value+'px');
   for(const [id,value] of [['leftColumnGrip',studioLayoutSize.left],['rightColumnGrip',studioLayoutSize.right],['studioHeightGrip',studioLayoutSize.waves+studioLayoutSize.lyrics],['waveformHeightGrip',studioLayoutSize.waves]]){
     $(id).setAttribute('aria-valuemin','0');$(id).setAttribute('aria-valuemax',String(Math.max(innerWidth,innerHeight)));
@@ -32,6 +33,8 @@ function fitStudioPreview(){
   stage.style.width=width.toFixed(2)+'px';stage.style.height=(width/ratio).toFixed(2)+'px';
 }
 function initLayoutResize(){
+  const palette=getComputedStyle(document.documentElement);
+  for(const key of ['beat','ref','backing','inactive'])studioWaveColors[key]=palette.getPropertyValue('--c-wave-'+key).trim();
   try{const saved=JSON.parse(localStorage.getItem('obs_studio_layout_v2'));for(const key of Object.keys(studioLayoutDefaults))if(Number.isFinite(saved?.[key]))studioLayoutSize[key]=saved[key];}catch{}
   const gripIds=['leftColumnGrip','rightColumnGrip','studioHeightGrip','waveformHeightGrip'];
   function update(id,dx,dy,initial){
@@ -79,7 +82,7 @@ function studioWaveforms(){
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
   const playhead=beatNow();
   ctx.fillStyle='#121416';ctx.fillRect(0,0,W,H);
-  for(const [slot,lane,color,title] of [['beat',0,'#f97316','NHẠC NỀN'],['reference',1,'#10b981','GIỌNG HÁT'],['backing',2,'#a78bfa','GIỌNG BÈ']]){
+  for(const [slot,lane,color,title] of [['beat',0,studioWaveColors.beat,'NHẠC NỀN'],['reference',1,studioWaveColors.ref,'GIỌNG HÁT'],['backing',2,studioWaveColors.backing,'GIỌNG BÈ']]){
     const top=lane*H/3,mid=top+H/6,amplitude=Math.max(4,H/6-3);
     const m=slot==='reference'?(state.project.vocals||state.project.reference):state.project[slot];
     ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/3);
@@ -89,7 +92,7 @@ function studioWaveforms(){
     for(let pixel=0;pixel<P;pixel+=1.5){
       const t=range.start+pixel/P*range.span,source=slot==='reference'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
       if(index<0||index>=m.peaks.length)continue;
-      const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=playhead?color:'#4b5563';ctx.fillRect(G+pixel,mid-a,1.2,Math.max(1,a*2));
+      const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=playhead?color:studioWaveColors.inactive;ctx.fillRect(G+pixel,mid-a,1.2,Math.max(1,a*2));
     }
     ctx.restore();
   }

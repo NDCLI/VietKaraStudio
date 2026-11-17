@@ -1,5 +1,9 @@
 'use strict';
 const studioIcons={
+  chevron:'<path d="m6 9 6 6 6-6"/>',
+  save:'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>',
+  volume:'<path d="M3 9h4l5-4v14l-5-4H3Z M16 8a6 6 0 0 1 0 8"/>',
+  arrow:'<path d="M4 12h16m-6-6 6 6-6 6"/>',
   music:'<path d="M9 18V5l12-2v13M9 8l12-2"/><ellipse cx="6" cy="18" rx="3" ry="3"/><ellipse cx="18" cy="16" rx="3" ry="3"/>',
   mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>',
   headphones:'<path d="M3 14v-3a9 9 0 0 1 18 0v3"/><rect x="3" y="12" width="4" height="9" rx="2"/><rect x="17" y="12" width="4" height="9" rx="2"/>',
@@ -27,7 +31,20 @@ function initBranding(){
   document.querySelector('.reference-card .upload-icon').innerHTML=studioIcon('mic');
   document.querySelector('.beat-card .upload-icon').innerHTML=studioIcon('headphones');
   $('projectsBtn').innerHTML=studioIcon('folder')+' Project';$('newBtn').innerHTML=studioIcon('plus')+' Bài mới';
-  $('exportBtn').innerHTML=studioIcon('download')+' Xuất karaoke';$('fullscreenBtn').innerHTML=studioIcon('expand');
+  $('exportBtn').innerHTML=studioIcon('download')+' Xuất karaoke';$('fullscreenBtn').innerHTML=studioIcon('expand');$('fullscreenBtn').setAttribute('aria-label','Toàn màn hình xem trước');
+  $('undoBtn').setAttribute('aria-label','Hoàn tác');$('redoBtn').setAttribute('aria-label','Làm lại');
+  for(const list of document.querySelectorAll('[role="tablist"]')){
+    const tabs=[...list.querySelectorAll('button')];
+    const select=tab=>tabs.forEach(item=>{item.tabIndex=item===tab?0:-1;});
+    tabs.forEach(tab=>{tab.setAttribute('role','tab');tab.addEventListener('click',()=>select(tab));});
+    select(tabs.find(tab=>tab.getAttribute('aria-selected')==='true')||tabs[0]);
+    list.addEventListener('keydown',event=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||!tabs.includes(event.target))return;
+      event.preventDefault();
+      const index=tabs.indexOf(event.target),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+      tabs[next].click();tabs[next].focus();
+    });
+  }
   $('previewLogo').onload=()=>updateLogoFrame(beatNow());
 }
 function updateLogoFrame(t){

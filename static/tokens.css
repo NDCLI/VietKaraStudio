@@ -1,69 +1,16 @@
-/* =========================================================
-   Design tokens – chỉnh màu, font, khoảng cách tại đây
-   ========================================================= */
-:root {
-  /* Nền & bề mặt */
-  --c-bg: #0f1115;
-  --c-surface-1: #161920;      /* panel */
-  --c-surface-2: #1d212a;      /* control, hover */
-  --c-surface-3: #262b36;      /* active */
-  --c-inset: #0b0d11;          /* ô nhập, vùng sâu */
-  --c-line: #2a2f3a;
-  --c-line-strong: #3a4150;
-
-  /* Chữ */
-  --c-text: #e7e9ee;
-  --c-text-2: #a3abbb;
-  --c-text-3: #6f788a;
-
-  /* Nhấn & trạng thái */
-  --c-accent: #e8b04a;         /* vàng VietKara */
-  --c-accent-ink: #1a1408;
-  --c-info: #4aa3e8;
-  --c-ok: #4cc38a;
-  --c-warn: #e8a24a;
-  --c-err: #e5605b;
-  --c-playhead: #ff5a52;
-
-  /* Vai song ca */
-  --c-role-all: #b58cf0;
-  --c-role-female: #e86fa8;
-  --c-role-male: #4aa3e8;
-  --c-role-unknown: #7d8596;
-
-  /* Sóng nhạc */
-  --c-wave-ref: #7a8bb0;
-  --c-wave-beat: #4cc38a;
-
-  /* Typography */
-  --font-ui: "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "Cascadia Mono", Consolas, monospace;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-md: 13px;
-  --fs-lg: 15px;
-  --fs-xl: 18px;
-
-  /* Khoảng cách (thang 4px) */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 24px;
-
-  /* Kích thước khung */
-  --h-menubar: 28px;
-  --h-topbar: 44px;
-  --h-statusbar: 26px;
-  --h-panel-head: 32px;
-  --h-control: 28px;
-  --w-left: 264px;
-  --w-right: 316px;
-  --h-timeline: 38%;
-  --w-track-label: 112px;
-
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
-  --shadow-pop: 0 10px 30px #0009;
+/* VietKara Studio — semantic design tokens. See design-system/vietkara-studio/MASTER.md. */
+:root{
+ color-scheme:dark;
+ --c-bg:#0b1018;--c-surface-1:#121a26;--c-surface-2:#192333;--c-surface-3:#243147;--c-inset:#0c131e;
+ --c-line:#2b3a50;--c-line-strong:#50627c;--c-text:#edf2fa;--c-text-2:#a8b6ca;--c-text-3:#90a1b8;
+ --c-accent:#7c3aed;--c-accent-hover:#6d28d9;--c-accent-ink:#fff;--c-info:#6bcde5;--c-ok:#6ee7c3;--c-warn:#f9cd75;--c-err:#ff929d;--c-playhead:#edf2fa;
+ --c-role-all:#bb9aff;--c-role-female:#f79bbb;--c-role-male:#7cc6ff;--c-role-unknown:#a8b6ca;
+ --c-wave-beat:#32d3dc;--c-wave-ref:#ae95ff;--c-wave-backing:#f9cd75;--c-wave-inactive:#526783;
+ --font-ui:"Segoe UI Variable","Segoe UI",system-ui,sans-serif;--font-mono:"Cascadia Code",Consolas,monospace;
+ --fs-xs:11px;--fs-sm:12px;--fs-md:14px;--fs-lg:16px;--fs-xl:22px;
+ --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;
+ --h-topbar:64px;--h-statusbar:26px;--h-panel-head:42px;--h-control:36px;--w-left:280px;--w-right:320px;--w-track-label:158px;
+ --radius-sm:6px;--radius:10px;--radius-lg:16px;--shadow-pop:0 20px 60px #0007;
+ --duration-fast:140ms;--duration-normal:200ms;
+ --bg:var(--c-bg);--panel:var(--c-surface-1);--panel-raised:var(--c-surface-2);--line:var(--c-line);--muted:var(--c-text-2);--text:var(--c-text);--accent:var(--c-accent);--green:var(--c-ok);--purple:var(--c-role-all);--focus:var(--c-info);--font:var(--font-ui);
 }

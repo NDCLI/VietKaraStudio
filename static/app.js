@@ -661,7 +661,7 @@ $('importPresetInput').onchange=wrap(async()=>{const input=$('importPresetInput'
     const tab = e.target.closest('[data-qs-mode]');
     if (!tab) return;
     qsMode = tab.dataset.qsMode;
-    for (const b of qsScreen.querySelectorAll('[data-qs-mode]')) b.classList.toggle('on', b === tab);
+    for (const b of qsScreen.querySelectorAll('[data-qs-mode]')) {b.classList.toggle('on', b === tab);b.setAttribute('aria-selected',String(b===tab));}
     $('qsFileBar').hidden = qsMode !== 'file';
     $('qsYoutubeBar').hidden = qsMode !== 'youtube';
     $('qsPreviewCard').hidden = qsMode !== 'file' || !qsFile;
@@ -847,7 +847,7 @@ $('importPresetInput').onchange=wrap(async()=>{const input=$('importPresetInput'
       const tab = e.target.closest('[data-sep-tab]');
       if (!tab) return;
       sepMode = tab.dataset.sepTab;
-      for (const b of sepPage.querySelectorAll('[data-sep-tab]')) b.classList.toggle('on', b === tab);
+      for (const b of sepPage.querySelectorAll('[data-sep-tab]')) {b.classList.toggle('on', b === tab);b.setAttribute('aria-selected',String(b === tab));}
       if ($('sepFileBar')) $('sepFileBar').hidden = sepMode !== 'file';
       if ($('sepYoutubeBar')) $('sepYoutubeBar').hidden = sepMode !== 'youtube';
       if (sepMode === 'file') $('separationYoutubeUrl').value = '';

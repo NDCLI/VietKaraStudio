@@ -181,9 +181,9 @@ async function refreshModels(){
   });
 
   const groups=[
-    {key:'INST',title:'1. MODEL TÁCH NHẠC NỀN & VOCAL CHÍNH (CHỌN 1 MODEL)',activeId:activeInst},
-    {key:'BACKING',title:'2. MODEL TÁCH GIỌNG BÈ KARAOKE (CHỌN 1 MODEL)',activeId:activeBacking},
-    {key:'WHISPER',title:'3. MODEL NHẬN DIỆN LỜI & TỰ CĂN TỪ · WHISPER AI (CHỌN 1 MODEL)',activeId:activeWhisper},
+    {key:'INST',title:'Nhạc nền & giọng hát',activeId:activeInst},
+    {key:'BACKING',title:'Giọng bè karaoke',activeId:activeBacking},
+    {key:'WHISPER',title:'Nhận lời & căn từ',activeId:activeWhisper},
   ];
 
   $('modelList').innerHTML=groups.map(g=>{
@@ -191,7 +191,7 @@ async function refreshModels(){
     if(!list.length)return '';
     const readyCount=list.filter(m=>m.ready).length;
     return `<details class="mdx-group" open>
-      <summary class="mdx-group-head"><strong style="color:#10b981;font-size:11px;letter-spacing:.5px">${esc(g.title)}</strong><span class="small muted">${readyCount}/${list.length} đã tải</span></summary>
+      <summary class="mdx-group-head"><strong>${esc(g.title)}</strong><span class="small muted">${readyCount}/${list.length} đã tải</span></summary>
       <div class="mdx-cards">${list.map(m=>{
         const isSelected=m.id===g.activeId;
         return `<div class="mdx-card ${isSelected?'active':''}">
@@ -208,12 +208,12 @@ async function refreshModels(){
             </div>
           </div>
           <p class="mdx-desc">${esc(m.desc||'')}</p>
-          <ul class="mdx-specs">
-            <li>✓ <b>Mạnh:</b> ${esc(m.pro||'')}</li>
-            <li>⚠ <b>Yếu:</b> ${esc(m.con||'')}</li>
-            <li>💡 <b>Nên dùng khi:</b> ${esc(m.use||'')}</li>
+          <details class="mdx-details"><summary>Thông tin model</summary><ul class="mdx-specs">
+            <li><b>Ưu điểm:</b> ${esc(m.pro||'')}</li>
+            <li><b>Hạn chế:</b> ${esc(m.con||'')}</li>
+            <li><b>Phù hợp:</b> ${esc(m.use||'')}</li>
           </ul>
-          <details class="model-manual" style="margin-top:4px;font-size:11px"><summary class="muted" style="cursor:pointer">Đường dẫn trên máy (${m.ready?(m.location==='cache'?'cache hệ thống':'thư mục app'):'chưa tải'})</summary><code style="display:block;margin-top:4px">${esc(m.path)}</code></details>
+          <details class="model-manual"><summary>Đường dẫn trên máy (${m.ready?(m.location==='cache'?'cache hệ thống':'thư mục app'):'chưa tải'})</summary><code>${esc(m.path)}</code></details></details>
         </div>`;
       }).join('')}</div>
     </details>`;
