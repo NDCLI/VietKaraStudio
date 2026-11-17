@@ -73,6 +73,15 @@ function initLayoutResize(){
   };
   applyStudioLayout();
 }
+// Interpolate the measured peak envelope; never fabricate extra audio samples.
+function studioWavePeak(peaks,index){
+  if(index<0||index>=peaks.length)return 0;
+  const i=Math.floor(index),u=index-i,a=peaks[i],b=peaks[Math.min(i+1,peaks.length-1)];
+  const before=peaks[Math.max(0,i-1)],after=peaks[Math.min(i+2,peaks.length-1)],delta=b-a;
+  const tangent=(left,right)=>left*right>0?2*left*right/(left+right):0;
+  const m0=tangent(a-before,delta),m1=tangent(delta,after-b),u2=u*u,u3=u2*u;
+  return Math.max(0,Math.min(1,(2*u3-3*u2+1)*a+(u3-2*u2+u)*m0+(-2*u3+3*u2)*b+(u3-u2)*m1));
+}
 function studioWaveforms(){
   const canvas=$('waveformCanvas'),rect=canvas.getBoundingClientRect();if(!state.project||!rect.width||!rect.height||!state.showWaves)return;
   const W=rect.width,H=rect.height,dpr=devicePixelRatio||1,G=timelineGutter(W),P=W-G;
@@ -89,11 +98,26 @@ function studioWaveforms(){
     ctx.strokeStyle='#2a2f3a';ctx.beginPath();ctx.moveTo(G,mid);ctx.lineTo(W,mid);ctx.moveTo(0,top);ctx.lineTo(W,top);ctx.stroke();
     if(!m?.peaks?.length||state.hiddenWaveLanes?.has(slot))continue;
     ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/3);ctx.clip();
-    for(let pixel=0;pixel<P;pixel+=1.5){
-      const t=range.start+pixel/P*range.span,source=slot==='reference'?mapTime(t,true):t,index=Math.floor(source/m.duration*m.peaks.length);
-      if(index<0||index>=m.peaks.length)continue;
-      const a=m.peaks[index]*amplitude;ctx.fillStyle=t<=playhead?color:studioWaveColors.inactive;ctx.fillRect(G+pixel,mid-a,1.2,Math.max(1,a*2));
+    const envelope=[];
+    for(let pixel=0;pixel<=Math.ceil(P);pixel++){
+      const t=range.start+pixel/P*range.span,next=range.start+(pixel+1)/P*range.span;
+      const source=slot==='reference'?mapTime(t,true):t,end=slot==='reference'?mapTime(next,true):next;
+      const index=source/m.duration*m.peaks.length,endIndex=end/m.duration*m.peaks.length;
+      let peak=studioWavePeak(m.peaks,index);
+      // Preserve brief transients when several measured bins share one pixel.
+      for(let bin=Math.max(0,Math.ceil(index));bin<Math.min(m.peaks.length,endIndex);bin++)peak=Math.max(peak,m.peaks[bin]);
+      envelope.push(Math.max(.35,peak*amplitude));
     }
+    ctx.beginPath();ctx.moveTo(G,mid-envelope[0]);
+    for(let pixel=1;pixel<envelope.length;pixel++)ctx.lineTo(G+pixel,mid-envelope[pixel]);
+    for(let pixel=envelope.length-1;pixel>=0;pixel--)ctx.lineTo(G+pixel,mid+envelope[pixel]);
+    ctx.closePath();ctx.fillStyle=studioWaveColors.inactive;ctx.fill();
+    ctx.save();ctx.beginPath();ctx.rect(G,top,Math.max(0,Math.min(P,x(playhead)-G)),H/3);ctx.clip();
+    // The clip above starts a new path, so replay the silhouette for played audio.
+    ctx.beginPath();ctx.moveTo(G,mid-envelope[0]);
+    for(let pixel=1;pixel<envelope.length;pixel++)ctx.lineTo(G+pixel,mid-envelope[pixel]);
+    for(let pixel=envelope.length-1;pixel>=0;pixel--)ctx.lineTo(G+pixel,mid+envelope[pixel]);
+    ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.restore();
     ctx.restore();
   }
   const cursor=x(playhead);if(cursor>=G&&cursor<=W){ctx.fillStyle='#ffffff';ctx.fillRect(cursor,0,2,H);}

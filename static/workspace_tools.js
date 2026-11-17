@@ -220,7 +220,7 @@ async function refreshModels(){
   }).join('');
 }
 async function applyPresetNow(id){
-  if(state.job||state.manualTiming)return toast('Kết thúc tác vụ hoặc phiên đồng bộ trước khi đổi preset.');
+  if(state.job||state.manualTiming)return toast('Kết thúc tác vụ hoặc phiên đồng bộ trước khi đổi mẫu chữ.');
   const preset=state.presets.find(p=>p.id===id);if(!preset)return;
   state.presetId=id;state.project.settings={...state.project.settings,...preset.settings,font_size:110,display_mode:'karaoke'};
   renderStyle();renderInlinePresets();await saveNow();$('presetDialog').close();
@@ -230,7 +230,7 @@ function renderInlinePresets(){
   if(!state.project)return;
   const chosen=state.presets.find(p=>Object.entries(p.settings).every(([k,v])=>state.project.settings[k]===v));
   if(chosen)state.presetId=chosen.id;
-  $('presetStrip').innerHTML=state.presets.map(p=>`<button data-quick-preset="${esc(p.id)}" class="quick-preset ${p.id===chosen?.id?'on':''}" title="${esc(p.name)} · cỡ ${p.settings.font_size}"><span style="font-family:${esc(p.settings.font)};color:${p.settings.sung};font-style:${p.settings.italic?'italic':'normal'};-webkit-text-stroke:1px ${p.settings.outline_sung};text-shadow:2px 2px ${p.settings.shadow_color}">Nhạc</span><small>${esc(p.name)}</small></button>`).join('');
+  $('presetStrip').innerHTML=state.presets.map(p=>`<button type="button" data-quick-preset="${esc(p.id)}" class="quick-preset ${p.id===chosen?.id?'on':''}" aria-label="Áp dụng mẫu ${esc(p.name)}" aria-pressed="${p.id===chosen?.id}" title="${esc(p.name)}"><span aria-hidden="true" style="font-family:${esc(p.settings.font)};color:${esc(p.settings.sung)};font-style:${p.settings.italic?'italic':'normal'};-webkit-text-stroke:1px ${esc(p.settings.outline_sung)};text-shadow:2px 2px ${esc(p.settings.shadow_color)}">${esc(sourceFontText('Nhạc',p.settings.font))}</span></button>`).join('');
   $('quickExportPreset').disabled=!state.presetId;
   const selected=state.presets.find(p=>p.id===state.presetId);
   $('quickDeletePreset').disabled=!selected||selected.builtin;

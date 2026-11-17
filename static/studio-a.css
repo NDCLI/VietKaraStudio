@@ -607,7 +607,7 @@ dialog::backdrop{background:#02060dbb}
 .source-panel .word-line .line-time{font-size:11px;color:var(--c-text-3)}
 .word-chip{min-height:30px!important;font-size:12px!important}
 .word-list .list-empty{color:var(--c-text-2);font-size:12px}
-#waveTrackControls{width:158px!important;flex:0 0 158px!important;background:var(--c-surface-1)}
+#waveTrackControls{background:var(--c-surface-1)}
 .wtc-lane{padding:2px 8px;gap:0}
 .wtc-head strong{font-size:10px;letter-spacing:0}
 .wtc-eye,.wtc-solo,.wtc-mute{min-height:24px!important;height:24px!important;width:24px!important}
@@ -654,3 +654,16 @@ dialog::backdrop{background:#02060dbb}
  .workspace.left-collapsed .pane-heading,.workspace.right-collapsed .inspector-heading{padding:0!important;min-height:44px}
 }
 @media(max-width:900px){.pane-collapse{display:none!important}.compact-export-dialog .ce-grid{grid-template-columns:1fr}.ce-right{border-left:0;border-top:1px solid var(--c-line);padding:16px 0 0}.ce-qr-box{width:100%;height:auto;min-height:54px}.ce-footer{flex-wrap:wrap}.ce-actions{flex-wrap:wrap}.ce-row-2{gap:8px}}
+
+/* Readable samples fill the panel; import/export actions stay below the scroll area. */
+.inspector-column:has([data-inspector-tab="presets"].on)>[data-inspector-pane="design"]{overflow-y:auto;width:100%}
+.inspector-column:has([data-inspector-tab="presets"].on) .style-panel{height:100%;min-height:0;width:100%}
+.style-panel>.preset-tools{display:flex;flex-direction:column;height:100%;min-height:156px;margin:0!important;padding:0!important;border:0!important;background:transparent!important;gap:8px}
+.style-panel>.preset-tools #presetStrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));grid-auto-rows:80px;align-content:start;gap:10px;padding:4px 4px 10px;flex:1;min-height:80px;overflow-x:hidden;overflow-y:auto;scrollbar-gutter:stable}
+.style-panel>.preset-tools #presetStrip .quick-preset{display:flex;align-items:center;justify-content:center;flex:none;min-width:0;min-height:80px;padding:14px 10px;background:var(--c-inset);border:1px solid var(--c-line);border-radius:8px;overflow:visible;position:relative}
+#presetStrip .quick-preset>span{display:block;font-size:30px;font-weight:800;line-height:1.5;white-space:nowrap;paint-order:stroke fill}
+#presetStrip .quick-preset.on{border-color:var(--c-accent);box-shadow:inset 0 0 0 1px var(--c-accent)}
+#presetStrip .quick-preset.on::after{content:'✓';position:absolute;right:6px;top:4px;color:var(--c-text);font:12px var(--font-ui)}
+.preset-tools .inline-preset-actions{padding:0 4px;gap:8px;flex-shrink:0}
+.preset-tools #activePreset{display:none}
+.workspace>.timeline-panel{padding:0!important;gap:0!important}

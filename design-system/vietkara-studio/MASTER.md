@@ -42,3 +42,12 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Axe WCAG A/AA: no violations in Separation or Settings. Editor findings are limited to project-rendered outlined karaoke glyphs; theme colors do not replace project lyric styling. The app's existing render review reports lyric contrast separately.
 - Python: 201 tests passed. JavaScript: 29 tests passed. Changed scripts passed syntax checks.
 - No live user projects or model files were modified during UI QA.
+
+
+## Review refinements — 2026-11-18
+
+- Rename Preset to Mẫu chữ in user-facing controls. Thumbnail names are available through accessible labels and hover titles; sample text uses the source-font encoding adapter.
+- Replace the horizontal thumbnail strip with an adaptive grid filling the properties panel. Keep import/export/delete below the scrolling samples.
+- Draw measured waveform peaks as a continuous, monotone interpolated envelope, preserving peak maxima when zoomed out. Played and future portions share the same silhouette; no synthetic audio detail is added.
+- Use a shared waveform/timeline gutter so mixer labels do not cover the start of the waveform.
+- Checked sample bounds and grid scrolling at 375/768/1366/1440/2560 widths, applying a sample and export-button state, waveforms at zoom 1 and 64, and 29 JavaScript tests. Viewed the refreshed native preview with Mẫu chữ open. Release remains unpublished for user review.

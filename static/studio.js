@@ -382,7 +382,7 @@ function initStudio(){
   showInspector('design');
 }
 
-function timelineGutter(width){return width<480?70:94;}
+function timelineGutter(width){return width<480?108:158;}
 function showInspector(name){
   const designNames=['design','duet','title','background','logo','countdown','presets'];
   if(!designNames.includes(name)&&name!=='timing')name='design';
