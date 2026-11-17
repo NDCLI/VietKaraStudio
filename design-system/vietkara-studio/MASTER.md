@@ -62,3 +62,11 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Earlier smooth-envelope guidance is superseded by this correction. Release remains unpublished during visual review.
 
 - Header review: project title/save state, processing settings and export form one right-aligned group with 8–12px gaps at desktop widths. Verified 1024/1366/1920/2560 widths and preserved mobile reflow.
+
+
+## Alignment and role color review — 2026-11-18
+
+- Replace four alignment text buttons with consistent outline SVGs, accessible names, pressed states and hover titles. Rename only the inspector Song ca tab to Phân vai.
+- Role artwork fills follow the row's sung color for male, female and shared singing. Preserve original white/neutral borders, alpha and geometry; apply one tint implementation to preview PNGs and ASS drawing layers.
+- Role artwork choices also preview current role colors. Neutral Kiểu labels describe the artwork variants without presenting obsolete fixed color names.
+- Verified all four alignment actions, live male color edits and female preview, and a frame rendered through FFmpeg/ASS. Python 208 tests and JavaScript 29 tests pass. Release remains unpublished for review.

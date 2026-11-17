@@ -5,9 +5,9 @@
   <title>VietKara Studio</title>
   <link rel="icon" type="image/svg+xml" href="/static/vietkara.svg?v=2026.11-brand">
   <link rel="stylesheet" href="/api/fonts/bundled.css?v=source-1-brand">
-  <link rel="stylesheet" href="/static/tokens.css?v=studio-pro-4">
-  <link rel="stylesheet" href="/static/style.css?v=studio-pro-4">
-  <link rel="stylesheet" href="/static/studio-a.css?v=studio-pro-4">
+  <link rel="stylesheet" href="/static/tokens.css?v=studio-pro-5">
+  <link rel="stylesheet" href="/static/style.css?v=studio-pro-5">
+  <link rel="stylesheet" href="/static/studio-a.css?v=studio-pro-5">
 </head>
 <body>
 <a class="skip-link" href="#karaokePage">Đến vùng biên tập</a>
@@ -125,7 +125,7 @@
   <aside class="inspector-column" aria-label="Thuộc tính karaoke">
     <div class="inspector-heading"><div class="heading-copy"><span class="eyebrow">THUỘC TÍNH</span><strong id="inspectorScope">Đang sửa: cả bài</strong></div><button type="button" id="collapseRightBtn" class="icon-btn pane-collapse" aria-label="Thu gọn bảng thuộc tính" title="Thu gọn bảng">›</button></div>
     <div class="inspector-tabs" role="tablist" aria-label="Nhóm thuộc tính">
-      <button type="button" data-inspector-tab="timing" aria-selected="false">Lựa chọn</button><button type="button" data-inspector-tab="design" class="on" aria-selected="true">Tùy chỉnh</button><button type="button" data-inspector-tab="duet" aria-selected="false">Song ca</button><button type="button" data-inspector-tab="title" aria-selected="false">Tiêu đề</button><button type="button" data-inspector-tab="background" aria-selected="false">Nền</button><button type="button" data-inspector-tab="logo" aria-selected="false">Logo</button><button type="button" data-inspector-tab="countdown" aria-selected="false">Đếm ngược</button><button type="button" data-inspector-tab="presets" aria-selected="false">Mẫu chữ</button>
+      <button type="button" data-inspector-tab="timing" aria-selected="false">Lựa chọn</button><button type="button" data-inspector-tab="design" class="on" aria-selected="true">Tùy chỉnh</button><button type="button" data-inspector-tab="duet" aria-selected="false">Phân vai</button><button type="button" data-inspector-tab="title" aria-selected="false">Tiêu đề</button><button type="button" data-inspector-tab="background" aria-selected="false">Nền</button><button type="button" data-inspector-tab="logo" aria-selected="false">Logo</button><button type="button" data-inspector-tab="countdown" aria-selected="false">Đếm ngược</button><button type="button" data-inspector-tab="presets" aria-selected="false">Mẫu chữ</button>
     </div>
     <div data-inspector-pane="design">
     <section class="panel style-panel">
@@ -141,7 +141,7 @@
       </details>
       <details id="singingTools" class="tool-group" data-tone="teal" data-property-section="duet" data-karaoke-only><summary>Chế độ hát</summary>
       <div class="singing-tabs"><button data-singing-mode="solo" class="on">Đơn ca</button><button data-singing-mode="duet">Song ca</button></div>
-      <div id="duetSettings" hidden><label class="check"><input id="roleIcons" type="checkbox" checked> Hình người ở đầu lượt hát A / B</label><div id="roleIconChoices" class="role-art-library" aria-label="Chọn biểu tượng vai hát"></div><button id="autoRolesBtn" class="primary full small">Nghe vocal và gợi ý vai</button><p id="roleAnalysisStatus" class="hint" role="status"></p><div class="form-row"><label>Tên vai A<input id="roleAName" maxlength="30" value="Nam"></label><label>Tên vai B<input id="roleBName" maxlength="30" value="Nữ"></label></div><div class="color-row"><label>Màu chữ vai A<input id="roleAColor" type="color"></label><label>Màu chữ vai B<input id="roleBColor" type="color"></label></div><div class="color-row"><label>Màu chữ Cùng hát<input id="roleAllColor" type="color"></label></div><div class="form-row"><label>Giọng 3<input id="roleCName" maxlength="30" value="Giọng 3"></label><label>Màu giọng 3<input id="roleCColor" type="color"></label></div><div class="form-row"><label>Giọng 4<input id="roleDName" maxlength="30" value="Giọng 4"></label><label>Màu giọng 4<input id="roleDColor" type="color"></label></div><div class="form-row"><label>Giọng 5<input id="roleEName" maxlength="30" value="Giọng 5"></label><label>Màu giọng 5<input id="roleEColor" type="color"></label></div><div class="form-row"><label>Giọng 6<input id="roleFName" maxlength="30" value="Giọng 6"></label><label>Màu giọng 6<input id="roleFColor" type="color"></label></div><div class="form-row"><label>Chưa rõ<input id="roleUnknownName" maxlength="30" value="Chưa rõ"></label><label>Màu chưa rõ<input id="roleUnknownColor" type="color"></label></div><button id="alternateRolesBtn" class="ghost full">Gán A/B luân phiên theo câu</button><button id="swapRolesBtn" class="ghost full small">Đảo vai A / B</button><p class="hint">Có thể gán đến sáu track. Chọn dòng cho từng câu trong bảng thuộc tính. Nếu dùng gợi ý theo cao độ, hãy nghe lại trước khi áp dụng.</p></div>
+      <div id="duetSettings" hidden><label class="check"><input id="roleIcons" type="checkbox" checked> Hình người ở đầu lượt hát A / B</label><p class="hint">Màu biểu tượng tự khớp với màu chữ đã hát của từng vai.</p><div id="roleIconChoices" class="role-art-library" aria-label="Chọn biểu tượng vai hát"></div><button id="autoRolesBtn" class="primary full small">Nghe vocal và gợi ý vai</button><p id="roleAnalysisStatus" class="hint" role="status"></p><div class="form-row"><label>Tên vai A<input id="roleAName" maxlength="30" value="Nam"></label><label>Tên vai B<input id="roleBName" maxlength="30" value="Nữ"></label></div><div class="color-row"><label>Màu chữ vai A<input id="roleAColor" type="color"></label><label>Màu chữ vai B<input id="roleBColor" type="color"></label></div><div class="color-row"><label>Màu chữ Cùng hát<input id="roleAllColor" type="color"></label></div><div class="form-row"><label>Giọng 3<input id="roleCName" maxlength="30" value="Giọng 3"></label><label>Màu giọng 3<input id="roleCColor" type="color"></label></div><div class="form-row"><label>Giọng 4<input id="roleDName" maxlength="30" value="Giọng 4"></label><label>Màu giọng 4<input id="roleDColor" type="color"></label></div><div class="form-row"><label>Giọng 5<input id="roleEName" maxlength="30" value="Giọng 5"></label><label>Màu giọng 5<input id="roleEColor" type="color"></label></div><div class="form-row"><label>Giọng 6<input id="roleFName" maxlength="30" value="Giọng 6"></label><label>Màu giọng 6<input id="roleFColor" type="color"></label></div><div class="form-row"><label>Chưa rõ<input id="roleUnknownName" maxlength="30" value="Chưa rõ"></label><label>Màu chưa rõ<input id="roleUnknownColor" type="color"></label></div><button id="alternateRolesBtn" class="ghost full">Gán A/B luân phiên theo câu</button><button id="swapRolesBtn" class="ghost full small">Đảo vai A / B</button><p class="hint">Có thể gán đến sáu track. Chọn dòng cho từng câu trong bảng thuộc tính. Nếu dùng gợi ý theo cao độ, hãy nghe lại trước khi áp dụng.</p></div>
       </details>
       <label id="mvSettings" hidden style="display:none!important">Kiểu Lyrics MV<select id="mvStyle"><option value="single">Một câu nổi bật</option><option value="stack">Ba câu · câu hiện tại ở giữa</option><option value="scroll">Năm câu cuộn theo nhạc</option></select></label>
       <div class="divider"></div>
@@ -188,7 +188,7 @@
       <p id="fontEncodingNote" class="hint" hidden></p><p id="fontNote" class="hint" hidden></p>
       <div class="color-row"><label>Chữ đã hát · màu<input type="color" id="sungColor" value="#52efb9"></label><label>Chữ chưa hát · màu<input type="color" id="unsungColor" value="#ffffff"></label></div>
 
-        <div class="alignment-buttons" role="group" aria-label="Canh lề"><button data-align="left" title="Lề trái">Trái</button><button data-align="center" title="Canh giữa">Giữa</button><button data-align="right" title="Lề phải">Phải</button><button data-align="justify" title="Trên trái, dưới phải">So le</button></div>
+        <div class="alignment-buttons" role="group" aria-label="Căn lề lời hát"><button type="button" data-align="left" aria-label="Căn trái" title="Căn trái"><span data-icon="align-left"></span></button><button type="button" data-align="center" aria-label="Căn giữa" title="Căn giữa"><span data-icon="align-center"></span></button><button type="button" data-align="right" aria-label="Căn phải" title="Căn phải"><span data-icon="align-right"></span></button><button type="button" data-align="justify" aria-label="So le: dòng trên trái, dòng dưới phải" title="So le: dòng trên trái, dòng dưới phải"><span data-icon="align-stagger"></span></button></div>
         <div class="color-row"><label>Viền chữ đã hát<input type="color" id="outlineSung"></label><label>Viền chữ chưa hát<input type="color" id="outlineUnsung"></label></div>
         <label>Độ dày viền <output data-value-for="outlineWidth"></output><input id="outlineWidth" type="range" min="0" max="12" step=".1"></label>
         <label>Độ rõ viền đã hát <output data-value-for="outlineSungOpacity"></output>%<input id="outlineSungOpacity" type="range" min="0" max="100"></label><label>Độ rõ viền chưa hát <output data-value-for="outlineUnsungOpacity"></output>%<input id="outlineUnsungOpacity" type="range" min="0" max="100"></label>
@@ -428,16 +428,16 @@
 <dialog id="updateDialog" class="update-dialog" aria-labelledby="updateDialogTitle"><div class="dialog-heading"><div><p class="hint">CẬP NHẬT ỨNG DỤNG</p><h2 id="updateDialogTitle">Có phiên bản mới</h2></div></div><h3 id="updateDialogVersion"></h3><p id="updateDialogNotes" class="update-release-notes"></p><p id="updateDialogStatus" class="hint" role="status" aria-live="polite"></p><div class="dialog-footer"><button id="updateDialogLater" type="button" class="secondary">Để sau</button><button id="updateDialogInstall" type="button" class="primary">Cập nhật</button></div></dialog>
 <audio id="audio" preload="metadata"></audio>
 <script src="/static/export_menu.js?v=backing-vocals-1"></script>
-<script src="/static/branding.js?v=studio-pro-4"></script>
-<script src="/static/layout_resize.js?v=studio-pro-4"></script>
+<script src="/static/branding.js?v=studio-pro-5"></script>
+<script src="/static/layout_resize.js?v=studio-pro-5"></script>
 <script src="/static/timeline_edit.js"></script>
-<script src="/static/bundled_assets.js?v=source-1"></script>
-<script src="/static/studio.js?v=studio-pro-4"></script>
+<script src="/static/bundled_assets.js?v=studio-pro-5"></script>
+<script src="/static/studio.js?v=studio-pro-5"></script>
 <script src="/static/tap_timing.js"></script>
 <script src="/static/tapping.js?v=feature-wave-1"></script>
-<script src="/static/song_title.js?v=studio-pro-4"></script>
-<script src="/static/workspace_tools.js?v=studio-pro-4"></script>
-<script src="/static/updates.js?v=studio-pro-4"></script>
+<script src="/static/song_title.js?v=studio-pro-5"></script>
+<script src="/static/workspace_tools.js?v=studio-pro-5"></script>
+<script src="/static/updates.js?v=studio-pro-5"></script>
 <script src="/static/backing_vocals.js"></script>
-<script src="/static/app.js?v=studio-pro-4"></script>
+<script src="/static/app.js?v=studio-pro-5"></script>
 </body></html>

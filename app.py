@@ -555,6 +555,14 @@ def fonts():
 
 @app.get('/api/assets/source/<path:filename>')
 def source_asset(filename):
+    color = request.args.get('color')
+    if color is not None:
+        from io import BytesIO
+        from bundled_assets import role_icon_png
+        if not filename.startswith('ICON/') or '/' in filename[5:]:
+            raise ValueError('Biểu tượng vai hát không hợp lệ.')
+        return send_file(BytesIO(role_icon_png(filename[5:], '#'+color)),
+                         mimetype='image/png', max_age=86400)
     return send_from_directory(ASSET_ROOT, filename)
 
 

@@ -149,7 +149,7 @@ def build_ass(project, directory=None):
             # Geometry is already sized in frame pixels, independent of the lyric font/width.
             tags = ('\\i0\\fscx100\\fscy100' + animation(icon_row, {**s, 'horizontal_scale':100})
                     + '\\p1\\bord0\\shad0')
-            for (red, green, blue, alpha), shape in icon_drawing(marker['asset'], marker['size']):
+            for (red, green, blue, alpha), shape in icon_drawing(marker['asset'], marker['size'], marker['color']):
                 event(2,ds,de,tags+f'\\1c&H{blue:02X}{green:02X}{red:02X}&\\1a&H{255-alpha:02X}&',shape)
         for word in row['words']:
             a=max(0,round((word['start']-ds)*1000)); b=max(a+10,round((word['end']-ds)*1000))

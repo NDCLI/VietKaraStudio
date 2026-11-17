@@ -1,6 +1,8 @@
 """Local artwork and fonts shared by the browser, layout and video renderer."""
 from functools import lru_cache
+from io import BytesIO
 import json
+import re
 from pathlib import Path
 import unicodedata
 from urllib.parse import quote
@@ -93,15 +95,50 @@ def icon_geometry(filename):
         return image.size
 
 
-@lru_cache(maxsize=64)
-def icon_drawing(filename, size):
+def role_icon_image(filename, color=None):
+    if filename not in {name for choices in ICON_CHOICES.values() for name, _ in choices}:
+        raise ValueError('Biểu tượng vai hát không hợp lệ.')
+    with Image.open(ASSET_ROOT / 'ICON' / filename) as source:
+        image = source.convert('RGBA')
+    if color is None:
+        return image
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+        raise ValueError('Màu biểu tượng không hợp lệ.')
+    target = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+    counts = {rgba: count for count, rgba in image.getcolors(image.width*image.height)}
+    base = max((rgba for rgba in counts if rgba[3] and max(rgba[:3])-min(rgba[:3])>32),
+               key=counts.get)
+    base_low, chroma = min(base[:3]), max(base[:3])-min(base[:3])
+    palette = {}
+    for rgba in counts:
+        red, green, blue, alpha = rgba
+        spread = max(red, green, blue)-min(red, green, blue)
+        if not alpha or spread <= 16:
+            palette[rgba] = rgba
+            continue
+        weight = min(1, spread/chroma)
+        neutral = max(0, min(red, green, blue)-weight*base_low)
+        palette[rgba] = tuple(min(255, round(neutral+weight*c)) for c in target)+(alpha,)
+    pixels = image.load()
+    image.putdata([palette[pixels[x, y]] for y in range(image.height) for x in range(image.width)])
+    return image
+
+
+@lru_cache(maxsize=128)
+def role_icon_png(filename, color):
+    output = BytesIO()
+    role_icon_image(filename, color).save(output, format='PNG')
+    return output.getvalue()
+
+
+@lru_cache(maxsize=256)
+def icon_drawing(filename, size, color=None):
     """Embed the PNG in ASS as colored scanline rectangles; no external image needed.
 
     ASS has no bitmap primitive. Palette layers preserve the supplied artwork,
     transparency and row animation, including in standalone subtitle exports.
     """
-    with Image.open(ASSET_ROOT / 'ICON' / filename) as source:
-        image = source.convert('RGBA').quantize(colors=32, method=Image.Quantize.FASTOCTREE).convert('RGBA')
+    image = role_icon_image(filename, color).quantize(colors=32, method=Image.Quantize.FASTOCTREE).convert('RGBA')
     width, height = image.size
     factor = size / height
     layers = {}

@@ -1,5 +1,9 @@
 'use strict';
 const studioIcons={
+  'align-left':'<path d="M4 5h16M4 10h10M4 15h16M4 20h10"/>',
+  'align-center':'<path d="M4 5h16M7 10h10M4 15h16M7 20h10"/>',
+  'align-right':'<path d="M4 5h16M10 10h10M4 15h16M10 20h10"/>',
+  'align-stagger':'<path d="M3 5h11M3 9h8M10 15h11M13 19h8"/>',
   chevron:'<path d="m6 9 6 6 6-6"/>',
   save:'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>',
   volume:'<path d="M3 9h4l5-4v14l-5-4H3Z M16 8a6 6 0 0 1 0 8"/>',

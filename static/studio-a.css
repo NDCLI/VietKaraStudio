@@ -668,3 +668,5 @@ dialog::backdrop{background:#02060dbb}
 .preset-tools #activePreset{display:none}
 .workspace>.timeline-panel{padding:0!important;gap:0!important}
 @media(min-width:901px){.topbar .top-actions{margin-left:0!important}}
+.alignment-buttons button{flex:1;min-height:36px;color:var(--c-text-2)}
+.alignment-buttons button.on{background:var(--c-accent)!important;border-color:var(--c-accent)!important;color:white!important}

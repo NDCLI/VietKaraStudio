@@ -369,7 +369,7 @@ def display_plan(project):
         icon_width, icon_height = icon_geometry(icon_file)
         marker = ({'x':round(x,3), 'y':round(y+size*.08,3), 'size':round(size*.72,3),
                    'role':role, 'path':role_icon_path(role), 'color':color,
-                   'asset':icon_file, 'url':asset_url('ICON/'+icon_file),
+                   'asset':icon_file, 'url':asset_url('ICON/'+icon_file)+'?color='+color.lstrip('#'),
                    'width':round(size*.72*icon_width/icon_height,3),
                    'label':role_labels.get(role,'Cùng hát')}
                   if icon_space and role_changed else None)

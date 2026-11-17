@@ -20,6 +20,8 @@ function renderSourceAssets(){
   for(const button of document.querySelectorAll('[data-role-asset]')){
     const active=s[button.dataset.setting]===button.dataset.roleAsset;
     button.classList.toggle('on',active);button.setAttribute('aria-pressed',String(active));
+    const image=button.querySelector('img'),key={role_a_icon:'role_a_color',role_b_icon:'role_b_color',role_all_icon:'role_all_color'}[button.dataset.setting];
+    if(image&&key){const url=image.dataset.iconSource+'?color='+s[key].replace('#','');if(image.getAttribute('src')!==url)image.src=url;}
   }
 }
 async function initSourceAssets(){
@@ -40,9 +42,9 @@ async function initSourceAssets(){
     const total=new Set(sourceCatalog.bundled.map(f=>f.family)).size;
     $('fontCountNote').textContent=`Đã thêm ${sourceCatalog.bundled.length} file font (${total} họ font) từ SOURCE.`;
     $('titleFontCountNote').textContent=`Có đủ ${total} họ font mới cho tiêu đề.`;
-    const settings={male:'role_a_icon',female:'role_b_icon',all:'role_all_icon'},labels={male:'Nam',female:'Nữ',all:'Song ca'};
+    const settings={male:'role_a_icon',female:'role_b_icon',all:'role_all_icon'},labels={male:'Nam',female:'Nữ',all:'Cùng hát'};
     $('roleIconChoices').innerHTML=Object.entries(sourceCatalog.icons).map(([role,icons])=>
-      `<div class="role-art-group"><span>${labels[role]}</span><div>${icons.map(icon=>`<button type="button" class="role-art-choice" data-setting="${settings[role]}" data-role-asset="${esc(icon.file)}" aria-label="${labels[role]} · ${esc(icon.label)}" title="${esc(icon.label)}"><img src="${icon.url}" alt=""><small>${esc(icon.label)}</small></button>`).join('')}</div></div>`).join('');
+      `<div class="role-art-group"><span>${labels[role]}</span><div>${icons.map((icon,index)=>`<button type="button" class="role-art-choice" data-setting="${settings[role]}" data-role-asset="${esc(icon.file)}" aria-label="${labels[role]} · Kiểu ${index+1}" title="Kiểu ${index+1}"><img src="${icon.url}" data-icon-source="${icon.url}" alt=""><small>Kiểu ${index+1}</small></button>`).join('')}</div></div>`).join('');
     $('roleIconChoices').onclick=event=>{const button=event.target.closest('[data-role-asset]');if(button)setStyleValue(button.dataset.setting,button.dataset.roleAsset);};
     renderSourceAssets();
   }catch(error){
