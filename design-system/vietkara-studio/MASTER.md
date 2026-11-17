@@ -70,3 +70,13 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Role artwork fills follow the row's sung color for male, female and shared singing. Preserve original white/neutral borders, alpha and geometry; apply one tint implementation to preview PNGs and ASS drawing layers.
 - Role artwork choices also preview current role colors. Neutral Kiểu labels describe the artwork variants without presenting obsolete fixed color names.
 - Verified all four alignment actions, live male color edits and female preview, and a frame rendered through FFmpeg/ASS. Python 208 tests and JavaScript 29 tests pass. Release remains unpublished for review.
+
+
+## Shared buttons and dropdowns — 2026-11-18
+
+- Centralize every page, inspector pane and dialog in static/controls.css: quiet secondary buttons, violet primary/selected states, consistent borders, hover/focus/disabled states and outline disclosure arrows.
+- Enhance native selects with appearance: base-select and ::picker(select) where supported. Preserve native keyboard/value/change behavior and provide the styled native fallback for older WebView2 versions. Reference: https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Customizable_select
+- A small label-slot adapter uses button/selectedcontent for reliable truncation while preserving the arrow. It restores the slot after option lists are regenerated and observes dynamic scene controls; it does not watch the animated preview subtree.
+- Verified three pages at 375/768/1024/1366/1920 widths, open model/font/export pickers, Space/End/Enter selection, Escape dismissal, regenerated fonts and dynamic scene selects. No horizontal document overflow or JavaScript errors. All 29 JavaScript regressions pass.
+- Axe WCAG A/AA checks have no findings in interface controls across the three pages; project-rendered lyrics and user-colored role badges are excluded from that theme check.
+- Controls use the shared semantic color tokens. Release remains unpublished during user review.

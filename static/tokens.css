@@ -12,5 +12,6 @@
  --h-topbar:64px;--h-statusbar:26px;--h-panel-head:42px;--h-control:36px;--w-left:280px;--w-right:320px;--w-track-label:158px;
  --radius-sm:6px;--radius:10px;--radius-lg:16px;--shadow-pop:0 20px 60px #0007;
  --duration-fast:140ms;--duration-normal:200ms;
+ --c-accent-soft:#7c3aed21;--c-accent-soft-hover:#7c3aed35;--c-accent-line:#9d79ee80;--c-accent-line-strong:#b49aff;--c-accent-text:#c4b5fd;
  --bg:var(--c-bg);--panel:var(--c-surface-1);--panel-raised:var(--c-surface-2);--line:var(--c-line);--muted:var(--c-text-2);--text:var(--c-text);--accent:var(--c-accent);--green:var(--c-ok);--purple:var(--c-role-all);--focus:var(--c-info);--font:var(--font-ui);
 }

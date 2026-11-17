@@ -1,0 +1,154 @@
+/* Shared controls for every workspace page, inspector pane and dialog. */
+body.ui-controls :is(button,a.secondary,label.secondary){
+  --button-bg:var(--c-surface-2);--button-hover:var(--c-surface-3);
+  --button-line:var(--c-line);--button-hover-line:var(--c-line-strong);--button-ink:var(--c-text);
+  background:var(--button-bg)!important;color:var(--button-ink)!important;
+  border:1px solid var(--button-line)!important;border-radius:8px!important;
+  box-shadow:0 1px 0 #ffffff05 inset!important;font-weight:600;
+  transition:background-color 140ms,border-color 140ms,box-shadow 140ms;
+  text-decoration:none;cursor:pointer;
+}
+body.ui-controls :is(button,a.secondary,label.secondary):hover:not(:disabled):not([aria-disabled="true"]){
+  background:var(--button-hover)!important;border-color:var(--button-hover-line)!important;
+}
+body.ui-controls :is(button,a.secondary,label.secondary):focus-visible,
+body.ui-controls select:focus-visible,
+body.ui-controls .menu-pop>summary:focus-visible{
+  outline:2px solid var(--c-info)!important;outline-offset:3px;
+}
+body.ui-controls :is(button,a.secondary)[aria-disabled="true"],
+body.ui-controls button:disabled{opacity:.4;cursor:default;box-shadow:none!important}
+body.ui-controls button:is(.ghost,.text-button,.icon-btn,.pane-collapse),
+body.ui-controls :is(.top-nav,.side-tabs,.inspector-tabs,.singing-tabs,.alignment-buttons,.qs-tabs) button{
+  --button-bg:transparent;--button-line:transparent;--button-hover:var(--c-surface-2);--button-hover-line:transparent;
+}
+body.ui-controls button.text-button{--button-ink:var(--c-info)}
+body.ui-controls button:is(.on,.selected,[aria-pressed="true"]){
+  --button-bg:var(--c-accent-soft);--button-hover:var(--c-accent-soft-hover);--button-line:var(--c-accent-line);--button-hover-line:var(--c-accent-line-strong);--button-ink:var(--c-text);
+}
+body.ui-controls :is(button.primary,.ce-submit-btn,.qs-start-btn,.play-btn,.map-play,.qs-play-btn){
+  --button-bg:var(--c-accent);--button-hover:var(--c-accent-hover);--button-line:var(--c-accent);--button-hover-line:var(--c-accent-line-strong);--button-ink:white;
+}
+body.ui-controls button:is(.play-btn,.map-play,.qs-play-btn){border-radius:50%!important}
+body.ui-controls button.danger{--button-ink:var(--c-err)}
+body.ui-controls :is(.menu-drop,.processing-content){
+  background:var(--c-surface-1)!important;border:1px solid var(--c-line-strong)!important;
+  border-radius:12px!important;box-shadow:0 16px 48px #0009,0 0 0 1px #ffffff03!important;
+}
+body.ui-controls .menu-drop{padding:6px!important}
+body.ui-controls .menu-drop button{
+  --button-bg:transparent;--button-line:transparent;--button-hover:var(--c-accent-soft);--button-hover-line:transparent;
+  min-height:36px!important;padding:8px 12px!important;box-shadow:none!important;
+}
+body.ui-controls .menu-pop>summary{
+  background:var(--c-surface-2);border:1px solid var(--c-line);border-radius:8px;
+  color:var(--c-text);transition:background-color 140ms,border-color 140ms;
+}
+body.ui-controls .menu-pop[open]>summary{
+  background:var(--c-accent-soft);border-color:var(--c-accent-line);
+}
+body.ui-controls .menu-pop[open]>summary [data-icon="chevron"]{rotate:180deg}
+body.ui-controls .menu-separator{background:var(--c-line);margin:6px 8px}
+body.ui-controls .menu-group-label{color:var(--c-text-3);font-size:11px;letter-spacing:.3px}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)>summary{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;
+  min-height:40px;padding:10px 12px!important;border-radius:8px;background:transparent!important;
+  color:var(--c-text);cursor:pointer;
+}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)>summary:hover{background:var(--c-surface-2)!important}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)>summary:focus-visible{outline:2px solid var(--c-info);outline-offset:2px}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)>summary::-webkit-details-marker{display:none}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)>summary::after{
+  content:"";flex-shrink:0;width:14px;height:14px;background:var(--c-text-2);rotate:0deg;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+body.ui-controls :is(.tool-group,.separation-options,.mdx-group)[open]>summary::after{rotate:180deg}
+body.ui-controls #waveTrackControls button{
+  --button-bg:transparent;--button-hover:var(--c-surface-3);--button-line:transparent;--button-hover-line:transparent;
+  --button-ink:var(--c-text-2);border-radius:4px!important;box-shadow:none!important;
+}
+body.ui-controls #waveTrackControls button.on{--button-ink:var(--c-info)}
+body.ui-controls .tq-step button{
+  --button-bg:transparent;--button-hover:var(--c-surface-3);--button-line:transparent;--button-hover-line:transparent;
+  border-radius:4px!important;box-shadow:none!important;
+}
+
+/* Styled native selects retain value/change handlers, labels and keyboard behavior. */
+body.ui-controls select:not([multiple]):not([size]){
+  appearance:none;box-sizing:border-box;min-width:0;max-width:100%;
+  min-height:36px;height:36px;line-height:1.4;font-family:var(--font-ui);font-size:13px;font-weight:500;
+  color:var(--c-text)!important;background-color:var(--c-inset)!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23a8b6ca' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")!important;
+  background-repeat:no-repeat!important;background-position:right 11px center!important;background-size:16px!important;
+  border:1px solid var(--c-line)!important;border-radius:8px!important;
+  padding:7px 36px 7px 12px!important;box-shadow:0 1px 0 #ffffff04 inset!important;
+  white-space:nowrap;text-overflow:ellipsis;cursor:pointer;
+  transition:border-color 140ms,background-color 140ms;
+}
+body.ui-controls select:not([multiple]):not([size]):hover:not(:disabled){border-color:var(--c-line-strong)!important;background-color:var(--c-surface-2)!important}
+body.ui-controls select:disabled{opacity:.45;cursor:default}
+body.ui-controls select option{background:var(--c-surface-1);color:var(--c-text);font:13px/1.5 var(--font-ui)}
+body.ui-controls select optgroup{background:var(--c-surface-1);color:var(--c-text-2)}
+body.ui-controls .topbar .wm-select-group select{padding:7px 36px 7px 12px!important}
+body.ui-controls .tq-select-wrap{height:30px!important;min-height:30px;padding:0!important;border:0;background:transparent}
+body.ui-controls .tq-select-wrap select,
+body.ui-controls .transport select.speed{
+  min-height:30px!important;height:30px!important;padding:4px 27px 4px 9px!important;
+  background-position:right 7px center!important;background-size:14px!important;font-size:12px!important;
+}
+body.ui-controls .transport select.speed{min-width:70px;width:70px!important}
+
+/* Progressive enhancement: the browser owns focus, dismissal and selection. */
+@supports (appearance:base-select){
+  body.ui-controls select:not([multiple]):not([size]),
+  body.ui-controls select::picker(select){appearance:base-select}
+  body.ui-controls select:not([multiple]):not([size]){
+    background-image:none!important;display:inline-flex;align-items:center;justify-content:space-between;
+    gap:10px;padding-right:12px!important;overflow:hidden;
+  }
+  body.ui-controls select:not([multiple]):not([size])>button{
+    display:flex;align-items:center;flex:1;min-width:0;width:100%;min-height:0!important;height:auto!important;
+    padding:0!important;margin:0;border:0!important;border-radius:0!important;box-shadow:none!important;
+    background:transparent!important;color:inherit!important;font:inherit;outline:none!important;
+  }
+  body.ui-controls select selectedcontent{
+    display:block;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:left;
+  }
+  body.ui-controls .topbar .wm-select-group select{padding-right:12px!important}
+  body.ui-controls .tq-select-wrap select,
+  body.ui-controls .transport select.speed{padding-right:8px!important;gap:6px}
+  body.ui-controls select::picker-icon{
+    content:"";flex-shrink:0;width:14px;height:14px;background:var(--c-text-2);
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+    transition:rotate 140ms;
+  }
+  body.ui-controls select:open{border-color:var(--c-accent-line-strong)!important;outline:2px solid var(--c-accent-soft);outline-offset:1px}
+  body.ui-controls select:open::picker-icon{rotate:180deg;background:var(--c-text)}
+  body.ui-controls select::picker(select){
+    background:var(--c-surface-1);color:var(--c-text);border:1px solid var(--c-line-strong);
+    border-radius:12px;padding:6px;margin-block:6px;
+    box-shadow:0 16px 48px #0009,0 0 0 1px #ffffff03;
+    min-inline-size:anchor-size(width);max-inline-size:min(560px,calc(100vw - 24px));
+    max-block-size:min(360px,45dvh);overflow:auto;scrollbar-width:thin;
+  }
+  body.ui-controls select option{
+    display:flex;align-items:center;gap:10px;min-height:36px;padding:9px 12px;
+    border:1px solid transparent;border-radius:7px;white-space:normal;overflow-wrap:anywhere;
+    font-size:13px;font-weight:400;cursor:pointer;
+  }
+  body.ui-controls select option:hover,
+  body.ui-controls select option:focus{background:var(--c-surface-3);outline:none}
+  body.ui-controls select option:checked{background:var(--c-accent-soft);color:var(--c-text);border-color:var(--c-accent-line);font-weight:600}
+  body.ui-controls select option::checkmark{color:var(--c-accent-text);order:2;margin-left:auto}
+  body.ui-controls select option:disabled{color:var(--c-text-3);opacity:.45;cursor:default}
+  body.ui-controls select optgroup{padding:4px;font-size:11px;font-weight:600}
+  body.ui-controls select optgroup>legend{padding:8px 10px;color:var(--c-text-3);font-size:11px}
+}
+@media(max-width:600px){body.ui-controls select:not([multiple]):not([size]){font-size:16px}}
+@media(pointer:coarse){
+  body.ui-controls select:not([multiple]):not([size]){min-height:44px!important;height:44px!important}
+  body.ui-controls select option{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+  body.ui-controls :is(button,select,summary),body.ui-controls select::picker-icon{transition:none!important}
+}
