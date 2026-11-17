@@ -252,9 +252,22 @@ function initWorkspaceChrome(){
     else $(target)?.click();
     button.closest('.menu-pop')?.removeAttribute('open');
   });
-  document.querySelectorAll('.workspace-menu>.menu-pop').forEach(menu=>menu.addEventListener('toggle',()=>{
-    if(menu.open)document.querySelectorAll('.workspace-menu>.menu-pop').forEach(other=>{if(other!==menu)other.open=false;});
-  }));
+  initWorkspaceMenus();
+}
+function initWorkspaceMenus(){
+  const menus=[...document.querySelectorAll('.menu-pop')];
+  const closeOutside=target=>menus.forEach(menu=>{if(menu.open&&!menu.contains(target))menu.open=false;});
+  document.addEventListener('pointerdown',event=>closeOutside(event.target),true);
+  document.addEventListener('focusin',event=>closeOutside(event.target));
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    const opened=menus.find(menu=>menu.open);
+    if(opened){opened.open=false;opened.querySelector('summary')?.focus();}
+  });
+  menus.forEach(menu=>{
+    menu.addEventListener('toggle',()=>{if(menu.open)menus.forEach(other=>{if(other!==menu)other.open=false;});});
+    menu.addEventListener('click',event=>{if(event.target.closest('.menu-drop button'))menu.open=false;});
+  });
 }
 const SCENE_SECTION_LABELS={intro:'Mở đầu',verse:'Verse','pre-chorus':'Pre-chorus',chorus:'Chorus',bridge:'Bridge',outro:'Outro',instrumental:'Nhạc dạo'};
 function renderSceneControls(){

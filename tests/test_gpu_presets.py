@@ -70,16 +70,17 @@ def test_presets_roundtrip_validation_and_project_application(tmp_path, monkeypa
     monkeypatch.setattr(engine, 'DATA', tmp_path)
     with service.app.test_client() as client:
         items = client.get('/api/presets').get_json()
-        assert len(items) == 16 and all(p['builtin'] for p in items)
+        assert len(items) == len(list(presets.BUILTINS.glob('*.json'))) == 37
+        assert all(p['builtin'] for p in items)
         assert all(p['settings']['font_size'] == 110 for p in items)
         default = next(p for p in items if p['id'] == 'vcl-default')
         assert default['settings']['font_size'] == 110
-        assert default['settings']['outline_width'] == 8
+        assert default['settings']['outline_width'] == 10
         rubellite = next(p for p in items if p['id'] == 'vcl-anime_pop')
         assert rubellite['settings']['shadow'] == 14
         assert rubellite['settings']['outline_sung'] == '#3a0a6a'
         assert rubellite['settings']['outline_unsung'] == '#7b2ff7'
-        assert default['settings']['sung'] == '#0ba800'
+        assert default['settings']['sung'] == '#0000ff'
         assert default['settings']['italic'] is True
         pid = client.post('/api/projects', json={}).get_json()['id']
         response = client.patch('/api/projects/'+pid, json={'settings': default['settings']})

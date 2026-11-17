@@ -530,7 +530,7 @@ def health():
     core = ("demucs", "faster_whisper", "stable_whisper", "torch", "librosa", "ffmpeg")
     optional_missing = [name for name in ("ffprobe", "yt_dlp") if not deps[name]]
     return jsonify(ok=all(deps[name] for name in core), dependencies=deps,
-                   optional_missing=optional_missing, version="0.3.0")
+                   optional_missing=optional_missing, version="0.3.0", data_directory=str(engine.DATA))
 
 
 @app.get("/api/hardware")

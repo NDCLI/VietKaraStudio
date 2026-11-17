@@ -61,9 +61,10 @@ def test_precise_lyric_position_and_pixel_gap(client):
         {'text': 'Thương', 'start': 1, 'end': 2, 'line': 0},
         {'text': 'nhớ', 'start': 2, 'end': 3, 'line': 1},
     ]
-    legacy = layout.display_plan({'words': items, 'settings': {'font_size': 100}})
+    legacy_settings = {'font_size': 100, 'font': 'Arial', 'align': 'center', 'line_height': 1.4, 'outline_width': 3, 'shadow': 1, 'countdown': 'none'}
+    legacy = layout.display_plan({'words': items, 'settings': legacy_settings})
     assert [row['y'] for row in legacy['rows']] == pytest.approx([585, 840])
-    settings = {'font_size': 100, 'position': 'custom', 'lyric_x': 50, 'lyric_y': 50, 'line_gap': 0}
+    settings = {**legacy_settings, 'position': 'custom', 'lyric_x': 50, 'lyric_y': 50, 'line_gap': 0}
     tight = layout.display_plan({'words': items, 'settings': settings})
     spaced = layout.display_plan({'words': items, 'settings': {**settings, 'line_gap': 40}})
     tight_pitch = tight['rows'][1]['y'] - tight['rows'][0]['y']

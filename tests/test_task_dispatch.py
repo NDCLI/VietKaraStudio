@@ -81,7 +81,8 @@ def test_vendor_finder_resolves_children_of_compiled_stdlib_packages(tmp_path):
         sys.modules.pop('vcl_test_stdlib.dynamic',None);sys.modules.pop('vcl_test_stdlib',None)
 
 
-def test_compiled_entry_sets_real_executable_before_library_imports(tmp_path,monkeypatch):
+@pytest.mark.parametrize("custom", [True, False])
+def test_compiled_entry_sets_real_executable_before_library_imports(tmp_path,monkeypatch,custom):
     import desktop_entry
     from types import SimpleNamespace
     executable=str(tmp_path/'RenamedStudio.exe')
@@ -92,12 +93,15 @@ def test_compiled_entry_sets_real_executable_before_library_imports(tmp_path,mon
     monkeypatch.setattr(sys,'_base_executable',str(tmp_path/'python.exe'),raising=False)
     monkeypatch.setattr(sys,'path',sys.path.copy())
     monkeypatch.setattr(sys,'meta_path',sys.meta_path.copy())
-    monkeypatch.setenv('OBS_DATA_DIR',str(tmp_path/'test-data'))
+    if custom:monkeypatch.setenv('OBS_DATA_DIR',str(tmp_path/'test-data'))
+    else:monkeypatch.delenv('OBS_DATA_DIR',raising=False)
     # Isolate all process-environment changes made by the entry point.
     for name in ('TCL_LIBRARY','TK_LIBRARY','VIETKARA_PRODUCTION','NUMBA_CACHE_DIR','MPLCONFIGDIR','PYTHONUTF8','PYTHONNOUSERSITE'):
         monkeypatch.setenv(name,'test')
     try:
         assert desktop_entry.prepare_environment()==tmp_path
+        import os
+        assert Path(os.environ['OBS_DATA_DIR'])==(tmp_path/'test-data' if custom else tmp_path/'data')
         assert sys.executable==executable and sys._base_executable==executable
         assert app_runtime.task_command('probe')[0]==executable
     finally:

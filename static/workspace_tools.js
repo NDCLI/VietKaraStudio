@@ -15,7 +15,7 @@ function initWorkspaceTools(){
     const job=await api(endpoint('/separate'),{method:'POST',body:{source:'background',apply_to_project:true,device:'auto'}});
     const completed=await followJob(job);
     if(!completed?.result?.applied){$('karaokeSeparationStatus').textContent='Chưa áp dụng kết quả tách. Kiểm tra thông báo lỗi hoặc thử lại.';return;}
-    if(state.project?.vocals_ready){setAudio('beat',0);$('karaokeSeparationStatus').textContent='Đã nạp Beat, bản gốc và Vocal riêng. Bấm loa tại sóng nhạc để nghe từng bản.';toast('Đã tách và nạp nguồn ngay trong Karaoke.');}
+    if(state.project?.vocals_ready){setAudio('beat',0);$('karaokeSeparationStatus').textContent='Đã nạp Beat và bản có vocal. Bấm loa tại sóng nhạc để nghe từng bản.';toast('Đã tách và nạp nguồn ngay trong Karaoke.');}
   });
   document.querySelectorAll('[data-page]').forEach(b=>b.onclick=wrap(async()=>{
     if(state.manualTiming)return toast('Kết thúc phiên đồng bộ trước khi chuyển tab.');

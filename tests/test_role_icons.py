@@ -13,7 +13,7 @@ from subtitles import build_ass, stamp
 
 
 def project(settings=None):
-    return {'settings':{'singing_mode':'duet', **(settings or {})},
+    return {'settings':{'singing_mode':'duet', 'countdown':'none', **(settings or {})},
             'words':[{'text':text, 'start':i*3+2, 'end':i*3+3, 'line':i, 'role':role}
                      for i,(text,role) in enumerate([('Nam','male'),('Nữ','female'),('Chung','all')])]}
 

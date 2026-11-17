@@ -44,9 +44,8 @@ def prepare_environment():
                 _dll_handles.append(os.add_dll_directory(str(path)))
         os.environ.setdefault('TCL_LIBRARY',str(vendor/'tcl/tcl8.6'))
         os.environ.setdefault('TK_LIBRARY',str(vendor/'tcl/tk8.6'))
-        local=Path(os.environ.get('LOCALAPPDATA',Path.home()/'AppData/Local'))/'VietKaraStudio'
-        data=Path(os.environ.get('OBS_DATA_DIR',root/'data' if (root/'portable.flag').is_file() else local)).resolve()
-        data.mkdir(parents=True,exist_ok=True)
+        from data_storage import data_directory
+        data=data_directory(root,os.environ.get('OBS_DATA_DIR'))
         os.environ['OBS_DATA_DIR']=str(data)
         os.environ['VIETKARA_PRODUCTION']='1'
         os.environ.setdefault('NUMBA_CACHE_DIR',str(data/'cache/numba'))
@@ -60,6 +59,7 @@ def prepare_environment():
 
 
 def main():
+    migrate_default=COMPILED and not os.environ.get('OBS_DATA_DIR')
     root=prepare_environment()
     from app_runtime import dispatch
     if sys.argv[1:2]==['--vcl-task']:
@@ -69,15 +69,6 @@ def main():
     # A compiled executable must never act as a generic Python interpreter.
     if any(arg in ('-c','-m','--vcl-task') or arg.endswith('.py') for arg in sys.argv[1:]):
         raise ValueError('Invalid desktop arguments')
-    if COMPILED:
-        import logging
-        from logging.handlers import RotatingFileHandler
-        logs=Path(os.environ['OBS_DATA_DIR'])/'logs';logs.mkdir(parents=True,exist_ok=True)
-        handler=RotatingFileHandler(logs/'VietKaraStudio.log',maxBytes=5*1024**2,backupCount=3,encoding='utf-8')
-        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-        logging.basicConfig(level=logging.INFO,handlers=[handler])
-        logging.info('Nuitka standalone desktop; executable=%s',sys.executable)
-    from launch import main as launch
     mutex=None
     if COMPILED and os.name=='nt' and '--no-open' not in sys.argv:
         import ctypes
@@ -91,7 +82,22 @@ def main():
             kernel.CloseHandle(mutex)
             ctypes.windll.user32.MessageBoxW(None,'VietKara Studio đang chạy. Hãy mở lại cửa sổ đang có.','VietKara Studio',0)
             return
-    try:launch()
+    try:
+        if migrate_default and not (root/'portable.flag').is_file():
+            from data_storage import migrate_on_startup,MigrationCancelled
+            legacy=Path(os.environ.get('LOCALAPPDATA',Path.home()/'AppData/Local'))/'VietKaraStudio'
+            try:migrate_on_startup(legacy,Path(os.environ['OBS_DATA_DIR']),visible='--no-open' not in sys.argv)
+            except MigrationCancelled:return
+        if COMPILED:
+            import logging
+            from logging.handlers import RotatingFileHandler
+            logs=Path(os.environ['OBS_DATA_DIR'])/'logs';logs.mkdir(parents=True,exist_ok=True)
+            handler=RotatingFileHandler(logs/'VietKaraStudio.log',maxBytes=5*1024**2,backupCount=3,encoding='utf-8')
+            handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+            logging.basicConfig(level=logging.INFO,handlers=[handler])
+            logging.info('Nuitka standalone desktop; executable=%s',sys.executable)
+        from launch import main as launch
+        launch()
     finally:
         if mutex:kernel.CloseHandle(mutex)
 
@@ -99,12 +105,12 @@ def main():
 if __name__=='__main__':
     try:
         main()
-    except Exception:
+    except Exception as exc:
         if '--vcl-task' in sys.argv or '--no-open' in sys.argv:raise
         import logging
         logging.exception('VietKara Studio failed to start')
         if os.name=='nt':
             import ctypes
             logs=Path(os.environ.get('OBS_DATA_DIR','.'))/'logs/VietKaraStudio.log'
-            ctypes.windll.user32.MessageBoxW(None,'Không khởi động được VietKara Studio.\nChi tiết: '+str(logs),'VietKara Studio',0x10)
+            ctypes.windll.user32.MessageBoxW(None,'Không khởi động được VietKara Studio.\n'+str(exc)[:1000]+'\nChi tiết: '+str(logs),'VietKara Studio',0x10)
         raise SystemExit(1)

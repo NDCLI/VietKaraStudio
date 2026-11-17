@@ -10,6 +10,7 @@ import os
 
 from werkzeug.serving import make_server
 from app import app
+import engine
 
 
 WEBVIEW2_HELP = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -90,7 +91,8 @@ def main():
         webview.create_window("VietKara Studio", url, width=1480, height=940, min_size=(1000,720),
                               background_color="#0b1019")
         webview.start(gui="edgechromium" if sys.platform == "win32" else None,
-                      icon=str(APP_ICON) if APP_ICON.is_file() else None)
+                      icon=str(APP_ICON) if APP_ICON.is_file() else None,
+                      storage_path=str(engine.DATA / 'cache/webview2'))
     finally:
         from app import JOBS
         for job in list(JOBS.values()):
