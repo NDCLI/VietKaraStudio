@@ -51,3 +51,12 @@ This is a desktop audio and karaoke editor rendered with HTML/CSS/JavaScript in 
 - Draw measured waveform peaks as a continuous, monotone interpolated envelope, preserving peak maxima when zoomed out. Played and future portions share the same silhouette; no synthetic audio detail is added.
 - Use a shared waveform/timeline gutter so mixer labels do not cover the start of the waveform.
 - Checked sample bounds and grid scrolling at 375/768/1366/1440/2560 widths, applying a sample and export-button state, waveforms at zoom 1 and 64, and 29 JavaScript tests. Viewed the refreshed native preview with Mẫu chữ open. Release remains unpublished for user review.
+
+
+## Waveform detail correction — 2026-11-18
+
+- Replace smoothed coarse-peak interpolation with viewport-based signed audio minima/maxima. Zoom requests measured details from the existing WAV and renders a jagged, asymmetric silhouette.
+- Normalize against a cached whole-track peak so quiet and loud regions keep the same scale when zooming; cache keys include modification time and file size.
+- Bound each response to 6,000 bins; prefetch adjacent audio and reuse the result while the viewport stays covered. Refresh paused canvases after async data arrives.
+- Checks: 205 Python tests and 29 JavaScript tests pass. Four new tests cover signed transients, stable gain, frame boundaries/output limits, source replacement and endpoint validation. Browser checks verified detail at zoom 1/64, mobile width, no request loop and no JS errors.
+- Earlier smooth-envelope guidance is superseded by this correction. Release remains unpublished during visual review.

@@ -859,6 +859,18 @@ def _matches_missing_media(project, slot, media_path):
         return False
 
 
+@app.get('/api/projects/<pid>/waveform/<slot>')
+def detailed_waveform(pid, slot):
+    if slot not in ('reference', 'beat', 'vocals', 'backing'):
+        raise ValueError('Track không hợp lệ.')
+    path = directory(pid) / f'{slot}.wav'
+    result = engine.waveform_detail(path, request.args.get('start', 0),
+                                   request.args.get('end'), request.args.get('bins', 2400))
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @app.get("/api/projects/<pid>/audio/<slot>")
 def audio(pid, slot):
     path_dir = directory(pid)

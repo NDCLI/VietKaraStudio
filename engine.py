@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 import math
 import os
 from pathlib import Path
@@ -173,6 +174,46 @@ def waveform(path, bins=1800):
             peaks.append(round(float(np.max(np.abs(samples))), 4))
     scale = max(max(peaks, default=0), .001)
     return {"duration": round(info.duration, 4), "peaks": [p / scale for p in peaks]}
+
+
+@lru_cache(maxsize=24)
+def _waveform_scale(path, modified, size):
+    """One stable gain across zoom levels, invalidated when the audio changes."""
+    peak = .001
+    with sf.SoundFile(path) as source:
+        for samples in source.blocks(blocksize=262144, dtype='float32', always_2d=True):
+            peak = max(peak, float(np.max(np.abs(samples))))
+    return peak
+
+
+def waveform_detail(path, start=0, end=None, bins=2400):
+    """Measured signed extrema for a bounded viewport; never smooth transients."""
+    path = Path(path)
+    stat = path.stat()
+    info = sf.info(str(path))
+    duration = info.frames / info.samplerate
+    start = float(start)
+    end = duration if end is None else float(end)
+    if not math.isfinite(start) or not math.isfinite(end):
+        raise ValueError('Khoảng thời gian sóng nhạc không hợp lệ.')
+    bins = max(1, min(6000, int(bins)))
+    first = max(0, min(info.frames, math.floor(start * info.samplerate + 1e-7)))
+    last = max(first, min(info.frames, math.ceil(end * info.samplerate - 1e-7)))
+    step = max(1, math.ceil((last - first) / bins))
+    scale = _waveform_scale(str(path), stat.st_mtime_ns, stat.st_size)
+    low, high = [], []
+    with sf.SoundFile(str(path)) as source:
+        source.seek(first)
+        remaining = last - first
+        while remaining:
+            samples = source.read(min(step, remaining), dtype='float32', always_2d=True)
+            if not len(samples):
+                break
+            low.append(round(float(np.min(samples)) / scale, 5))
+            high.append(round(float(np.max(samples)) / scale, 5))
+            remaining -= len(samples)
+    return {'start': first / info.samplerate, 'end': last / info.samplerate,
+            'step': step / info.samplerate, 'min': low, 'max': high}
 
 
 def model_progress(job, start=5, end=95):
