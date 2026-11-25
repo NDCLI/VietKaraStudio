@@ -158,6 +158,10 @@ function initWaveTrackControls(){
     const track=slider.dataset.volTrack,v=Number(slider.value);
     state.trackVolumes[track]=v;
     if(v>0&&state.trackMuted[track])state.trackMuted[track]=false;
+    syncAuxTracks();
+  };
+  $('waveTrackControls').onchange=event=>{
+    if(!event.target.closest('[data-vol-track]'))return;
     renderWaveTrackControls();
   };
 }

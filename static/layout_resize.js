@@ -13,7 +13,7 @@ function applyStudioLayout(){
     $(id).setAttribute('aria-valuemin','0');$(id).setAttribute('aria-valuemax',String(Math.max(innerWidth,innerHeight)));
     $(id).setAttribute('aria-valuenow',String(Math.round(value)));$(id).setAttribute('aria-valuetext',Math.round(value)+' px');
   }
-  fitStudioPreview();drawTimeline();
+  fitStudioPreview();scheduleTimelineDraw();
 }
 function saveStudioLayout(){try{localStorage.setItem('obs_studio_layout_v2',JSON.stringify(studioLayoutSize));}catch{}}
 function resetStudioLayout(){
@@ -63,13 +63,13 @@ function initLayoutResize(){
     grip.ondblclick=()=>{if(id==='leftColumnGrip')studioLayoutSize.left=studioLayoutDefaults.left;else if(id==='rightColumnGrip')studioLayoutSize.right=studioLayoutDefaults.right;else{studioLayoutSize.waves=studioLayoutDefaults.waves;studioLayoutSize.lyrics=studioLayoutDefaults.lyrics;}applyStudioLayout();saveStudioLayout();};
     grip.onkeydown=event=>{const delta={ArrowLeft:[-15,0],ArrowRight:[15,0],ArrowUp:[0,-15],ArrowDown:[0,15]}[event.key];if(!delta)return;event.preventDefault();update(id,...delta,{...studioLayoutSize});saveStudioLayout();};
   }
-  const observer=new ResizeObserver(()=>{fitStudioPreview();drawTimeline();});
+  const observer=new ResizeObserver(()=>{fitStudioPreview();scheduleTimelineDraw();});
   observer.observe(document.querySelector('.editor-column'));observer.observe($('waveformCanvas'));
   addEventListener('resize',applyStudioLayout);document.addEventListener('fullscreenchange',()=>{fitStudioPreview();studioFrame();});
   $('waveformCanvas').onpointerdown=event=>{
     if(state.manualTiming||!state.project)return;
     const rect=event.currentTarget.getBoundingClientRect(),g=timelineGutter(rect.width),range=timelineRange();
-    seekBeat(Math.max(0,Math.min(range.duration,range.start+(event.clientX-rect.left-g)/(rect.width-g)*range.span)));drawTimeline();
+    seekBeat(Math.max(0,Math.min(range.duration,range.start+(event.clientX-rect.left-g)/(rect.width-g)*range.span)));scheduleTimelineDraw();
   };
   applyStudioLayout();
 }
@@ -106,36 +106,51 @@ function studioWaveBounds(detail,media,start,end){
   for(let i=first+1;i<=last;i++)peak=Math.max(peak,media.peaks[i]);
   return [-peak,peak];
 }
-function studioWaveforms(){
-  const canvas=$('waveformCanvas'),rect=canvas.getBoundingClientRect();if(!state.project||!rect.width||!rect.height||!state.showWaves)return;
-  const W=rect.width,H=rect.height,dpr=devicePixelRatio||1,G=timelineGutter(W),P=W-G;
-  if(canvas.width!==Math.round(W*dpr)||canvas.height!==Math.round(H*dpr)){canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);}
-  const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
-  $('waveTrackControls').style.width=G+'px';
-  const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
-  const playhead=beatNow();
-  ctx.fillStyle='#121416';ctx.fillRect(0,0,W,H);
-  for(const [slot,lane,color,title] of [['beat',0,studioWaveColors.beat,'NHẠC NỀN'],['reference',1,studioWaveColors.ref,'GIỌNG HÁT'],['backing',2,studioWaveColors.backing,'GIỌNG BÈ']]){
+let studioWaveRenderCache=null;
+function buildStudioWaveRenderCache({W,H,dpr,G,P,range,lanes,hidden}){
+  const width=Math.max(1,Math.round(W*dpr)),height=Math.max(1,Math.round(H*dpr));
+  const background=document.createElement('canvas'),played=document.createElement('canvas');
+  background.width=played.width=width;background.height=played.height=height;
+  const base=background.getContext('2d'),active=played.getContext('2d');
+  for(const context of [base,active])context.setTransform(dpr,0,0,dpr,0,0);
+  base.fillStyle='#121416';base.fillRect(0,0,W,H);
+  for(const {slot,lane,color,media,detail} of lanes){
     const top=lane*H/3,mid=top+H/6,amplitude=Math.max(4,H/6-3);
-    const m=slot==='reference'?(state.project.vocals||state.project.reference):state.project[slot];
-    ctx.fillStyle='#1c1c1f';ctx.fillRect(0,top,G,H/3);
-    ctx.strokeStyle='#2a2f3a';ctx.beginPath();ctx.moveTo(G,mid);ctx.lineTo(W,mid);ctx.moveTo(0,top);ctx.lineTo(W,top);ctx.stroke();
-    if(!m?.peaks?.length||state.hiddenWaveLanes?.has(slot))continue;
-    ctx.save();ctx.beginPath();ctx.rect(G,top,P,H/3);ctx.clip();
-    const detail=studioWaveDetail(slot,m,range,P),upper=[],lower=[];
+    base.fillStyle='#1c1c1f';base.fillRect(0,top,G,H/3);
+    base.strokeStyle='#2a2f3a';base.beginPath();base.moveTo(G,mid);base.lineTo(W,mid);base.moveTo(0,top);base.lineTo(W,top);base.stroke();
+    if(!media?.peaks?.length||hidden[lane])continue;
+    const upper=[],lower=[];
     for(let pixel=0;pixel<=Math.ceil(P);pixel++){
       const t=range.start+pixel/P*range.span,next=range.start+(pixel+1)/P*range.span;
       const source=slot==='reference'?mapTime(t,true):t,end=slot==='reference'?mapTime(next,true):next;
-      const [low,high]=studioWaveBounds(detail,m,source,end);
+      const [low,high]=studioWaveBounds(detail,media,source,end);
       upper.push(mid-high*amplitude);lower.push(mid-low*amplitude);
     }
     const silhouette=new Path2D();silhouette.moveTo(G,upper[0]);
     for(let pixel=1;pixel<upper.length;pixel++)silhouette.lineTo(G+pixel,upper[pixel]);
     for(let pixel=lower.length-1;pixel>=0;pixel--)silhouette.lineTo(G+pixel,lower[pixel]);
-    silhouette.closePath();ctx.fillStyle=studioWaveColors.inactive;ctx.fill(silhouette);
-    ctx.save();ctx.beginPath();ctx.rect(G,top,Math.max(0,Math.min(P,x(playhead)-G)),H/3);ctx.clip();
-    ctx.fillStyle=color;ctx.fill(silhouette);ctx.restore();
-    ctx.restore();
+    silhouette.closePath();base.fillStyle=studioWaveColors.inactive;base.fill(silhouette);
+    active.fillStyle=color;active.fill(silhouette);
   }
-  const cursor=x(playhead);if(cursor>=G&&cursor<=W){ctx.fillStyle='#ffffff';ctx.fillRect(cursor,0,2,H);}
+  return {background,played};
+}
+function studioWaveforms(){
+  const canvas=$('waveformCanvas'),rect=canvas.getBoundingClientRect();if(!state.project||!rect.width||!rect.height||!state.showWaves)return;
+  const W=rect.width,H=rect.height,dpr=devicePixelRatio||1,G=timelineGutter(W),P=W-G;
+  if(canvas.width!==Math.round(W*dpr)||canvas.height!==Math.round(H*dpr)){canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);}
+  const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  $('waveTrackControls').style.width=G+'px';
+  const range=timelineRange(),hidden=state.hiddenWaveLanes||new Set();
+  const lanes=[['beat',0,studioWaveColors.beat,state.project.beat],['reference',1,studioWaveColors.ref,state.project.vocals||state.project.reference],['backing',2,studioWaveColors.backing,state.project.backing]]
+    .map(([slot,lane,color,media])=>({slot,lane,color,media,detail:media?.peaks?.length&&!hidden.has(slot)?studioWaveDetail(slot,media,range,P):null}));
+  const hiddenFlags=lanes.map(({slot})=>hidden.has(slot));
+  const signature=[state.project.id,state.project.updated_at,W,H,dpr,G,range.start,range.span,JSON.stringify(state.project.anchors||[]),studioWaveColors.inactive,...hiddenFlags,...lanes.map(item=>item.color)].join('|');
+  const sameSources=studioWaveRenderCache?.signature===signature&&lanes.every((item,index)=>studioWaveRenderCache.media[index]===item.media&&studioWaveRenderCache.details[index]===item.detail);
+  if(!sameSources){
+    studioWaveRenderCache={signature,media:lanes.map(item=>item.media),details:lanes.map(item=>item.detail),...buildStudioWaveRenderCache({W,H,dpr,G,P,range,lanes,hidden:hiddenFlags})};
+  }
+  ctx.clearRect(0,0,W,H);ctx.drawImage(studioWaveRenderCache.background,0,0,W,H);
+  const x=t=>G+(t-range.start)/range.span*P,cursor=x(beatNow());
+  if(cursor>G){ctx.save();ctx.beginPath();ctx.rect(G,0,Math.min(P,cursor-G),H);ctx.clip();ctx.drawImage(studioWaveRenderCache.played,0,0,W,H);ctx.restore();}
+  if(cursor>=G&&cursor<=W){ctx.fillStyle='#ffffff';ctx.fillRect(cursor,0,2,H);}
 }

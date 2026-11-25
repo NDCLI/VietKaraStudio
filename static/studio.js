@@ -56,8 +56,8 @@ function studioStyle(){
   $('wordRole').querySelector('[value=male]').textContent=s.role_a_name;
   $('wordRole').querySelector('[value=female]').textContent=s.role_b_name;
   for(const [role,key] of [['voice_c','role_c_name'],['voice_d','role_d_name'],['voice_e','role_e_name'],['voice_f','role_f_name'],['unknown','role_unknown_name']])$('wordRole').querySelector(`[value=${role}]`).textContent=s[key];
-  const trackNames=['Dòng trên','Dòng dưới',s.role_c_name,s.role_d_name,s.role_e_name,s.role_f_name];
-  $('lineRow').querySelectorAll('option[value]').forEach(option=>{if(option.value!=='auto')option.textContent=`Track ${+option.value+1} · ${trackNames[+option.value]||''}`;});
+  const trackNames=['Dòng trên','Dòng dưới'];
+  $('lineRow').querySelectorAll('option[value]').forEach(option=>{option.textContent=trackNames[+option.value]||'Dòng trên';});
   $('logoInfo').textContent=p.logo_name||'PNG nền trong suốt sẽ giữ nguyên độ trong suốt.';
   $('sourceVideoInfo').textContent=p.background_video?.name||p.background_name||'';
   $('sourceVideoTools').hidden=!p.background_video;
@@ -413,10 +413,9 @@ function studioTimeline(){
     $('pan').value=state.pan;
   }
   const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
-  const laneTop=24,laneColors=['#112a29','#202d1b','#1e2935','#29243a','#34252d','#26332b'];
+  const laneTop=24,laneColors=['#112a29','#202d1b'];
   const slots=new Map();for(const row of state.layout?.rows||[])for(const w of row.words)slots.set(w.source_index,row.slot);
-  const duet=state.project.settings.singing_mode==='duet';
-  const laneCount=duet?Math.min(6,Math.max(2,...[...slots.values()].map(slot=>slot+1))):2,laneHeight=Math.max(12,(H-laneTop)/laneCount),blockH=Math.max(8,Math.min(30,laneHeight-4));
+  const laneCount=2,laneHeight=Math.max(12,(H-laneTop)/laneCount),blockH=Math.max(8,Math.min(30,laneHeight-4));
   for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=laneColors[lane];ctx.fillRect(G,laneTop+lane*laneHeight,P,laneHeight-2);}
   ctx.save();ctx.beginPath();ctx.rect(G,0,P,H);ctx.clip();
   const step=[1,2,5,10,20,30,60,120,300,600].find(v=>v>=range.span/9)||600;
@@ -425,14 +424,15 @@ function studioTimeline(){
   state.rectangles=[];
   state.project.words.forEach((word,i)=>{
     const a=x(mapTime(word.start)),b=x(mapTime(word.end));if(b<G||a>W)return;
-    const slot=Math.max(0,Math.min(laneCount-1,slots.get(i) ?? (duet ? word.row : undefined) ?? word.line%2)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
+    const row=Number.isInteger(word.row)?((word.row%2)+2)%2:word.line%2;
+    const slot=Math.max(0,Math.min(laneCount-1,slots.get(i) ?? row)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
     const common=selectedWord()&&word.line===selectedWord().line;
-    ctx.fillStyle=selected?'#48bfa6':word.estimated?'#34404a':['#176a63','#506d30','#42627e','#69568b','#8b5265','#47745a'][slot];
+    ctx.fillStyle=selected?'#48bfa6':word.estimated?'#34404a':['#176a63','#506d30'][slot];
     if(word.label_color)ctx.fillStyle=word.label_color;
-    ctx.strokeStyle=selected?'#ffffff':common?'#b6ded4':word.estimated?'#9c935a':['#309b8b','#85a650','#6d9bc0','#aa92d6','#d38ba0','#85b998'][slot];
+    ctx.strokeStyle=selected?'#ffffff':common?'#b6ded4':word.estimated?'#9c935a':['#309b8b','#85a650'][slot];
     ctx.lineWidth=selected?1.7:1;ctx.beginPath();ctx.roundRect(a,y,w,blockH,4);ctx.fill();ctx.stroke();
     ctx.save();ctx.beginPath();ctx.rect(a+2,y,w-4,blockH);ctx.clip();ctx.font='10px Segoe UI';ctx.fillStyle=word.label_color?'#10151b':selected?'#082d23':'#e1ece5';ctx.fillText(word.text,a+5,y+blockH/2+4);ctx.restore();
-    state.rectangles.push({i,x:a,y,w,h:blockH});
+    state.rectangles.push({i,x:a,y,w,h:blockH,slot});
   });
   for(const anchor of state.project.anchors){const at=x(anchor.beat);ctx.strokeStyle='#dda85588';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(at,22);ctx.lineTo(at,H);ctx.stroke();ctx.setLineDash([]);}
   const cursor=x(beatNow());if(cursor>=G&&cursor<=W){ctx.fillStyle='#ef8c76';ctx.fillRect(cursor,20,1,H);ctx.beginPath();ctx.moveTo(cursor,24);ctx.lineTo(cursor-4,17);ctx.lineTo(cursor+4,17);ctx.fill();}
@@ -441,9 +441,9 @@ function studioTimeline(){
     ctx.fillStyle='rgba(72,191,166,0.18)';ctx.strokeStyle='#48bfa6';ctx.lineWidth=1;ctx.fillRect(mx,my,mw,mh);ctx.strokeRect(mx,my,mw,mh);
   }
   ctx.restore();ctx.fillStyle='#101c29';ctx.fillRect(0,0,G,H);
-  const settings=state.project.settings||{},trackNames=['Dòng trên','Dòng dưới',settings.role_c_name||'Giọng 3',settings.role_d_name||'Giọng 4',settings.role_e_name||'Giọng 5',settings.role_f_name||'Giọng 6'];
+  const trackNames=['Dòng trên','Dòng dưới'];
   ctx.font='bold 8px Segoe UI';
-  for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=['#6cddcb','#b1d56f','#87b7d9','#ad9be0','#e294a9','#8dcc9e'][lane];ctx.fillText(trackNames[lane].toLocaleUpperCase(),5,laneTop+lane*laneHeight+laneHeight/2+3,Math.max(10,G-10));if(lane){ctx.strokeStyle='#455264';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(G,laneTop+lane*laneHeight-1);ctx.lineTo(W,laneTop+lane*laneHeight-1);ctx.stroke();ctx.setLineDash([]);}}
+  for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=['#6cddcb','#b1d56f'][lane];ctx.fillText(trackNames[lane].toLocaleUpperCase(),5,laneTop+lane*laneHeight+laneHeight/2+3,Math.max(10,G-10));if(lane){ctx.strokeStyle='#455264';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(G,laneTop+lane*laneHeight-1);ctx.lineTo(W,laneTop+lane*laneHeight-1);ctx.stroke();ctx.setLineDash([]);}}
 }
 
 // Keep glyph layers mounted while the mask moves; rebuilding the text each frame
@@ -483,7 +483,7 @@ for(const canvas of [$('timeline'),$('waveformCanvas')])canvas.addEventListener(
   $('zoom').step='.01';$('zoom').value=state.zoom;
   const span=Math.max(3,old.duration/state.zoom);
   state.pan=Math.max(0,Math.min(old.duration-span,anchor-fraction*span));
-  $('pan').value=state.pan;drawTimeline();
+  $('pan').value=state.pan;scheduleTimelineDraw();
 },{passive:false});
 $('timelineAutoBtn').onclick=()=>{if(state.job||state.manualTiming)return;if(state.project.reference&&state.project.beat)api(endpoint('/sync-suggest'),{method:'POST',body:{}}).then(followJob).catch(handleError);else $('alignLyricsBtn').click();};
 $('timelineManualBtn').onclick=wrap(openTappingDialog);

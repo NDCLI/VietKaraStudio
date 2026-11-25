@@ -71,7 +71,32 @@ function renderWords(){
   previewFrame();
 }
 async function toggleLineLock(lineId){if(state.job)return;const locked=lineLocked(lineId);remember();for(const word of state.project.words)if(word.line===lineId){if(locked)delete word.locked;else word.locked=true;}renderWords();renderSelected();drawTimeline();await saveNow();toast(locked?'Đã mở khóa câu.':'Đã khóa câu đã rà soát.');}
-function renderSelected(){renderTimelineEditing();const word=selectedWord(),locked=!!word&&lineLocked(word.line),selected=[...state.timelineSelection].sort((a,b)=>a-b);$('selectedEditor').hidden=!word;$('selectedEmpty').hidden=!!word;$('deleteWordBtn').disabled=!word||locked;const stretch=$('stretchSelection'),stretchButton=$('stretchSelectionBtn');stretch.hidden=!word||selected.length<2;const first=selected.length>1?state.project.words[selected[0]]:null,last=selected.length>1?state.project.words[selected.at(-1)]:null;const range=first&&last?state.project.words.slice(selected[0],selected.at(-1)+1):[];stretchButton.disabled=!range.length||range.some(item=>lineLocked(item.line));if(first&&last){$('stretchStart').value=mapTime(first.start).toFixed(2);$('stretchEnd').value=mapTime(last.end).toFixed(2);}if(word){const mapped=wordOnBeat(word);$('wordText').value=word.text;$('wordStart').value=mapped.start.toFixed(2);$('wordEnd').value=mapped.end.toFixed(2);$('wordRole').value=word.role;$('lineRow').value=word.row==null?'auto':String(word.row);$('wordText').disabled=locked;$('wordStart').disabled=locked;$('wordEnd').disabled=locked;$('wordRole').disabled=locked;$('lineRow').disabled=locked;$('applyWordBtn').disabled=locked;$('splitLineBtn').disabled=locked;$('mergeLineBtn').disabled=locked;$('realignLineBtn').disabled=locked||!state.project.reference;$('toggleSelectedLineLockBtn').textContent=locked?'Mở khóa câu':'Khóa câu';}}
+function lineRowSlot(word,index=state.selected){
+  const planned=state.layout?.rows?.find(row=>row.words?.some(item=>item.source_index===index));
+  if(Number.isInteger(planned?.slot))return ((planned.slot%2)+2)%2;
+  const explicit=state.project.words.find(item=>item.line===word.line&&Number.isInteger(item.row))?.row;
+  if(Number.isInteger(explicit))return ((explicit%2)+2)%2;
+  const rectangle=state.rectangles?.find(item=>item.i===index);
+  if(Number.isInteger(rectangle?.slot))return rectangle.slot;
+  return ((Number(word.line)||0)%2+2)%2;
+}
+function renderSelected(){
+  renderTimelineEditing();
+  const word=selectedWord(),locked=!!word&&lineLocked(word.line),selected=[...state.timelineSelection].sort((a,b)=>a-b);
+  $('selectedEditor').hidden=!word;$('selectedEmpty').hidden=!!word;$('deleteWordBtn').disabled=!word||locked;
+  const stretch=$('stretchSelection'),stretchButton=$('stretchSelectionBtn');stretch.hidden=!word||selected.length<2;
+  const first=selected.length>1?state.project.words[selected[0]]:null,last=selected.length>1?state.project.words[selected.at(-1)]:null;
+  const range=first&&last?state.project.words.slice(selected[0],selected.at(-1)+1):[];
+  stretchButton.disabled=!range.length||range.some(item=>lineLocked(item.line));
+  if(first&&last){$('stretchStart').value=mapTime(first.start).toFixed(2);$('stretchEnd').value=mapTime(last.end).toFixed(2);}
+  if(word){
+    const mapped=wordOnBeat(word);$('wordText').value=word.text;$('wordStart').value=mapped.start.toFixed(2);$('wordEnd').value=mapped.end.toFixed(2);
+    $('wordRole').value=word.role;$('lineRow').value=String(lineRowSlot(word));
+    $('wordText').disabled=locked;$('wordStart').disabled=locked;$('wordEnd').disabled=locked;$('wordRole').disabled=locked;$('lineRow').disabled=locked;
+    $('applyWordBtn').disabled=locked;$('splitLineBtn').disabled=locked;$('mergeLineBtn').disabled=locked;$('realignLineBtn').disabled=locked||!state.project.reference;
+    $('toggleSelectedLineLockBtn').textContent=locked?'Mở khóa câu':'Khóa câu';
+  }
+}
 function selectWord(index,seek=true,extend=false){if(extend){if(state.timelineSelection.has(index))state.timelineSelection.delete(index);else state.timelineSelection.add(index);state.selected=state.timelineSelection.has(index)?index:([...state.timelineSelection].at(-1)??-1);}else{state.timelineSelection.clear();state.timelineSelection.add(index);state.selected=index;}document.querySelector('[data-left-tab="lyrics"]').click();showInspector('timing');renderSelected();$('wordList').querySelectorAll('[data-word]').forEach(el=>el.classList.toggle('selected',state.timelineSelection.has(+el.dataset.word)));$('wordList').querySelector(`[data-word="${index}"]`)?.scrollIntoView({block:'nearest'});if(seek&&selectedWord())seekBeat(Math.max(0,mapTime(selectedWord().start)-.5));drawTimeline();}
 function selectLine(lineId,seek=true){const indices=state.project.words.map((word,index)=>word.line===lineId?index:-1).filter(index=>index>=0);if(!indices.length)return;state.timelineSelection=new Set(indices);state.selected=indices[0];document.querySelector('[data-left-tab="lyrics"]').click();showInspector('timing');renderSelected();$('wordList').querySelectorAll('[data-word]').forEach(el=>el.classList.toggle('selected',state.timelineSelection.has(+el.dataset.word)));$('wordList').querySelector(`[data-line-select="${lineId}"]`)?.scrollIntoView({block:'nearest'});if(seek)seekBeat(Math.max(0,mapTime(selectedWord().start)-.5));drawTimeline();}
 function seekBeat(t){const raw=state.track==='beat'?t:mapTime(t,true);if(Number.isFinite(raw))audio.currentTime=Math.max(0,Math.min(trackDuration()||0,raw));previewFrame();drawTimeline();}
@@ -97,6 +122,11 @@ function previewFrame(){studioFrame();}
 
 function timelineRange(){const duration=beatDuration();const span=Math.max(3,duration/state.zoom);state.pan=Math.max(0,Math.min(state.pan,Math.max(0,duration-span)));$('pan').max=Math.max(0,duration-span);return {duration,span,start:state.pan};}
 function drawTimeline(){studioTimeline();studioWaveforms();}
+let scheduledTimelineFrame=null;
+function scheduleTimelineDraw(){
+  if(scheduledTimelineFrame!==null)return;
+  scheduledTimelineFrame=requestAnimationFrame(()=>{scheduledTimelineFrame=null;drawTimeline();});
+}
 
 function eventPoint(event){const rect=$('timeline').getBoundingClientRect(),offset=timelineGutter(rect.width);return {x:event.clientX-rect.left,y:event.clientY-rect.top,width:rect.width-offset,offset};}
 $('timeline').addEventListener('pointerdown',event=>{if(state.job||state.manualTiming)return;const p=eventPoint(event),range=timelineRange(),hit=[...state.rectangles].reverse().find(r=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h);if(!hit){if(p.y<24){seekBeat(range.start+Math.max(0,p.x-p.offset)/p.width*range.span);return;}state.marquee={x0:p.x,y0:p.y,x1:p.x,y1:p.y,base:new Set(event.ctrlKey||event.metaKey?state.timelineSelection:[])};$('timeline').setPointerCapture(event.pointerId);return;}const alreadyInMulti=state.timelineSelection.has(hit.i)&&state.timelineSelection.size>1&&!event.ctrlKey&&!event.metaKey;if(alreadyInMulti){state.selected=hit.i;renderWords();renderSelected();drawTimeline();}else selectWord(hit.i,false,event.ctrlKey||event.metaKey);if(event.ctrlKey||event.metaKey)return;if(lineLocked(selectedWord().line)){toast('Câu này đã khóa. Mở khóa để chỉnh mốc.');return;}const word=wordOnBeat(selectedWord());remember();const kind=event.shiftKey||alreadyInMulti?'move':p.x>hit.x+hit.w-6?'end':p.x<hit.x+6?'start':'move';const groupIndices=alreadyInMulti?[...state.timelineSelection].sort((a,b)=>a-b):event.shiftKey?state.project.words.map((w,i)=>w.line===selectedWord().line?i:-1).filter(i=>i>=0):null;state.drag={index:hit.i,startX:p.x,start:word.start,end:word.end,line:word.line,linked:state.project.settings.timeline_linked!==false&&!state.project.words[hit.i-1]?.locked&&!state.project.words[hit.i+1]?.locked,previous:state.project.words[hit.i-1]?wordOnBeat(state.project.words[hit.i-1]):null,next:state.project.words[hit.i+1]?wordOnBeat(state.project.words[hit.i+1]):null,kind,span:range.span,width:p.width,group:groupIndices?groupIndices.filter(i=>!lineLocked(state.project.words[i]?.line)).map(i=>({i,...wordOnBeat(state.project.words[i])})):null};$('timeline').setPointerCapture(event.pointerId);});
@@ -223,7 +253,7 @@ $('toggleSelectedLineLockBtn').onclick=wrap(async()=>{const word=selectedWord();
 $('realignLineBtn').onclick=wrap(async()=>{const word=selectedWord();if(!word)return;if(lineLocked(word.line))throw Error('Mở khóa câu trước khi căn lại.');await saveNow();followJob(await api(endpoint('/align-region'),{method:'POST',body:{line_ids:[word.line],model:selectedAiModel(),language:selectedAiLanguage(),device:'auto'}}));});
 $('applyLyricsEditsBtn').onclick=wrap(applyLyricsEditsPreservingTiming);
 $('discardAlignmentBtn').onclick=discardAlignment;$('applyAlignmentBtn').onclick=wrap(applyAlignment);$('alignPreviewDialog').addEventListener('close',()=>{state.pendingAlignment=null;});
-$('applyWordBtn').onclick=wrap(async()=>{const word=selectedWord();if(!word)return;if(lineLocked(word.line))throw Error('Mở khóa câu trước khi chỉnh thời gian.');const a=+$('wordStart').value,b=+$('wordEnd').value,start=mapTime(a,true),end=mapTime(b,true),text=$('wordText').value.trim();if(!text||!Number.isFinite(a+b)||a<0||b<=a||start<0||end<=start)throw Error('Kiểm tra nội dung và thời gian. Mốc kết thúc phải sau bắt đầu; nếu ra ngoài bản hát hãy sửa mốc đồng bộ.');remember();word.text=text;word.start=start;word.end=end;word.estimated=false;for(const item of state.project.words)if(item.line===word.line){item.role=$('wordRole').value;if($('lineRow').value==='auto')delete item.row;else item.row=+$('lineRow').value;}state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();drawTimeline();await saveNow();toast('Đã sửa từ và thời gian theo beat.');});
+$('applyWordBtn').onclick=wrap(async()=>{const word=selectedWord();if(!word)return;if(lineLocked(word.line))throw Error('Mở khóa câu trước khi chỉnh thời gian.');const a=+$('wordStart').value,b=+$('wordEnd').value,start=mapTime(a,true),end=mapTime(b,true),text=$('wordText').value.trim();if(!text||!Number.isFinite(a+b)||a<0||b<=a||start<0||end<=start)throw Error('Kiểm tra nội dung và thời gian. Mốc kết thúc phải sau bắt đầu; nếu ra ngoài bản hát hãy sửa mốc đồng bộ.');remember();word.text=text;word.start=start;word.end=end;word.estimated=false;const row=Number($('lineRow').value);for(const item of state.project.words)if(item.line===word.line){item.role=$('wordRole').value;item.row=row;}state.project.text=textFromWords();$('lyricsText').value=state.project.text;state.layout=null;renderWords();drawTimeline();scheduleLayout();await saveNow();toast('Đã sửa từ và thời gian theo beat.');});
 $('deleteWordBtn').onclick=()=>{if(!selectedWord()||lineLocked(selectedWord().line))return;remember();state.project.words.splice(state.selected,1);state.project.text=textFromWords();$('lyricsText').value=state.project.text;state.selected=-1;state.timelineSelection.clear();renderWords();renderSelected();drawTimeline();dirty();};
 async function moveHistory(from,to){
   if(state.job||!from.length)return;
@@ -346,7 +376,7 @@ const featureGroups=[...document.querySelectorAll('.style-panel>details,#wordToo
 document.querySelectorAll('[data-title-y-step]').forEach(button=>button.onclick=()=>{const y=$('titleY');y.value=Math.max(+y.min,Math.min(+y.max,+y.value+Number(button.dataset.titleYStep)));y.dispatchEvent(new Event('input',{bubbles:true}));});
 document.querySelectorAll('[data-title-x-step]').forEach(button=>button.onclick=()=>{const x=$('titleX');x.value=Math.max(+x.min,Math.min(+x.max,+x.value+Number(button.dataset.titleXStep)));x.dispatchEvent(new Event('input',{bubbles:true}));});
 $('listenTrack').onchange=()=>{const position=beatNow();setAudio($('listenTrack').value,position);};$('playBtn').onclick=wrap(togglePlay);$('seek').oninput=()=>{audio.currentTime=+$('seek').value;previewFrame();drawTimeline();};$('playbackRate').onchange=()=>audio.playbackRate=+$('playbackRate').value;
-audio.addEventListener('play',()=>{state.titlePreviewAt=null;$('playBtn').textContent='Ⅱ';document.body.classList.add('playing');});audio.addEventListener('pause',()=>{$('playBtn').textContent='▶';document.body.classList.remove('playing');});audio.addEventListener('error',()=>{if(audio.getAttribute('src'))toast('Không đọc được track. Hãy kiểm tra file hoặc chạy bước tách vocal trước.',true);});audio.addEventListener('timeupdate',()=>{previewFrame();drawTimeline();});
+audio.addEventListener('play',()=>{state.titlePreviewAt=null;$('playBtn').textContent='Ⅱ';document.body.classList.add('playing');});audio.addEventListener('pause',()=>{$('playBtn').textContent='▶';document.body.classList.remove('playing');});audio.addEventListener('error',()=>{if(audio.getAttribute('src'))toast('Không đọc được track. Hãy kiểm tra file hoặc chạy bước tách vocal trước.',true);});audio.addEventListener('timeupdate',()=>{previewFrame();scheduleTimelineDraw();});
 // Keep the lyric sweep on the display refresh rate. Redraw the editor canvases separately.
 let lastPlaybackTimelineFrame = -Infinity;
 function frame(now){
@@ -360,7 +390,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-$('zoom').oninput=()=>{state.zoom=+$('zoom').value;drawTimeline();};$('pan').oninput=()=>{state.pan=+$('pan').value;drawTimeline();};new ResizeObserver(drawTimeline).observe($('timeline'));new ResizeObserver(()=>{if(state.project)renderStyle();}).observe($('preview'));
+$('zoom').oninput=()=>{state.zoom=+$('zoom').value;scheduleTimelineDraw();};$('pan').oninput=()=>{state.pan=+$('pan').value;scheduleTimelineDraw();};new ResizeObserver(scheduleTimelineDraw).observe($('timeline'));new ResizeObserver(()=>{if(state.project)renderStyle();}).observe($('preview'));
 $('fullscreenBtn').onclick=wrap(()=>document.fullscreenElement?document.exitFullscreen():$('preview').requestFullscreen());
 $('cancelJobBtn').onclick=wrap(async()=>{const job=state.job||state.renderJob;if(!job)return;await api(`/api/jobs/${job.id}/cancel`,{method:'POST',body:{}});$('jobTitle').textContent='Đang dừng tiến trình…';});
 $('newBtn').onclick=wrap(newProject);

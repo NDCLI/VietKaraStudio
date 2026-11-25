@@ -279,18 +279,18 @@ def display_plan(project):
     rows.sort(key=lambda row: row[0]['start'])
     plan, countdowns, block_row = [], [], 0
     slots=[]
-    role_slots={'male':0, 'female':1, 'voice_c':2, 'voice_d':3, 'voice_e':4, 'voice_f':5}
     previous_role = None
     for i, words in enumerate(rows):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
-        role = words[0].get('role', 'all') if opts['singing_mode']=='duet' else 'all'
-        slot = block_row % 2
-        if opts['singing_mode'] == 'duet':
-            slot = words[0].get('row', role_slots.get(role, slot))
+        row = words[0].get('row')
+        try:
+            slot = int(row) % 2 if row is not None else block_row % 2
+        except (TypeError, ValueError):
+            slot = block_row % 2
         slots.append(slot)
         block_row+=1
-    lane_count = min(6, max(2, max(slots, default=1)+1)) if opts['display_mode'] == 'karaoke' else 1
+    lane_count = 2 if opts['display_mode'] == 'karaoke' else 1
     block_row=0
     block_start=0
     for i, words in enumerate(rows):
