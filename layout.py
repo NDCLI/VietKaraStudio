@@ -280,6 +280,7 @@ def display_plan(project):
     plan, countdowns, block_row = [], [], 0
     slots=[]
     previous_role = None
+    lyric_center = None
     for i, words in enumerate(rows):
         if i == 0 or words[0].get('section') or words[0]['start']-rows[i-1][-1]['end']>4:
             block_row=0
@@ -346,6 +347,9 @@ def display_plan(project):
             if opts['display_mode'] == 'lyricsmv' and opts['position'] == 'bottom': baseline = height*.5
             bottom = baseline - height * opts['vertical_offset']/100
             y = max(0, bottom - size*1.15 - (lanes-1-slot)*step)
+        if lyric_center is None:
+            stack_center = y - slot * step + (size * 1.2 + (lanes - 1) * step) / 2
+            lyric_center = round(max(0, min(100, stack_center / height * 100)), 1)
         role_colors={'male':opts['role_a_color'],'female':opts['role_b_color'],'all':opts['role_all_color'],
                      'voice_c':opts['role_c_color'],'voice_d':opts['role_d_color'],
                      'voice_e':opts['role_e_color'],'voice_f':opts['role_f_color'],
@@ -399,5 +403,5 @@ def display_plan(project):
             warnings.append({'type':'overlap','line':row['line'],'previous_line':previous['line']})
     from song_title import title_plan
     return {'title':title_plan(project), 'width':width, 'height':height, 'font':measure.family, 'font_factor':measure.factor,
-            'effective_line_gap':round(max(0, row_step-ink_height), 2),
+            'effective_line_gap':round(max(0, row_step-ink_height), 2), 'lyric_center':lyric_center,
             'font_fallback':measure.fallback, 'rows':plan, 'countdowns':countdowns,'warnings':warnings}

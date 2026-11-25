@@ -55,7 +55,7 @@ function studioStyle(){
   $('gradientSettings').hidden=!s.sung_gradient;
   $('wordRole').querySelector('[value=male]').textContent=s.role_a_name;
   $('wordRole').querySelector('[value=female]').textContent=s.role_b_name;
-  for(const [role,key] of [['voice_c','role_c_name'],['voice_d','role_d_name'],['voice_e','role_e_name'],['voice_f','role_f_name'],['unknown','role_unknown_name']])$('wordRole').querySelector(`[value=${role}]`).textContent=s[key];
+  $('wordRole').querySelector('[value=unknown]').textContent=s.role_unknown_name;
   const trackNames=['Dòng trên','Dòng dưới'];
   $('lineRow').querySelectorAll('option[value]').forEach(option=>{option.textContent=trackNames[+option.value]||'Dòng trên';});
   $('logoInfo').textContent=p.logo_name||'PNG nền trong suốt sẽ giữ nguyên độ trong suốt.';
@@ -63,7 +63,6 @@ function studioStyle(){
   $('sourceVideoTools').hidden=!p.background_video;
   $('sourceVideoActions').hidden=!p.background_video;
   renderStyleControls();
-  $('legacyLyricOffsets').hidden=s.position==='custom';
   renderSceneControls();
   document.querySelectorAll('[data-value-for]').forEach(el=>el.textContent=$(el.dataset.valueFor).value);
   fitStudioPreview();scheduleLayout();studioFrame();
@@ -213,10 +212,6 @@ function textFromWords(){
   const groups=new Map();for(const w of state.project.words){if(!groups.has(w.line))groups.set(w.line,[]);groups.get(w.line).push(w);}
   return [...groups.values()].map((row,i)=>(i&&row[0].section?'\n':'')+row.map(w=>w.text).join(' ')).join('\n');
 }
-function rebuildLineText(){
-  const ids=new Map();for(const w of state.project.words){if(!ids.has(w.line))ids.set(w.line,ids.size);w.line=ids.get(w.line);}
-  state.project.text=textFromWords();$('lyricsText').value=state.project.text;renderWords();renderSelected();drawTimeline();dirty();
-}
 function setStyleValue(key,value){
   if(!state.project||state.job)return;
   const settings=state.project.settings;
@@ -350,26 +345,15 @@ function initStudio(){
   $('toggleWavesBtn').onclick=()=>{state.showWaves=!state.showWaves;$('waveformPanel').hidden=!state.showWaves;$('waveformHeightGrip').hidden=!state.showWaves;$('karaokePage').classList.toggle('waves-hidden',!state.showWaves);$('toggleWavesBtn').setAttribute('aria-pressed',String(state.showWaves));drawTimeline();};
   document.querySelectorAll('[data-display-mode]').forEach(b=>b.onclick=()=>setStyleValue('display_mode',b.dataset.displayMode));
   document.querySelectorAll('[data-singing-mode]').forEach(b=>b.onclick=()=>setStyleValue('singing_mode',b.dataset.singingMode));
-  document.querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>setStyleValue('align',b.dataset.align));
+  document.querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>{
+    if(!state.project||state.job)return;
+    remember();
+    Object.assign(state.project.settings,{align:b.dataset.align,lyric_x:50,horizontal_offset:0});
+    renderStyle();dirty();
+  });
   $('fontSmaller').onclick=()=>setStyleValue('font_size',Math.max(20,state.project.settings.font_size-2));
   $('fontLarger').onclick=()=>setStyleValue('font_size',Math.min(240,state.project.settings.font_size+2));
   $('countdownInput').onchange=wrap(async()=>{const input=$('countdownInput');await upload('countdown',input.files[0]);input.value='';});
-  $('splitLineBtn').onclick=()=>{
-    if(state.job)return;const w=selectedWord();if(!w)return;if(lineLocked(w.line))return toast('Mở khóa câu trước khi tách.');
-    const words=state.project.words,first=words.findIndex(x=>x.line===w.line);
-    if(first===state.selected)return toast('Từ này đã ở đầu câu.');
-    remember();const old=w.line,next=Math.max(...words.map(x=>x.line))+1;
-    words.forEach((x,i)=>{if(i>=state.selected&&x.line===old){x.line=next;delete x.row;delete x.section;}});rebuildLineText();
-  };
-  $('mergeLineBtn').onclick=()=>{
-    if(state.job)return;const w=selectedWord();if(!w)return;if(lineLocked(w.line))return toast('Mở khóa câu trước khi gộp.');
-    const groups=[...new Set(state.project.words.map(x=>x.line))],at=groups.indexOf(w.line);
-    if(at<=0)return toast('Đây là câu đầu tiên.');
-    const previous=state.project.words.find(x=>x.line===groups[at-1]);if(lineLocked(previous.line))return toast('Câu trước đang khóa. Mở khóa trước khi gộp.');
-    remember();const old=w.line;
-    for(const item of state.project.words)if(item.line===old){item.line=previous.line;item.role=previous.role;delete item.section;if(previous.row==null)delete item.row;else item.row=previous.row;}
-    rebuildLineText();
-  };
   $('autoRolesBtn').onclick=wrap(async()=>{
     if(state.job||state.manualTiming)return;
     if(!state.project.reference)throw Error('Cần bản hát có giọng để tự phân vai.');
@@ -400,21 +384,23 @@ function compactProjectView(){
   const p=state.project;
   if(state.viewProject!==p.id){state.viewProject=p.id;showInspector('design');}
 }
-function studioTimeline(){
+let timelineSlotPlan;
+let timelineSlots=new Map();
+function studioTimeline(range,playhead){
   const canvas=$('timeline'),rect=canvas.getBoundingClientRect();if(!rect.width||!state.project)return;
   const dpr=devicePixelRatio||1,W=rect.width,H=rect.height,G=timelineGutter(W),P=W-G;
   if(canvas.width!==Math.round(W*dpr)||canvas.height!==Math.round(H*dpr)){canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);}
   const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#0c1520';ctx.fillRect(0,0,W,H);
-  state.followPlayhead=true;
-  if(!audio.paused&&!state.drag&&document.activeElement!==$('pan')){
-    const duration=beatDuration(),span=Math.max(3,duration/state.zoom);
-    state.pan=Math.max(0,Math.min(Math.max(0,duration-span),beatNow()-span*.35));
-    $('pan').value=state.pan;
-  }
-  const range=timelineRange(),x=t=>G+(t-range.start)/range.span*P;
+  const x=t=>G+(t-range.start)/range.span*P;
   const laneTop=24,laneColors=['#112a29','#202d1b'];
-  const slots=new Map();for(const row of state.layout?.rows||[])for(const w of row.words)slots.set(w.source_index,row.slot);
+  if(timelineSlotPlan!==state.layout){
+    timelineSlotPlan=state.layout;
+    timelineSlots=new Map();
+    for(const row of state.layout?.rows||[]){
+      for(const word of row.words)timelineSlots.set(word.source_index,row.slot);
+    }
+  }
   const laneCount=2,laneHeight=Math.max(12,(H-laneTop)/laneCount),blockH=Math.max(8,Math.min(30,laneHeight-4));
   for(let lane=0;lane<laneCount;lane++){ctx.fillStyle=laneColors[lane];ctx.fillRect(G,laneTop+lane*laneHeight,P,laneHeight-2);}
   ctx.save();ctx.beginPath();ctx.rect(G,0,P,H);ctx.clip();
@@ -422,11 +408,12 @@ function studioTimeline(){
   ctx.font='9px Consolas';
   for(let t=Math.ceil(range.start/step)*step;t<=range.start+range.span;t+=step){const at=x(t);ctx.strokeStyle='#29404a';ctx.beginPath();ctx.moveTo(at,21);ctx.lineTo(at,H);ctx.stroke();ctx.fillStyle='#8aa1b5';ctx.fillText(time(t),at+3,14);}
   state.rectangles=[];
+  const selectedLine=selectedWord()?.line;
   state.project.words.forEach((word,i)=>{
     const a=x(mapTime(word.start)),b=x(mapTime(word.end));if(b<G||a>W)return;
     const row=Number.isInteger(word.row)?((word.row%2)+2)%2:word.line%2;
-    const slot=Math.max(0,Math.min(laneCount-1,slots.get(i) ?? row)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
-    const common=selectedWord()&&word.line===selectedWord().line;
+    const slot=Math.max(0,Math.min(laneCount-1,timelineSlots.get(i) ?? row)),y=laneTop+slot*laneHeight+2,w=Math.max(3,b-a-1),selected=state.timelineSelection.has(i);
+    const common=word.line===selectedLine;
     ctx.fillStyle=selected?'#48bfa6':word.estimated?'#34404a':['#176a63','#506d30'][slot];
     if(word.label_color)ctx.fillStyle=word.label_color;
     ctx.strokeStyle=selected?'#ffffff':common?'#b6ded4':word.estimated?'#9c935a':['#309b8b','#85a650'][slot];
@@ -435,7 +422,7 @@ function studioTimeline(){
     state.rectangles.push({i,x:a,y,w,h:blockH,slot});
   });
   for(const anchor of state.project.anchors){const at=x(anchor.beat);ctx.strokeStyle='#dda85588';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(at,22);ctx.lineTo(at,H);ctx.stroke();ctx.setLineDash([]);}
-  const cursor=x(beatNow());if(cursor>=G&&cursor<=W){ctx.fillStyle='#ef8c76';ctx.fillRect(cursor,20,1,H);ctx.beginPath();ctx.moveTo(cursor,24);ctx.lineTo(cursor-4,17);ctx.lineTo(cursor+4,17);ctx.fill();}
+  const cursor=x(playhead);if(cursor>=G&&cursor<=W){ctx.fillStyle='#ef8c76';ctx.fillRect(cursor,20,1,H);ctx.beginPath();ctx.moveTo(cursor,24);ctx.lineTo(cursor-4,17);ctx.lineTo(cursor+4,17);ctx.fill();}
   if(state.marquee&&Math.hypot(state.marquee.x1-state.marquee.x0,state.marquee.y1-state.marquee.y0)>4){
     const mx=Math.min(state.marquee.x0,state.marquee.x1),my=Math.min(state.marquee.y0,state.marquee.y1),mw=Math.abs(state.marquee.x1-state.marquee.x0),mh=Math.abs(state.marquee.y1-state.marquee.y0);
     ctx.fillStyle='rgba(72,191,166,0.18)';ctx.strokeStyle='#48bfa6';ctx.lineWidth=1;ctx.fillRect(mx,my,mw,mh);ctx.strokeRect(mx,my,mw,mh);
@@ -485,7 +472,10 @@ for(const canvas of [$('timeline'),$('waveformCanvas')])canvas.addEventListener(
   state.pan=Math.max(0,Math.min(old.duration-span,anchor-fraction*span));
   $('pan').value=state.pan;scheduleTimelineDraw();
 },{passive:false});
-$('timelineAutoBtn').onclick=()=>{if(state.job||state.manualTiming)return;if(state.project.reference&&state.project.beat)api(endpoint('/sync-suggest'),{method:'POST',body:{}}).then(followJob).catch(handleError);else $('alignLyricsBtn').click();};
+$('timelineAutoBtn').onclick=()=>{
+  if(!state.project||state.job||state.manualTiming)return;
+  $('alignLyricsBtn').click();
+};
 $('timelineManualBtn').onclick=wrap(openTappingDialog);
 
 }
