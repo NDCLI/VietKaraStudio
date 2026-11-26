@@ -43,6 +43,34 @@ def desktop_webview():
     return webview
 
 
+def enable_editable_context_menu(window):
+    """Enable the native WebView2 editing menu on editable fields."""
+    configured = False
+
+    def on_menu_requested(sender, args):
+        if not args.ContextMenuTarget.IsEditable:
+            args.Handled = True
+
+    def on_loaded():
+        from System import Action
+
+        control = window.native.webview
+
+        def configure():
+            nonlocal configured
+            if configured:
+                return
+            core = control.CoreWebView2
+            core.ContextMenuRequested += on_menu_requested
+            core.Settings.AreDefaultContextMenusEnabled = True
+            configured = True
+            logging.info("WebView2 editing context menu enabled")
+
+        control.Invoke(Action(configure))
+
+    window.events.loaded += on_loaded
+
+
 def main():
     parser = argparse.ArgumentParser(description="VietKara Studio")
     parser.add_argument("--browser", action="store_true", help="Mở trong trình duyệt thay cho cửa sổ desktop")
@@ -88,8 +116,10 @@ def main():
     threading.Thread(target=run, daemon=True).start()
     try:
         webview.settings["ALLOW_DOWNLOADS"] = True
-        webview.create_window("VietKara Studio", url, width=1480, height=940, min_size=(1000,720),
-                              background_color="#0b1019")
+        window = webview.create_window("VietKara Studio", url, width=1480, height=940,
+                                       min_size=(1000,720), background_color="#0b1019")
+        if sys.platform == "win32":
+            enable_editable_context_menu(window)
         webview.start(gui="edgechromium" if sys.platform == "win32" else None,
                       icon=str(APP_ICON) if APP_ICON.is_file() else None,
                       storage_path=str(engine.DATA / 'cache/webview2'))
